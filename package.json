@@ -1,0 +1,27 @@
+{
+  "name": "sdd-chair-backend",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "format": "prettier --write .",
+    "db:migrate": "pnpm --filter @sdd-monitor/server db:migrate",
+    "db:seed": "pnpm --filter @sdd-monitor/server db:seed"
+  },
+  "devDependencies": {
+    "@sdd-monitor/config": "workspace:*",
+    "@types/node": "^22.19.3",
+    "prettier": "^3.6.2",
+    "turbo": "^2.9.12",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}

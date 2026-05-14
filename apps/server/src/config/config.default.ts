@@ -1,0 +1,38 @@
+export default {
+  keys: 'sdd-monitor-local-secret',
+  midwayLogger: {
+    default: {
+      transports: {
+        console: {
+          autoColors: true,
+        },
+        file: false,
+        error: false,
+      },
+    },
+    clients: {
+      coreLogger: {},
+      appLogger: {},
+    },
+  },
+  koa: {
+    port: Number(process.env.PORT ?? 4318),
+  },
+  sddMonitor: {
+    maxOtlpPayloadBytes: Number(process.env.MAX_OTLP_PAYLOAD_BYTES ?? 16 * 1024 * 1024),
+    rawRetentionDays: Number(process.env.RAW_RETENTION_DAYS ?? 7),
+    eventRetentionDays: Number(process.env.EVENT_RETENTION_DAYS ?? 30),
+    textRetentionDays: Number(process.env.TEXT_RETENTION_DAYS ?? 30),
+  },
+  mysql: {
+    host: process.env.MYSQL_HOST ?? '127.0.0.1',
+    port: Number(process.env.MYSQL_PORT ?? 3306),
+    username: process.env.MYSQL_USER ?? 'sdd_monitor',
+    password: process.env.MYSQL_PASSWORD ?? 'sdd_monitor',
+    database: process.env.MYSQL_DATABASE ?? 'sdd_monitor',
+  },
+  redis: {
+    host: process.env.REDIS_HOST ?? '127.0.0.1',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+  },
+};

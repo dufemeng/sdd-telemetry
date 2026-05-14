@@ -1,0 +1,10 @@
+{
+  "name": "@sdd-monitor/config",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "tsconfig",
+    "eslint",
+    "prettier"
+  ]
+}

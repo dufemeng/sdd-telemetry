@@ -35,3 +35,41 @@ packages/config # 共享 tsconfig / eslint / prettier
 - [数据库模型](./docs/database-model.md)
 - [API Contract](./docs/api-contract.md)
 - [P0 验收计划](./docs/acceptance-plan.md)
+
+## 本地开发
+
+安装依赖：
+
+```bash
+pnpm install
+```
+
+启动基础设施：
+
+```bash
+docker compose up -d mysql redis
+```
+
+启动全部应用：
+
+```bash
+pnpm dev
+```
+
+也可以单独启动：
+
+```bash
+pnpm --filter @sdd-monitor/server dev
+pnpm --filter @sdd-monitor/worker dev
+pnpm --filter @sdd-monitor/web dev
+```
+
+基础验收：
+
+```bash
+pnpm typecheck
+pnpm build
+curl -sS http://127.0.0.1:4318/api/ingest/health
+```
+
+当前 Milestone 1 只提供工程骨架和空数据 API。MySQL migration、raw 写入、outbox 和清洗 worker 会在后续 Milestone 落地。

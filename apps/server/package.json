@@ -1,0 +1,39 @@
+{
+  "name": "@sdd-monitor/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/bootstrap.js",
+  "scripts": {
+    "dev": "tsx watch src/bootstrap.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bootstrap.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "db:migrate": "tsx src/infrastructure/mysql/run-migrations.ts",
+    "db:seed": "tsx src/infrastructure/mysql/seed.ts"
+  },
+  "dependencies": {
+    "@midwayjs/bootstrap": "^4.1.0",
+    "@midwayjs/core": "^4.1.0",
+    "@midwayjs/koa": "^4.1.0",
+    "@midwayjs/logger": "^4.0.1",
+    "@midwayjs/typeorm": "^4.1.0",
+    "@sdd-monitor/api": "workspace:*",
+    "bullmq": "^5.76.8",
+    "ioredis": "^5.10.1",
+    "mysql2": "^3.22.3",
+    "pino": "^10.1.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.29",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@sdd-monitor/config": "workspace:*",
+    "@types/node": "^22.19.3",
+    "tsx": "^4.22.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}

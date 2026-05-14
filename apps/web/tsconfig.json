@@ -1,0 +1,11 @@
+{
+  "extends": "@sdd-monitor/config/tsconfig/web.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "exactOptionalPropertyTypes": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "references": [{ "path": "../../packages/api" }]
+}
