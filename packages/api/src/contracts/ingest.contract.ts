@@ -10,6 +10,13 @@ export const BatchStatusSchema = z.enum([
   'failed_terminal',
 ]);
 
+export const OutboxStatusSchema = z.enum([
+  'pending',
+  'dispatching',
+  'dispatched',
+  'failed_terminal',
+]);
+
 export const OtlpLogsPayloadSchema = z.record(z.string(), z.unknown());
 
 export const IngestLogsResponseSchema = z.object({
@@ -63,9 +70,39 @@ export const BatchListResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+export const BatchDetailSchema = BatchListItemSchema.extend({
+  payloadHash: z.string().length(64),
+  statusReason: z.string().nullable(),
+  lastDuplicateAt: ISODateTimeSchema.nullable(),
+  parseStartedAt: ISODateTimeSchema.nullable(),
+  parseCompletedAt: ISODateTimeSchema.nullable(),
+  retryCount: z.number(),
+  rawAvailable: z.boolean(),
+  rawExpiresAt: ISODateTimeSchema.nullable(),
+  outbox: z
+    .object({
+      status: OutboxStatusSchema,
+      attempts: z.number(),
+      nextRetryAt: ISODateTimeSchema.nullable(),
+      lastError: z.string().nullable(),
+      dispatchedAt: ISODateTimeSchema.nullable(),
+    })
+    .nullable(),
+});
+
+export const ReprocessBatchResponseSchema = z.object({
+  batchId: IdSchema,
+  accepted: z.boolean(),
+  status: BatchStatusSchema,
+  outboxStatus: OutboxStatusSchema.nullable(),
+});
+
 export type BatchStatus = z.infer<typeof BatchStatusSchema>;
+export type OutboxStatus = z.infer<typeof OutboxStatusSchema>;
 export type IngestLogsResponse = z.infer<typeof IngestLogsResponseSchema>;
 export type IngestHealth = z.infer<typeof IngestHealthSchema>;
 export type BatchListQuery = z.infer<typeof BatchListQuerySchema>;
 export type BatchListItem = z.infer<typeof BatchListItemSchema>;
 export type BatchListResponse = z.infer<typeof BatchListResponseSchema>;
+export type BatchDetail = z.infer<typeof BatchDetailSchema>;
+export type ReprocessBatchResponse = z.infer<typeof ReprocessBatchResponseSchema>;

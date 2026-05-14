@@ -36,8 +36,45 @@ export const FieldCoverageSchema = z.object({
   ),
 });
 
+export const FieldValuesQuerySchema = TimeRangeQuerySchema.extend({
+  fieldPath: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const FieldValuesSchema = z.object({
+  fieldPath: z.string(),
+  totalEvents: z.number(),
+  values: z.array(
+    z.object({
+      value: z.string(),
+      count: z.number(),
+      percentage: z.number(),
+    }),
+  ),
+});
+
+export const EventTimelineQuerySchema = TimeRangeQuerySchema.extend({
+  bucket: z.enum(['hour', 'day']).default('hour'),
+});
+
+export const EventTimelineSchema = z.object({
+  bucket: z.enum(['hour', 'day']),
+  buckets: z.array(
+    z.object({
+      bucketStart: ISODateTimeSchema,
+      bucketEnd: ISODateTimeSchema,
+      eventCount: z.number(),
+      distinctEventNames: z.number(),
+    }),
+  ),
+});
+
 export type TimeRangeQuery = z.infer<typeof TimeRangeQuerySchema>;
 export type EventDistributionQuery = z.infer<typeof EventDistributionQuerySchema>;
 export type EventDistributionItem = z.infer<typeof EventDistributionItemSchema>;
 export type EventDistribution = z.infer<typeof EventDistributionSchema>;
 export type FieldCoverage = z.infer<typeof FieldCoverageSchema>;
+export type FieldValuesQuery = z.infer<typeof FieldValuesQuerySchema>;
+export type FieldValues = z.infer<typeof FieldValuesSchema>;
+export type EventTimelineQuery = z.infer<typeof EventTimelineQuerySchema>;
+export type EventTimeline = z.infer<typeof EventTimelineSchema>;

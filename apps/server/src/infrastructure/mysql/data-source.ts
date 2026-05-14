@@ -1,4 +1,7 @@
+import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import { appEntities } from './entities';
+import { CreateP0Schema1778769900000 } from './migrations/1778769900000-create-p0-schema';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -11,7 +14,7 @@ export function createAppDataSource(): DataSource {
     timezone: 'Z',
     synchronize: false,
     logging: false,
-    entities: [],
-    migrations: [],
+    entities: appEntities,
+    migrations: [CreateP0Schema1778769900000],
   });
 }

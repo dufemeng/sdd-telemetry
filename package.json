@@ -14,7 +14,8 @@
     "lint": "turbo lint",
     "format": "prettier --write .",
     "db:migrate": "pnpm --filter @sdd-monitor/server db:migrate",
-    "db:seed": "pnpm --filter @sdd-monitor/server db:seed"
+    "db:seed": "pnpm --filter @sdd-monitor/server db:seed",
+    "db:verify": "pnpm --filter @sdd-monitor/server db:verify"
   },
   "devDependencies": {
     "@sdd-monitor/config": "workspace:*",

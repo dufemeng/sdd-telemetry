@@ -12,7 +12,8 @@
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "tsx src/infrastructure/mysql/run-migrations.ts",
-    "db:seed": "tsx src/infrastructure/mysql/seed.ts"
+    "db:seed": "tsx src/infrastructure/mysql/seed.ts",
+    "db:verify": "tsx src/infrastructure/mysql/verify-schema.ts"
   },
   "dependencies": {
     "@midwayjs/bootstrap": "^4.1.0",

@@ -45,6 +45,41 @@ export const SddListQuerySchema = PaginationQuerySchema.merge(TimeRangeQuerySche
   semanticCode: z.string().optional(),
   userId: IdSchema.optional(),
   workItemId: IdSchema.optional(),
+  sessionId: z.string().optional(),
+  promptId: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const SddUsageItemSchema = z.object({
+  id: IdSchema,
+  usageKey: z.string(),
+  semanticCode: z.string().nullable(),
+  semanticDisplayName: z.string().nullable(),
+  rawSkillName: z.string(),
+  status: z.string(),
+  userId: IdSchema.nullable(),
+  interactionId: IdSchema.nullable(),
+  workItemId: IdSchema.nullable(),
+  sessionId: z.string().nullable(),
+  promptId: z.string().nullable(),
+  observedVersion: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+
+export const SddInteractionItemSchema = z.object({
+  id: IdSchema,
+  interactionKey: z.string(),
+  status: z.string(),
+  userId: IdSchema.nullable(),
+  sessionId: z.string().nullable(),
+  promptId: z.string().nullable(),
+  commandName: z.string().nullable(),
+  model: z.string().nullable(),
+  startedAt: ISODateTimeSchema.nullable(),
+  completedAt: ISODateTimeSchema.nullable(),
+  durationMs: z.number().nullable(),
+  promptPreview: z.string().nullable(),
+  responsePreview: z.string().nullable(),
 });
 
 export const SddErrorItemSchema = z.object({
@@ -59,6 +94,51 @@ export const SddErrorItemSchema = z.object({
   sessionId: z.string().nullable(),
   semanticCode: z.string().nullable(),
   workItemId: IdSchema.nullable(),
+});
+
+export const SddUserItemSchema = z.object({
+  id: IdSchema,
+  userKey: z.string(),
+  installId: z.string().nullable(),
+  userName: z.string().nullable(),
+  machineId: z.string().nullable(),
+  machineName: z.string().nullable(),
+  lastSeenAt: ISODateTimeSchema.nullable(),
+  skillUsageCount: z.number(),
+  interactionCount: z.number(),
+});
+
+export const SddVersionItemSchema = z.object({
+  version: z.string(),
+  usageCount: z.number(),
+  userCount: z.number(),
+  latestAt: ISODateTimeSchema.nullable(),
+});
+
+export const SddWorkItemSchema = z.object({
+  id: IdSchema,
+  workItemKey: z.string(),
+  requirementsRepoName: z.string().nullable(),
+  businessDomain: z.string().nullable(),
+  workItemSlug: z.string(),
+  workItemTitle: z.string().nullable(),
+  relativeDir: z.string(),
+  firstSeenAt: ISODateTimeSchema.nullable(),
+  lastSeenAt: ISODateTimeSchema.nullable(),
+});
+
+export const SddWorkItemDetailSchema = SddWorkItemSchema.extend({
+  artifacts: z.array(
+    z.object({
+      id: IdSchema,
+      artifactType: z.string(),
+      artifactRelativePath: z.string(),
+      systemModule: z.string().nullable(),
+      lastSeenAt: ISODateTimeSchema.nullable(),
+    }),
+  ),
+  usageCount: z.number(),
+  errorCount: z.number(),
 });
 
 export const ReportUserSettingsRequestSchema = z.object({
@@ -76,5 +156,11 @@ export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSc
 export type SddFunnelQuery = z.infer<typeof SddFunnelQuerySchema>;
 export type SddFunnel = z.infer<typeof SddFunnelSchema>;
 export type SddListQuery = z.infer<typeof SddListQuerySchema>;
+export type SddUsageItem = z.infer<typeof SddUsageItemSchema>;
+export type SddInteractionItem = z.infer<typeof SddInteractionItemSchema>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;
+export type SddUserItem = z.infer<typeof SddUserItemSchema>;
+export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;
+export type SddWorkItem = z.infer<typeof SddWorkItemSchema>;
+export type SddWorkItemDetail = z.infer<typeof SddWorkItemDetailSchema>;
 export type ReportUserSettingsRequest = z.infer<typeof ReportUserSettingsRequestSchema>;

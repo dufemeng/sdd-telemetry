@@ -50,6 +50,14 @@ pnpm install
 docker compose up -d mysql redis
 ```
 
+初始化数据库：
+
+```bash
+pnpm db:migrate
+pnpm db:seed
+pnpm db:verify
+```
+
 启动全部应用：
 
 ```bash
@@ -72,4 +80,4 @@ pnpm build
 curl -sS http://127.0.0.1:4318/api/ingest/health
 ```
 
-当前 Milestone 1 只提供工程骨架和空数据 API。MySQL migration、raw 写入、outbox 和清洗 worker 会在后续 Milestone 落地。
+当前已完成 Milestone 1 工程骨架和 Milestone 2 数据库模型基线。raw 写入、outbox 投递和清洗 worker 会在后续 Milestone 落地。
