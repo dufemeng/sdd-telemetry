@@ -10,11 +10,12 @@ import { BarList } from '../../components/ui/BarList';
 import { DataTable } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { formatInteger, formatTime, formatBytes } from '../../lib/format';
-import { useShellContext } from '../../components/layout/AppShell';
+import { useShellContext } from '../../components/layout/useShellContext';
+import { timeRangeToHours } from '../../lib/timeRange';
 
 export default function OverviewPage() {
   const { timeRange } = useShellContext();
-  const health  = useIngestHealth();
+  const health  = useIngestHealth(timeRangeToHours(timeRange));
   const funnel  = useSddFunnel(timeRange);
   const dist    = useEventDistribution(timeRange);
   const users   = useSddUsers();

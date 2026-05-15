@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { EventTimeline } from '@sdd-monitor/api';
 import { requestData } from '../../api/client';
+import { timeRangeToFromIso } from '../../lib/timeRange';
+import type { TimeRange } from '../../components/layout/TopBar';
 
-export function useEventTimeline(timeRange: '6h' | '24h' | '72h') {
-  const hours = Number(timeRange.replace('h', ''));
-  const from  = new Date(Date.now() - hours * 3_600_000).toISOString();
+export function useEventTimeline(timeRange: TimeRange) {
+  const from = timeRangeToFromIso(timeRange);
   return useQuery({
     queryKey: ['events-timeline', timeRange],
     queryFn: () => requestData<EventTimeline>(`/api/events/timeline?from=${from}`),

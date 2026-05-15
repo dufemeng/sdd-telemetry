@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { SddUsageSummaryResponse } from '@sdd-monitor/api';
 import { requestData } from '../../../api/client';
+import { timeRangeToFromIso } from '../../../lib/timeRange';
+import type { TimeRange } from '../../../components/layout/TopBar';
 
-export function useSddUsageSummary(timeRange: '6h' | '24h' | '72h') {
-  const hours = Number(timeRange.replace('h', ''));
-  const from  = new Date(Date.now() - hours * 3_600_000).toISOString();
+export function useSddUsageSummary(timeRange: TimeRange) {
+  const from = timeRangeToFromIso(timeRange);
   return useQuery({
     queryKey: ['sdd-usage-summary', timeRange],
     queryFn: () => requestData<SddUsageSummaryResponse>(`/api/sdd/usage-summary?from=${from}&limit=100`),
