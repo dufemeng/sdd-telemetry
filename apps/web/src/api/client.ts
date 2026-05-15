@@ -1,12 +1,6 @@
-const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+import type { ApiResponse } from '@sdd-monitor/api';
 
-interface ApiEnvelope<T> {
-  success: boolean;
-  data: T;
-  error?: { code: string; message: string };
-  requestId: string;
-  timestamp: string;
-}
+const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export async function requestData<T>(path: string, init?: RequestInit): Promise<T> {
   const url = BASE ? new URL(path, BASE).toString() : path;
@@ -14,9 +8,10 @@ export async function requestData<T>(path: string, init?: RequestInit): Promise<
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   });
-  const body = (await res.json()) as ApiEnvelope<T>;
+  const body = (await res.json()) as ApiResponse<T>;
   if (!res.ok || !body.success) {
-    throw new Error(body.error?.message ?? `HTTP ${res.status}`);
+    const message = !body.success && body.error?.message ? body.error.message : `HTTP ${res.status}`;
+    throw new Error(message);
   }
   return body.data;
 }
