@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OpsTableFilter, OpsTableRowsResponse } from '@sdd-telemetry/api';
+import type { OpsTableFilterGroup, OpsTableRowsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 interface TableRowsParams {
   tableName: string;
-  filters?: OpsTableFilter[];
+  filters?: OpsTableFilterGroup[];
   cursor?: string;
   limit?: number;
 }

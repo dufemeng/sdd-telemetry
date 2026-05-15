@@ -7,8 +7,8 @@ import { DataTable } from '../../../components/ui/DataTable';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { formatInteger, formatBytes, truncate } from '../../../lib/format';
 import { useDebouncedValue } from '../../../lib/useDebouncedValue';
-import { FilterConditions } from './FilterConditions';
-import { toBackendFilters, type FilterCondition } from './databaseFilter';
+import { FilterStrip } from './FilterStrip';
+import { toBackendFilterGroups, type FilterGroup } from './databaseFilter';
 
 const PAGE_SIZE = 50;
 
@@ -17,16 +17,16 @@ export default function DatabasePage() {
   const tables = tablesData?.tables ?? [];
 
   const [selectedTable, setSelectedTable] = useState('');
-  const [conditions,    setConditions]    = useState<FilterCondition[]>([]);
+  const [groups,        setGroups]        = useState<FilterGroup[]>([]);
   const [cursorStack,   setCursorStack]   = useState<string[]>([]);
 
   const activeName  = selectedTable || tables[0]?.tableName || '';
   const activeTable = tables.find((t) => t.tableName === activeName) ?? tables[0];
   const columns     = activeTable?.columns ?? [];
 
-  const debouncedConditions = useDebouncedValue(conditions, 300);
-  const backendFilters = useMemo(() => toBackendFilters(debouncedConditions), [debouncedConditions]);
-  const currentCursor = cursorStack[cursorStack.length - 1];
+  const debouncedGroups = useDebouncedValue(groups, 300);
+  const backendFilters  = useMemo(() => toBackendFilterGroups(debouncedGroups), [debouncedGroups]);
+  const currentCursor   = cursorStack[cursorStack.length - 1];
 
   const rows = useTableRows({
     tableName: activeName,
@@ -37,19 +37,17 @@ export default function DatabasePage() {
 
   const switchTable = (name: string) => {
     setSelectedTable(name);
-    setConditions([]);
+    setGroups([]);
     setCursorStack([]);
   };
 
-  const updateConditions = (next: FilterCondition[]) => {
-    setConditions(next);
+  const updateGroups = (next: FilterGroup[]) => {
+    setGroups(next);
     setCursorStack([]);
   };
 
   const goNext = () => {
-    if (rows.data?.nextCursor) {
-      setCursorStack([...cursorStack, rows.data.nextCursor]);
-    }
+    if (rows.data?.nextCursor) setCursorStack([...cursorStack, rows.data.nextCursor]);
   };
 
   const goPrev = () => {
@@ -88,11 +86,7 @@ export default function DatabasePage() {
 
       <div className="grid gap-3">
         <Panel title={activeTable?.tableName ?? '—'} icon={<ListFilter size={18} />}>
-          <FilterConditions
-            columns={columns}
-            conditions={conditions}
-            onChange={updateConditions}
-          />
+          <FilterStrip columns={columns} groups={groups} onGroupsChange={updateGroups} />
         </Panel>
 
         <Panel title="表结构" icon={<Code2 size={18} />}>

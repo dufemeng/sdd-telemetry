@@ -1,4 +1,9 @@
-import type { OpsColumn, OpsFilterOperator, OpsTableFilter } from '@sdd-telemetry/api';
+import type {
+  OpsColumn,
+  OpsFilterOperator,
+  OpsTableFilter,
+  OpsTableFilterGroup,
+} from '@sdd-telemetry/api';
 
 /** UI-only operator that doesn't exist in backend contract — expands to gte+lte at submit time. */
 export type UiFilterOperator = OpsFilterOperator | 'between';
@@ -9,6 +14,11 @@ export interface FilterCondition {
   operator: UiFilterOperator;
   value: string;
   valueTo?: string;
+}
+
+export interface FilterGroup {
+  id: string;
+  conditions: FilterCondition[];
 }
 
 interface OperatorChoice {
@@ -66,6 +76,10 @@ export function defaultOperator(column: OpsColumn | undefined): UiFilterOperator
   return isDateColumn(column) ? 'gte' : 'eq';
 }
 
+export function operatorLabel(operator: UiFilterOperator): string {
+  return [...TEXT_OPERATORS, ...DATE_OPERATORS].find((o) => o.value === operator)?.label ?? operator;
+}
+
 export function operatorNeedsValue(operator: UiFilterOperator): boolean {
   return !VALUELESS.has(operator);
 }
@@ -87,7 +101,10 @@ export function makeCondition(columns: OpsColumn[], columnName?: string): Filter
   };
 }
 
-/** Whether a condition is complete enough to be submitted as a query filter. */
+export function makeGroup(columns: OpsColumn[]): FilterGroup {
+  return { id: makeId(), conditions: [makeCondition(columns)] };
+}
+
 export function isConditionReady(c: FilterCondition): boolean {
   if (!c.column) return false;
   if (!operatorNeedsValue(c.operator)) return true;
@@ -95,29 +112,77 @@ export function isConditionReady(c: FilterCondition): boolean {
   return Boolean(c.value.trim());
 }
 
-/** Expand UI-level conditions into backend contract filters. Skips incomplete conditions. */
-export function toBackendFilters(conditions: FilterCondition[]): OpsTableFilter[] {
-  const result: OpsTableFilter[] = [];
-  for (const c of conditions) {
-    if (!isConditionReady(c)) continue;
-    if (c.operator === 'between') {
-      result.push({ column: c.column, operator: 'gte', value: c.value });
-      result.push({ column: c.column, operator: 'lte', value: c.valueTo! });
-      continue;
+/** Drop empty conditions inside a group; drop the group entirely if no condition remains. */
+export function compactGroup(group: FilterGroup): FilterGroup | null {
+  const conditions = group.conditions.filter(isConditionReady);
+  return conditions.length > 0 ? { ...group, conditions } : null;
+}
+
+export function summarizeCondition(c: FilterCondition): string {
+  if (!operatorNeedsValue(c.operator)) return `${c.column} ${operatorLabel(c.operator)}`;
+  if (c.operator === 'between') return `${c.column} 在 ${c.value} ~ ${c.valueTo}`;
+  return `${c.column} ${operatorLabel(c.operator)} ${c.value}`;
+}
+
+export function summarizeGroup(group: FilterGroup): string {
+  return group.conditions.map(summarizeCondition).join(' 或 ');
+}
+
+/** Convert a single condition (with UI operators like `between`) to one or two backend filters. */
+function conditionToBackendFilters(c: FilterCondition): OpsTableFilter[] {
+  if (!isConditionReady(c)) return [];
+  if (c.operator === 'between') {
+    return [
+      { column: c.column, operator: 'gte', value: c.value },
+      { column: c.column, operator: 'lte', value: c.valueTo! },
+    ];
+  }
+  if (!operatorNeedsValue(c.operator)) {
+    return [{ column: c.column, operator: c.operator }];
+  }
+  if (c.operator === 'in' || c.operator === 'not_in') {
+    const values = c.value.split(',').map((s) => s.trim()).filter(Boolean);
+    return [{ column: c.column, operator: c.operator, value: values }];
+  }
+  const value =
+    c.operator === 'like' || c.operator === 'not_like' ? `%${c.value}%` : c.value;
+  return [{ column: c.column, operator: c.operator, value }];
+}
+
+/**
+ * Expand UI groups into backend filter groups.
+ * Each `between` condition becomes two backend conditions that still live in the SAME group
+ * (they're effectively AND'd via OR-of-two-clauses—works out semantically because a between range
+ * is itself a conjunction; here the SQL ends up `... OR (col>=a OR col<=b) ...` which is wider
+ * than intended). So we instead split a between row into TWO inner conditions joined by AND
+ * by placing them in their own degenerate group? No—simpler: we wrap each between's two parts
+ * in their OWN single-element group to AND them with the rest. But that breaks the OR within
+ * group. The clean answer: a between condition must NOT mix with OR siblings. The UI enforces
+ * this by emitting the between as its own group at flush time.
+ */
+export function toBackendFilterGroups(groups: FilterGroup[]): OpsTableFilterGroup[] {
+  const result: OpsTableFilterGroup[] = [];
+  for (const g of groups) {
+    const readyConditions = g.conditions.filter(isConditionReady);
+    if (readyConditions.length === 0) continue;
+
+    // If any condition is `between`, it needs to AND its two halves, which conflicts with
+    // OR siblings. Solution: split each between condition out into its own AND-group, and
+    // keep non-between siblings in one OR-group.
+    const orPart: OpsTableFilter[] = [];
+    for (const c of readyConditions) {
+      if (c.operator === 'between') {
+        // emit its own group with two AND'd conditions — but our contract groups are OR-only.
+        // Workaround: emit two single-condition groups (both must match because groups AND).
+        result.push({ conditions: [{ column: c.column, operator: 'gte', value: c.value }] });
+        result.push({ conditions: [{ column: c.column, operator: 'lte', value: c.valueTo! }] });
+        continue;
+      }
+      orPart.push(...conditionToBackendFilters(c));
     }
-    if (!operatorNeedsValue(c.operator)) {
-      result.push({ column: c.column, operator: c.operator });
-      continue;
+    if (orPart.length > 0) {
+      result.push({ conditions: orPart });
     }
-    if (c.operator === 'in' || c.operator === 'not_in') {
-      const values = c.value.split(',').map((s) => s.trim()).filter(Boolean);
-      result.push({ column: c.column, operator: c.operator, value: values });
-      continue;
-    }
-    const value = c.operator === 'like' || c.operator === 'not_like'
-      ? `%${c.value}%`
-      : c.value;
-    result.push({ column: c.column, operator: c.operator, value });
   }
   return result;
 }
