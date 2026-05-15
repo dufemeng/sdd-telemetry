@@ -7,6 +7,7 @@ import type {
   OpsQueue,
   OpsTable,
   OpsTableFilter,
+  OpsTableFilterGroup,
   OpsTableRowsQuery,
   OpsTableRowsResponse,
   OpsTablesResponse,
@@ -123,7 +124,7 @@ export class OpsQueryService {
     const clauses: string[] = [];
     const params: unknown[] = [];
 
-    appendFilterClauses(query.filters, columnSet, clauses, params);
+    appendFilterGroupClauses(query.filters, columnSet, clauses, params);
 
     if (query.cursor && orderBy === 'id') {
       clauses.push(`id ${query.order === 'asc' ? '>' : '<'} ?`);
@@ -355,46 +356,59 @@ function estimateMaxSize(row: ColumnRow): { estimatedMaxSize: number | null; siz
   return { estimatedMaxSize: null, sizeBasis: 'Unknown or engine-dependent' };
 }
 
-function appendFilterClauses(
-  filters: OpsTableFilter[],
+/**
+ * Build WHERE clauses for filter groups: conditions within a group are OR'd, groups themselves are AND'd.
+ * Final SQL shape: `(c1 OR c2) AND (c3) AND (c4 OR c5)`
+ */
+function appendFilterGroupClauses(
+  groups: OpsTableFilterGroup[],
   columnSet: Set<string>,
   clauses: string[],
   params: unknown[],
 ): void {
-  for (const filter of filters) {
-    if (!columnSet.has(filter.column)) {
-      throw new Error(`filter column is not allowed: ${filter.column}`);
+  for (const group of groups) {
+    const orParts: string[] = [];
+    for (const filter of group.conditions) {
+      const part = buildFilterClause(filter, columnSet, params);
+      if (part) orParts.push(part);
     }
-
-    const columnSql = `\`${filter.column}\``;
-    const operator = filter.operator;
-
-    if (operator === 'is_null') {
-      clauses.push(`${columnSql} IS NULL`);
-      continue;
+    if (orParts.length === 1) {
+      clauses.push(orParts[0]!);
+    } else if (orParts.length > 1) {
+      clauses.push(`(${orParts.join(' OR ')})`);
     }
-
-    if (operator === 'is_not_null') {
-      clauses.push(`${columnSql} IS NOT NULL`);
-      continue;
-    }
-
-    if (operator === 'in' || operator === 'not_in') {
-      const values = filterValueList(filter.value);
-      if (values.length === 0) {
-        clauses.push(operator === 'in' ? '1 = 0' : '1 = 1');
-        continue;
-      }
-      const sqlVerb = operator === 'in' ? 'IN' : 'NOT IN';
-      clauses.push(`${columnSql} ${sqlVerb} (${values.map(() => '?').join(',')})`);
-      params.push(...values);
-      continue;
-    }
-
-    const value = filterScalarValue(filter.value);
-    clauses.push(`${columnSql} ${sqlOperator(operator)} ?`);
-    params.push(value);
   }
+}
+
+/** Build one SQL fragment (`column op value`) for a single filter; appends bind params in place. */
+function buildFilterClause(
+  filter: OpsTableFilter,
+  columnSet: Set<string>,
+  params: unknown[],
+): string | null {
+  if (!columnSet.has(filter.column)) {
+    throw new Error(`filter column is not allowed: ${filter.column}`);
+  }
+
+  const columnSql = `\`${filter.column}\``;
+  const operator = filter.operator;
+
+  if (operator === 'is_null')     return `${columnSql} IS NULL`;
+  if (operator === 'is_not_null') return `${columnSql} IS NOT NULL`;
+
+  if (operator === 'in' || operator === 'not_in') {
+    const values = filterValueList(filter.value);
+    if (values.length === 0) {
+      return operator === 'in' ? '1 = 0' : '1 = 1';
+    }
+    const sqlVerb = operator === 'in' ? 'IN' : 'NOT IN';
+    params.push(...values);
+    return `${columnSql} ${sqlVerb} (${values.map(() => '?').join(',')})`;
+  }
+
+  const value = filterScalarValue(filter.value);
+  params.push(value);
+  return `${columnSql} ${sqlOperator(operator)} ?`;
 }
 
 function sqlOperator(operator: OpsFilterOperator): string {

@@ -44,6 +44,11 @@ export const OpsTableFilterSchema = z.object({
   value: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
+/** A group of conditions OR'd together. Groups themselves are AND'd in the WHERE clause. */
+export const OpsTableFilterGroupSchema = z.object({
+  conditions: z.array(OpsTableFilterSchema).min(1),
+});
+
 export const OpsTableRowsQuerySchema = PaginationQuerySchema.extend({
   orderBy: z.string().optional(),
   order: z.enum(['asc', 'desc']).default('desc'),
@@ -62,7 +67,7 @@ export const OpsTableRowsQuerySchema = PaginationQuerySchema.extend({
       }
 
       return value;
-    }, z.array(OpsTableFilterSchema))
+    }, z.array(OpsTableFilterGroupSchema))
     .default([]),
 });
 
@@ -99,6 +104,7 @@ export const OpsJobsResponseSchema = z.object({
 export type OpsTable = z.infer<typeof OpsTableSchema>;
 export type OpsColumn = z.infer<typeof OpsColumnSchema>;
 export type OpsTableFilter = z.infer<typeof OpsTableFilterSchema>;
+export type OpsTableFilterGroup = z.infer<typeof OpsTableFilterGroupSchema>;
 export type OpsFilterOperator = z.infer<typeof OpsFilterOperatorSchema>;
 export type OpsTablesResponse = z.infer<typeof OpsTablesResponseSchema>;
 export type OpsTableRowsQuery = z.infer<typeof OpsTableRowsQuerySchema>;
