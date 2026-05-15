@@ -1,5 +1,5 @@
 import { Activity, BarChart3, Clock3, Search } from 'lucide-react';
-import { useShellContext } from '../../components/layout/AppShell';
+import { useShellContext } from '../../components/layout/useShellContext';
 import { useEventDistribution } from './useEventDistribution';
 import { useEventTimeline } from './useEventTimeline';
 import { StatCard } from '../../components/ui/StatCard';

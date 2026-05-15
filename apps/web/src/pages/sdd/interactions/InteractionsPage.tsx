@@ -1,5 +1,5 @@
 import { Workflow } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/AppShell';
+import { useShellContext } from '../../../components/layout/useShellContext';
 import { useSddInteractions } from './useSddInteractions';
 import { Panel } from '../../../components/ui/Panel';
 import { DataTable } from '../../../components/ui/DataTable';

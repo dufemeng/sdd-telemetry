@@ -1,16 +1,8 @@
 import { useState } from 'react';
-import { Outlet, useOutletContext } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar, type TimeRange } from './TopBar';
-
-interface ShellContext {
-  timeRange: TimeRange;
-  search: string;
-}
-
-export function useShellContext() {
-  return useOutletContext<ShellContext>();
-}
+import type { ShellContext } from './useShellContext';
 
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');

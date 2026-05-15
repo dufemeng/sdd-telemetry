@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckSquare, GitBranch, Layers3, Workflow } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/AppShell';
+import { useShellContext } from '../../../components/layout/useShellContext';
 import { useSddFunnel } from './useSddFunnel';
 import { StatCard } from '../../../components/ui/StatCard';
 import { Panel } from '../../../components/ui/Panel';

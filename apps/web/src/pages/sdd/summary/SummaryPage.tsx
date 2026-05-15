@@ -1,5 +1,5 @@
 import { Layers3 } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/AppShell';
+import { useShellContext } from '../../../components/layout/useShellContext';
 import { useSddUsageSummary } from './useSddUsageSummary';
 import { Panel } from '../../../components/ui/Panel';
 import { DataTable } from '../../../components/ui/DataTable';
