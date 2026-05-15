@@ -300,6 +300,17 @@ handle()
 
 公司 FaaS 单次 Schedule 最大执行 60 秒，因此实现上预留 15 秒安全余量，单次任务最多运行约 45 秒。不要一次性 claim 很多行后再处理，避免后半批任务还没处理完就被 FaaS 中断。
 
+MVP 默认保护阈值：
+
+| 配置 | 默认值 | 作用 |
+|---|---:|---|
+| `MAX_OTLP_PAYLOAD_BYTES` | 5MB | 上报入口拒绝超大 raw payload |
+| `MAX_OTLP_LOG_RECORDS` | 500 | 上报入口拒绝超多 log records |
+| `CLEAN_BATCH_MAX_PAYLOAD_BYTES` | 5MB | 清洗入口二次保护，防止历史大 batch 拖死 FaaS |
+| `CLEAN_BATCH_MAX_EVENTS` | 500 | 清洗入口二次保护，防止历史大 batch 拖死 FaaS |
+| `SCHEDULE_CLEANING_BUDGET_MS` | 45000 | 单次定时清洗最多运行约 45 秒 |
+| `SCHEDULE_CLEANING_LOCK_SECONDS` | 120 | FaaS 被杀后最多约 2 分钟可被接管 |
+
 关键实现点：
 
 | 问题 | 处理方式 |

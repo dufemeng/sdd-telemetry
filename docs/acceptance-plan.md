@@ -83,6 +83,7 @@ POST /api/ingest/otlp-logs basic-otlp.json
 3. `ingest_outbox` 有 `clean_batch` 记录。
 4. batch 初始状态是 `received` 或 `queued`。
 5. response 返回 `batchId`、`payloadHash`、`duplicate=false`。
+6. 超过 `MAX_OTLP_PAYLOAD_BYTES` 或 `MAX_OTLP_LOG_RECORDS` 的 payload 会被拒绝。
 
 重复 POST 同一 payload：
 

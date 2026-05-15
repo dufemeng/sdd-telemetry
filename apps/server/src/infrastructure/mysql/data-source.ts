@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { appEntities } from './entities';
 import { CreateP0Schema1778769900000 } from './migrations/1778769900000-create-p0-schema';
+import { RenameAuditColumns1778769950000 } from './migrations/1778769950000-rename-audit-columns';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -18,6 +19,6 @@ export function createAppDataSource(): DataSource {
       connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT ?? 5),
     },
     entities: appEntities,
-    migrations: [CreateP0Schema1778769900000],
+    migrations: [CreateP0Schema1778769900000, RenameAuditColumns1778769950000],
   });
 }

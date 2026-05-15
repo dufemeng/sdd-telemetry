@@ -18,6 +18,8 @@ export interface CleaningWorkerDependencies {
   logger: Logger;
   eventRetentionDays?: number;
   textRetentionDays?: number;
+  maxPayloadBytes?: number;
+  maxEventCount?: number;
 }
 
 export interface CleanBatchResult {
@@ -72,7 +74,7 @@ interface InteractionRef {
   key: string;
 }
 
-class TerminalCleaningError extends Error {
+export class TerminalCleaningError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TerminalCleaningError';
@@ -85,6 +87,8 @@ export async function cleanBatch(
 ): Promise<CleanBatchResult> {
   const eventRetentionDays = dependencies.eventRetentionDays ?? Number(process.env.EVENT_RETENTION_DAYS ?? 30);
   const textRetentionDays = dependencies.textRetentionDays ?? Number(process.env.TEXT_RETENTION_DAYS ?? 30);
+  const maxPayloadBytes = dependencies.maxPayloadBytes ?? Number(process.env.CLEAN_BATCH_MAX_PAYLOAD_BYTES ?? 5 * 1024 * 1024);
+  const maxEventCount = dependencies.maxEventCount ?? Number(process.env.CLEAN_BATCH_MAX_EVENTS ?? 500);
   let loadedBatch: LoadedBatch | null = null;
 
   try {
@@ -98,8 +102,21 @@ export async function cleanBatch(
       };
     }
 
+    const payloadBytes = Buffer.byteLength(loadedBatch.payloadJson);
+    if (payloadBytes > maxPayloadBytes) {
+      throw new TerminalCleaningError(
+        `raw payload is too large to clean in one FaaS schedule tick: ${payloadBytes} bytes, limit ${maxPayloadBytes} bytes`,
+      );
+    }
+
     const payload = parsePayload(loadedBatch.payloadJson);
     const events = extractOtelLogEvents(payload, loadedBatch.batchId);
+    if (events.length > maxEventCount) {
+      throw new TerminalCleaningError(
+        `batch has too many events to clean in one FaaS schedule tick: ${events.length}, limit ${maxEventCount}`,
+      );
+    }
+
     const derivedCount = await persistCleanedData(dependencies.pool, {
       batch: loadedBatch,
       events,

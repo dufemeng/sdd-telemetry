@@ -24,7 +24,8 @@ export default {
     formLimit: process.env.MAX_OTLP_BODY_LIMIT ?? '20mb',
   },
   sddMonitor: {
-    maxOtlpPayloadBytes: Number(process.env.MAX_OTLP_PAYLOAD_BYTES ?? 16 * 1024 * 1024),
+    maxOtlpPayloadBytes: Number(process.env.MAX_OTLP_PAYLOAD_BYTES ?? 5 * 1024 * 1024),
+    maxOtlpLogRecords: Number(process.env.MAX_OTLP_LOG_RECORDS ?? 500),
     rawRetentionDays: Number(process.env.RAW_RETENTION_DAYS ?? 7),
     eventRetentionDays: Number(process.env.EVENT_RETENTION_DAYS ?? 30),
     textRetentionDays: Number(process.env.TEXT_RETENTION_DAYS ?? 30),

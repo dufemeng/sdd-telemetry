@@ -7,6 +7,7 @@ import { createUserKey, summarizeOtlpPayload } from './otel-payload-inspector';
 
 interface SddMonitorConfig {
   maxOtlpPayloadBytes: number;
+  maxOtlpLogRecords: number;
   rawRetentionDays: number;
 }
 
@@ -33,6 +34,13 @@ export class IngestReceiveService {
     if (summary.payloadBytes > maxPayloadBytes) {
       throw new Error(
         `OTLP payload is too large: ${summary.payloadBytes} bytes, limit ${maxPayloadBytes} bytes`,
+      );
+    }
+
+    const maxLogRecords = this.sddMonitorConfig.maxOtlpLogRecords;
+    if (summary.rawLogCount > maxLogRecords) {
+      throw new Error(
+        `OTLP payload has too many log records: ${summary.rawLogCount}, limit ${maxLogRecords}`,
       );
     }
 
