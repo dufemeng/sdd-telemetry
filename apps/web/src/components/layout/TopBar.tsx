@@ -3,14 +3,16 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
 export type TimeRange = '6h' | '24h' | '72h';
 
+export const TIME_RANGES: readonly TimeRange[] = ['6h', '24h', '72h'] as const;
+
 interface TopBarProps {
-  timeRange?: TimeRange;
-  onTimeRangeChange?: (range: TimeRange) => void;
-  search?: string;
-  onSearchChange?: (value: string) => void;
+  timeRange: TimeRange;
+  onTimeRangeChange: (range: TimeRange) => void;
+  search: string;
+  onSearchChange: (value: string) => void;
 }
 
-export function TopBar({ timeRange = '24h', onTimeRangeChange, search = '', onSearchChange }: TopBarProps) {
+export function TopBar({ timeRange, onTimeRangeChange, search, onSearchChange }: TopBarProps) {
   const isFetching = useIsFetching() > 0;
   const qc = useQueryClient();
 
@@ -34,7 +36,7 @@ export function TopBar({ timeRange = '24h', onTimeRangeChange, search = '', onSe
           className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
           placeholder="搜索批次 / 会话 / 提示词 / 用户 / 技能"
           value={search}
-          onChange={(e) => onSearchChange?.(e.target.value)}
+          onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
 
@@ -45,10 +47,10 @@ export function TopBar({ timeRange = '24h', onTimeRangeChange, search = '', onSe
           className="flex items-center h-[30px] p-0.5 gap-0.5 rounded-[4px]"
           style={{ border: '1px solid var(--color-border)', background: '#171717' }}
         >
-          {(['6h', '24h', '72h'] as TimeRange[]).map((r) => (
+          {TIME_RANGES.map((r) => (
             <button
               key={r}
-              onClick={() => onTimeRangeChange?.(r)}
+              onClick={() => onTimeRangeChange(r)}
               className={[
                 'h-6 px-[10px] rounded-[3px] text-[12px] border-0 cursor-pointer transition-colors duration-[120ms]',
                 r === timeRange
