@@ -8,6 +8,9 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "dev:web": "pnpm --filter @sdd-telemetry/web dev",
+    "dev:server": "pnpm --filter @sdd-telemetry/server dev",
+    "dev:worker": "pnpm --filter @sdd-telemetry/worker dev",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",

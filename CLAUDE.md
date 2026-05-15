@@ -38,3 +38,38 @@
 - **目录命名**：顶层路由页面目录叫 `pages/`（不叫 `features/`）
 - **数据层**：TanStack Query（已安装）
 - **类型**：从 `packages/api` Zod contract 推导，不手写 API 类型
+
+## 本地开发约定
+
+### 启动命令
+
+| 命令 | 行为 |
+|---|---|
+| `pnpm dev` | 根目录 turbo dev，**并行启全部三个 app**（web 5173/5174、server 4318、worker） |
+| `pnpm dev:web` | 只起 web |
+| `pnpm dev:server` | 只起 server |
+| `pnpm dev:worker` | 只起 worker |
+
+**默认就用 `pnpm dev`**。三个 app 都是 watch 模式（tsx watch / vite HMR），改 `src/` 代码自动重启或热替换，不需要手动重启。
+
+### 什么时候才需要 kill + 重启
+
+watch 模式下绝大多数代码改动都自动生效。**只在以下情况需要 Ctrl-C 重启**：
+- 改了 `.env` 或环境变量
+- 改了 `vite.config.ts` / `tsconfig.json` / `tsx watch` 配置
+- `pnpm install` 增减了依赖
+- 进程崩了挂死
+
+不要写 `restart:*` 之类的 script——这些场景一年遇到几次，Ctrl-C 后重跑 `pnpm dev` 就行。
+
+### 不要用 start 模式开发
+
+`pnpm --filter @sdd-telemetry/server start` 跑的是编译后的 `dist/`，跟 `src/` 完全脱钩。后果：你改了代码看不到效果、ApiErrorFilter 之类的新文件根本不存在。**只有真正测部署产物时才用 start，平时一律 dev**。
+
+## 后端验证守则
+
+修后端代码后验证修复是否生效，遵守这三条，避免"假绿"：
+
+1. **优先 dev/watch 模式验证**，不要在 start 模式下测——start 跑的是旧 dist，永远看不到你刚改的 src
+2. **测试要构造可证伪查询**：空集结果不能区分"修好+无数据"和"没修好+SQL 错配"。要选一个 "修好返回 N 条、没修好返回 0" 的查询来测
+3. **注意 monorepo 构建边界**：`pnpm --filter @sdd-telemetry/api build` 只 rebuild api 包，server 自己的 dist/ 不会跟着重建。在 dev 模式下无此问题（直接读 src）
