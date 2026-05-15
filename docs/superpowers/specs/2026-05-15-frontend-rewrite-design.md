@@ -170,7 +170,7 @@ export async function requestData<T>(path: string, init?: RequestInit): Promise<
 ```ts
 // pages/ingest/useIngestHealth.ts
 import { useQuery } from '@tanstack/react-query';
-import type { IngestHealth } from '@sdd-monitor/api';
+import type { IngestHealth } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useIngestHealth(windowHours = 24) {

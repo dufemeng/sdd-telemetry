@@ -1,7 +1,7 @@
 import { Queue, type JobsOptions } from 'bullmq';
 import IORedis from 'ioredis';
 
-export const CLEAN_BATCH_QUEUE_NAME = 'sdd-monitor.clean-batch';
+export const CLEAN_BATCH_QUEUE_NAME = 'sdd-telemetry.clean-batch';
 
 export interface CleanBatchJobData {
   batchId: string;

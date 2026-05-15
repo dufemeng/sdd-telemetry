@@ -1,5 +1,5 @@
 {
-  "name": "@sdd-monitor/worker",
+  "name": "@sdd-telemetry/worker",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
@@ -14,7 +14,7 @@
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@sdd-monitor/api": "workspace:*",
+    "@sdd-telemetry/api": "workspace:*",
     "bullmq": "^5.76.8",
     "ioredis": "^5.10.1",
     "mysql2": "^3.22.3",
@@ -22,7 +22,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@sdd-monitor/config": "workspace:*",
+    "@sdd-telemetry/config": "workspace:*",
     "@types/node": "^22.19.3",
     "tsx": "^4.22.0",
     "typescript": "^5.9.3",

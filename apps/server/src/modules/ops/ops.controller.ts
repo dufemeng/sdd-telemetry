@@ -11,7 +11,7 @@ import {
   type OpsQueue,
   type OpsTableRowsResponse,
   type OpsTablesResponse,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { OpsQueryService } from './ops-query.service';

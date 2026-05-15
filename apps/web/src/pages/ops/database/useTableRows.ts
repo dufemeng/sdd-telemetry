@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OpsTableRowsResponse } from '@sdd-monitor/api';
+import type { OpsTableRowsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 interface TableRowsParams {

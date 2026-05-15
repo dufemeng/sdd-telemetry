@@ -26,7 +26,7 @@ import {
   type SddVersionItem,
   type SddWorkItem,
   type SddWorkItemDetail,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { SddQueryService } from './sdd-query.service';

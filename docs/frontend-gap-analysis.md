@@ -1,4 +1,4 @@
-# 前端迁移 Gap Analysis：旧 sdd-monitor vs 新 sdd-chair-backend
+# 前端迁移 Gap Analysis：旧 sdd-telemetry vs 新 sdd-telemetry
 
 > 目的：逐 Tab 对齐旧前端展示功能与新后端 API，标记适配状态，为设计稿制定提供准确依据。
 

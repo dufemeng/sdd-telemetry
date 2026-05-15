@@ -1,5 +1,5 @@
 {
-  "name": "@sdd-monitor/api",
+  "name": "@sdd-telemetry/api",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
@@ -21,7 +21,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@sdd-monitor/config": "workspace:*",
+    "@sdd-telemetry/config": "workspace:*",
     "typescript": "^5.9.3",
     "vitest": "^4.1.6"
   }

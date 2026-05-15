@@ -50,7 +50,7 @@
       "scopeLogs": [
         {
           "scope": {
-            "name": "sdd-monitor-smoke"
+            "name": "sdd-telemetry-smoke"
           },
           "logRecords": [
             {

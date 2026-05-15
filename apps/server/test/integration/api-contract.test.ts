@@ -25,14 +25,14 @@ import {
   OpsJobsResponseSchema,
   OpsQueueSchema,
   createApiResponseSchema,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 
 const BASE = process.env.API_BASE_URL ?? 'http://127.0.0.1:4318';
 const CONTRACT_SEMANTIC_CODE = 'contract_test_smoke';
 const CONTRACT_SKILL_ALIAS = 'contract:test-smoke';
 const CONTRACT_SETTINGS_INSTALL_ID = 'contract-test-settings-install';
 const CONTRACT_INGEST_INSTALL_ID = 'contract-test-ingest-install';
-const CONTRACT_REQUIREMENTS_ROOT = '/tmp/sdd-monitor-contract-test/requirements';
+const CONTRACT_REQUIREMENTS_ROOT = '/tmp/sdd-telemetry-contract-test/requirements';
 
 let contractBatchId: string | null = null;
 let didReachServer = false;
@@ -77,6 +77,32 @@ async function cleanupContractData() {
   });
 
   try {
+    const [batchRows] = await connection.query(
+      `SELECT b.id
+       FROM otel_ingest_batches b
+       JOIN sdd_users u ON u.id = b.user_id
+       WHERE u.install_id IN (?, ?)`,
+      [CONTRACT_SETTINGS_INSTALL_ID, CONTRACT_INGEST_INSTALL_ID],
+    ) as [Array<{ id: string }>, unknown];
+    const batchIds = [
+      ...batchRows.map(row => String(row.id)),
+      ...(contractBatchId ? [contractBatchId] : []),
+    ];
+
+    for (const batchId of new Set(batchIds)) {
+      await connection.execute('DELETE FROM sdd_errors WHERE batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM sdd_skill_usages WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [batchId]);
+      await connection.execute('DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [batchId]);
+      await connection.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', [
+        'clean_batch',
+        batchId,
+      ]);
+      await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [batchId]);
+    }
+
     if (contractBatchId) {
       await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', [
         'clean_batch',
@@ -89,8 +115,14 @@ async function cleanupContractData() {
     await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name = ?', [
       CONTRACT_SKILL_ALIAS,
     ]);
+    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name LIKE ?', [
+      'ct-skill-%',
+    ]);
     await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code = ?', [
       CONTRACT_SEMANTIC_CODE,
+    ]);
+    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code LIKE ?', [
+      'contract-test-%',
     ]);
     await connection.execute('DELETE FROM sdd_users WHERE install_id IN (?, ?)', [
       CONTRACT_SETTINGS_INSTALL_ID,
@@ -105,9 +137,10 @@ describe('API Contract Tests', () => {
   beforeAll(async () => {
     const res = await fetch(`${BASE}/api/ingest/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
     if (!res?.ok) {
-      throw new Error(`Server not running at ${BASE}. Start it with: pnpm --filter @sdd-monitor/server dev`);
+      throw new Error(`Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`);
     }
     didReachServer = true;
+    await cleanupContractData();
   });
 
   afterAll(async () => {

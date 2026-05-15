@@ -1,5 +1,5 @@
 {
-  "name": "sdd-chair-backend",
+  "name": "sdd-telemetry",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.12.1",
@@ -11,15 +11,17 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "test:api": "pnpm --filter @sdd-monitor/server test:api",
+    "test:api": "pnpm --filter @sdd-telemetry/server test:api",
     "lint": "turbo lint",
     "format": "prettier --write .",
-    "db:migrate": "pnpm --filter @sdd-monitor/server db:migrate",
-    "db:seed": "pnpm --filter @sdd-monitor/server db:seed",
-    "db:verify": "pnpm --filter @sdd-monitor/server db:verify"
+    "db:migrate": "pnpm --filter @sdd-telemetry/server db:migrate",
+    "db:seed": "pnpm --filter @sdd-telemetry/server db:seed",
+    "db:verify": "pnpm --filter @sdd-telemetry/server db:verify",
+    "db:reset-local": "pnpm --filter @sdd-telemetry/server db:reset-local",
+    "db:import-legacy-sqlite": "pnpm --filter @sdd-telemetry/server db:import-legacy-sqlite"
   },
   "devDependencies": {
-    "@sdd-monitor/config": "workspace:*",
+    "@sdd-telemetry/config": "workspace:*",
     "@types/node": "^22.19.3",
     "prettier": "^3.6.2",
     "turbo": "^2.9.12",

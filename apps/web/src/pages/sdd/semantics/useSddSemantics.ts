@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateSddSemanticRequest, SddSemantic } from '@sdd-monitor/api';
+import type { CreateSddSemanticRequest, SddSemantic } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddSemantics() {

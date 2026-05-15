@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { SddWorkItem } from '@sdd-monitor/api';
+import type { SddWorkItem } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddWorkItems(limit = 100) {

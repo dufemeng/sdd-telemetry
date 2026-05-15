@@ -1,5 +1,5 @@
 export default {
-  keys: 'sdd-monitor-local-secret',
+  keys: 'sdd-telemetry-local-secret',
   midwayLogger: {
     default: {
       transports: {

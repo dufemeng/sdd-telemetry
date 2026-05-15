@@ -1,5 +1,5 @@
 {
-  "name": "@sdd-monitor/config",
+  "name": "@sdd-telemetry/config",
   "version": "0.1.0",
   "private": true,
   "files": [

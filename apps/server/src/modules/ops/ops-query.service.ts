@@ -10,7 +10,7 @@ import type {
   OpsTableRowsQuery,
   OpsTableRowsResponse,
   OpsTablesResponse,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { toIsoDate, toNumber, toStringId, truncateText } from '../query-utils';
 

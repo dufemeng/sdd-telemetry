@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const workerId = `${process.pid}-${Date.now()}`;
   const pool = createMysqlPool();
 
-  logger.info({ workerId }, 'sdd-monitor scheduled cleaner ready');
+  logger.info({ workerId }, 'sdd-telemetry scheduled cleaner ready');
 
   if (process.env.WORKER_ONCE === 'true') {
     await runOnce(pool, workerId);

@@ -12,7 +12,7 @@ import {
   type BatchListResponse,
   type IngestHealth,
   type IngestLogsResponse,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { IngestHealthService } from './ingest-health.service';

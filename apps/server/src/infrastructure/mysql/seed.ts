@@ -46,9 +46,11 @@ const seedSemantics: SeedSemantic[] = [
   },
 ];
 
-async function main(): Promise<void> {
-  const dataSource = createAppDataSource();
-  await dataSource.initialize();
+export async function seedDatabase(dataSource = createAppDataSource()): Promise<void> {
+  const shouldOwnDataSource = !dataSource.isInitialized;
+  if (shouldOwnDataSource) {
+    await dataSource.initialize();
+  }
 
   try {
     for (const semantic of seedSemantics) {
@@ -86,10 +88,25 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    if (shouldOwnDataSource) {
+      await dataSource.destroy();
+    }
+  }
+}
+
+async function main(): Promise<void> {
+  const dataSource = createAppDataSource();
+  await dataSource.initialize();
+
+  try {
+    await seedDatabase(dataSource);
+  } finally {
     await dataSource.destroy();
   }
 
-  console.info(`[sdd-monitor] seeded ${seedSemantics.length} SDD semantics`);
+  console.info(`[sdd-telemetry] seeded ${seedSemantics.length} SDD semantics`);
 }
 
-void main();
+if (require.main === module) {
+  void main();
+}

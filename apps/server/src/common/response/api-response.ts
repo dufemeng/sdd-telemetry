@@ -1,4 +1,4 @@
-import type { ApiFailureResponse, ApiSuccessResponse } from '@sdd-monitor/api';
+import type { ApiFailureResponse, ApiSuccessResponse } from '@sdd-telemetry/api';
 
 export function ok<TData>(data: TData, requestId = 'local'): ApiSuccessResponse<TData> {
   return {

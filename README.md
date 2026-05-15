@@ -2,7 +2,7 @@
 
 这是 SDD Monitor 的新 monorepo 方案仓库。
 
-目标不是在旧 `sdd-monitor` demo 上继续修补，而是重新设计一套更贴近公司 Chair 体系的全栈工程：前端保留现有 dashboard 体验，后端按新领域模型、MySQL、异步清洗和 Zod contract 重新实现。
+目标不是在旧 `sdd-telemetry` demo 上继续修补，而是重新设计一套更贴近公司 Chair 体系的全栈工程：前端保留现有 dashboard 体验，后端按新领域模型、MySQL、异步清洗和 Zod contract 重新实现。
 
 ## 核心目标
 
@@ -67,9 +67,9 @@ pnpm dev
 也可以单独启动：
 
 ```bash
-pnpm --filter @sdd-monitor/server dev
-pnpm --filter @sdd-monitor/worker dev
-pnpm --filter @sdd-monitor/web dev
+pnpm --filter @sdd-telemetry/server dev
+pnpm --filter @sdd-telemetry/worker dev
+pnpm --filter @sdd-telemetry/web dev
 ```
 
 基础验收：
@@ -83,13 +83,13 @@ curl -sS http://127.0.0.1:4318/api/ingest/health
 单次清洗 worker 冒烟：
 
 ```bash
-pnpm --filter @sdd-monitor/worker once
+pnpm --filter @sdd-telemetry/worker once
 ```
 
 如果本机 Redis 需要密码，设置：
 
 ```bash
-REDIS_PASSWORD=your-password pnpm --filter @sdd-monitor/worker once
+REDIS_PASSWORD=your-password pnpm --filter @sdd-telemetry/worker once
 ```
 
 本仓库默认 Redis 端口是 `46379`，避免和本机已有 `6379` 服务冲突；如需使用已有 Redis，可设置 `REDIS_PORT`。

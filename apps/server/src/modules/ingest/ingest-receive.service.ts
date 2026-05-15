@@ -1,5 +1,5 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
-import type { IngestLogsResponse } from '@sdd-monitor/api';
+import type { IngestLogsResponse } from '@sdd-telemetry/api';
 import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { IngestWriteRepository } from './ingest-write.repository';

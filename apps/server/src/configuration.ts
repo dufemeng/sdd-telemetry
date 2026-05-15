@@ -14,6 +14,6 @@ export class MainConfiguration {
 
   async onReady(): Promise<void> {
     this.app.useFilter([ApiErrorFilter]);
-    console.info('[sdd-monitor] server ready');
+    console.info('[sdd-telemetry] server ready');
   }
 }

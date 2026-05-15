@@ -17,7 +17,7 @@ import type {
   SddVersionItem,
   SddWorkItem,
   SddWorkItemDetail,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import {
   addTimeRangeWhere,

@@ -44,7 +44,7 @@
       "scopeLogs": [
         {
           "scope": {
-            "name": "sdd-monitor-cleaning-smoke"
+            "name": "sdd-telemetry-cleaning-smoke"
           },
           "logRecords": [
             {

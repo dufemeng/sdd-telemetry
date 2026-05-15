@@ -8,7 +8,7 @@ importers:
 
   .:
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:packages/config
       '@types/node':
@@ -44,7 +44,7 @@ importers:
       '@midwayjs/typeorm':
         specifier: ^4.1.0
         version: 4.1.0
-      '@sdd-monitor/api':
+      '@sdd-telemetry/api':
         specifier: workspace:*
         version: link:../../packages/api
       bullmq:
@@ -69,7 +69,7 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:../../packages/config
       '@types/node':
@@ -87,7 +87,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@sdd-monitor/api':
+      '@sdd-telemetry/api':
         specifier: workspace:*
         version: link:../../packages/api
       '@tanstack/react-query':
@@ -109,7 +109,7 @@ importers:
         specifier: ^7.15.1
         version: 7.15.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:../../packages/config
       '@tailwindcss/vite':
@@ -154,7 +154,7 @@ importers:
 
   apps/worker:
     dependencies:
-      '@sdd-monitor/api':
+      '@sdd-telemetry/api':
         specifier: workspace:*
         version: link:../../packages/api
       bullmq:
@@ -173,7 +173,7 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:../../packages/config
       '@types/node':
@@ -195,7 +195,7 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:../config
       typescript:
@@ -209,7 +209,7 @@ importers:
 
   packages/ui:
     devDependencies:
-      '@sdd-monitor/config':
+      '@sdd-telemetry/config':
         specifier: workspace:*
         version: link:../config
       typescript:

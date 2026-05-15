@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   }
 
   console.info(
-    `[sdd-monitor] schema verified: ${expectedTables.length} tables, ${expectedUniqueIndexes.length} unique indexes`,
+    `[sdd-telemetry] schema verified: ${expectedTables.length} tables, ${expectedUniqueIndexes.length} unique indexes`,
   );
 }
 

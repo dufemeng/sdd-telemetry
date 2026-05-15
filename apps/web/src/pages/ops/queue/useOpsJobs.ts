@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OpsJobsResponse } from '@sdd-monitor/api';
+import type { OpsJobsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useOpsJobs(limit = 50) {

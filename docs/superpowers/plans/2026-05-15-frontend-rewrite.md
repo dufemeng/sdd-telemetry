@@ -210,7 +210,7 @@ Inside `<head>`, add before closing tag:
 In `apps/web/src/main.tsx`, temporarily add `import './styles/tokens.css'` and run:
 
 ```bash
-pnpm --filter @sdd-monitor/web dev
+pnpm --filter @sdd-telemetry/web dev
 ```
 
 Open http://localhost:5173. Background should be `#0a0a0a`. Stop the server.
@@ -281,7 +281,7 @@ describe('statusVariant', () => {
 - [ ] **Step 2: Run tests — verify they fail**
 
 ```bash
-pnpm --filter @sdd-monitor/web test
+pnpm --filter @sdd-telemetry/web test
 ```
 
 Expected: multiple failures with "Cannot find module './format'".
@@ -344,7 +344,7 @@ export function statusVariant(status: string | null | undefined): StatusVariant 
 - [ ] **Step 4: Run tests — verify they pass**
 
 ```bash
-pnpm --filter @sdd-monitor/web test
+pnpm --filter @sdd-telemetry/web test
 ```
 
 Expected: all 12 tests pass.
@@ -407,7 +407,7 @@ describe('requestData', () => {
 - [ ] **Step 2: Run test — verify it fails**
 
 ```bash
-pnpm --filter @sdd-monitor/web test
+pnpm --filter @sdd-telemetry/web test
 ```
 
 Expected: "Cannot find module './client'".
@@ -442,7 +442,7 @@ export async function requestData<T>(path: string, init?: RequestInit): Promise<
 - [ ] **Step 4: Run tests — verify all pass**
 
 ```bash
-pnpm --filter @sdd-monitor/web test
+pnpm --filter @sdd-telemetry/web test
 ```
 
 Expected: all 15 tests pass (12 formatter + 3 client).
@@ -1179,7 +1179,7 @@ Pages to create (function name in parentheses):
 - [ ] **Step 4: Verify the app compiles and navigates**
 
 ```bash
-pnpm --filter @sdd-monitor/web dev
+pnpm --filter @sdd-telemetry/web dev
 ```
 
 Open http://localhost:5173. Sidebar should be visible. Click nav items — URL should change and show "coming soon" text. No console errors. Stop the server.
@@ -1339,7 +1339,7 @@ git commit -m "feat(web): implement OverviewPage"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { IngestHealth } from '@sdd-monitor/api';
+import type { IngestHealth } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useIngestHealth(windowHours = 24) {
@@ -1452,7 +1452,7 @@ git commit -m "feat(web): implement IngestPage + useIngestHealth"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { BatchListResponse } from '@sdd-monitor/api';
+import type { BatchListResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useBatchList(status?: string, limit = 50) {
@@ -1521,7 +1521,7 @@ git commit -m "feat(web): implement BatchesPage + useBatchList"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { EventDistribution } from '@sdd-monitor/api';
+import type { EventDistribution } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useEventDistribution(timeRange: '6h' | '24h' | '72h', limit = 50) {
@@ -1539,7 +1539,7 @@ export function useEventDistribution(timeRange: '6h' | '24h' | '72h', limit = 50
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { EventTimeline } from '@sdd-monitor/api';
+import type { EventTimeline } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useEventTimeline(timeRange: '6h' | '24h' | '72h') {
@@ -1644,7 +1644,7 @@ git commit -m "feat(web): implement EventsPage + hooks"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { FieldCoverage } from '@sdd-monitor/api';
+import type { FieldCoverage } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useFieldCoverage() {
@@ -1717,7 +1717,7 @@ git commit -m "feat(web): implement QualityPage + useFieldCoverage"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { SddFunnel } from '@sdd-monitor/api';
+import type { SddFunnel } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddFunnel(timeRange: '6h' | '24h' | '72h') {
@@ -1808,7 +1808,7 @@ git commit -m "feat(web): implement FunnelPage + useSddFunnel"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { SddUsageSummaryResponse } from '@sdd-monitor/api';
+import type { SddUsageSummaryResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddUsageSummary(timeRange: '6h' | '24h' | '72h') {
@@ -1873,7 +1873,7 @@ git commit -m "feat(web): implement SummaryPage + useSddUsageSummary"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { SddInteractionItem } from '@sdd-monitor/api';
+import type { SddInteractionItem } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddInteractions(timeRange: '6h' | '24h' | '72h', limit = 100) {
@@ -1952,7 +1952,7 @@ git commit -m "feat(web): implement InteractionsPage + useSddInteractions"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { SddUserItem } from '@sdd-monitor/api';
+import type { SddUserItem } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddUsers() {
@@ -2014,7 +2014,7 @@ git commit -m "feat(web): implement UsersPage + useSddUsers"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { SddWorkItem } from '@sdd-monitor/api';
+import type { SddWorkItem } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddWorkItems(limit = 100) {
@@ -2077,7 +2077,7 @@ git commit -m "feat(web): implement WorkItemsPage + useSddWorkItems"
 
 ```ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateSddSemanticRequest, SddSemantic } from '@sdd-monitor/api';
+import type { CreateSddSemanticRequest, SddSemantic } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useSddSemantics() {
@@ -2216,7 +2216,7 @@ git commit -m "feat(web): implement SemanticsPage, CreateSemanticForm, useSddSem
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { OpsQueue } from '@sdd-monitor/api';
+import type { OpsQueue } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useOpsQueue() {
@@ -2232,7 +2232,7 @@ export function useOpsQueue() {
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { OpsJobsResponse } from '@sdd-monitor/api';
+import type { OpsJobsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useOpsJobs(limit = 50) {
@@ -2308,7 +2308,7 @@ git commit -m "feat(web): implement QueuePage + ops queue hooks"
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { OpsTablesResponse } from '@sdd-monitor/api';
+import type { OpsTablesResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 export function useOpsTables() {
@@ -2324,7 +2324,7 @@ export function useOpsTables() {
 
 ```ts
 import { useQuery } from '@tanstack/react-query';
-import type { OpsTableRowsResponse } from '@sdd-monitor/api';
+import type { OpsTableRowsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 interface TableRowsParams {
@@ -2568,7 +2568,7 @@ rm apps/web/src/api.ts
 - [ ] **Step 4: Run typecheck**
 
 ```bash
-pnpm --filter @sdd-monitor/web typecheck
+pnpm --filter @sdd-telemetry/web typecheck
 ```
 
 Expected: zero errors.
@@ -2576,7 +2576,7 @@ Expected: zero errors.
 - [ ] **Step 5: Run tests**
 
 ```bash
-pnpm --filter @sdd-monitor/web test
+pnpm --filter @sdd-telemetry/web test
 ```
 
 Expected: all tests pass.
@@ -2584,7 +2584,7 @@ Expected: all tests pass.
 - [ ] **Step 6: Start dev server and smoke test every route**
 
 ```bash
-pnpm --filter @sdd-monitor/web dev
+pnpm --filter @sdd-telemetry/web dev
 ```
 
 Verify each route loads without console errors:
@@ -2616,7 +2616,7 @@ git commit -m "feat(web): complete frontend rewrite — router, pages, Tailwind,
 - [x] All 13 pages have tasks with full implementation code
 - [x] `useBatchList` referenced in Task 13 and defined in Task 14 — Task 13 must run after Task 14, or OverviewPage should be implemented last
 - [x] `useShellContext` defined in Task 25 and consumed in Tasks 15/17/18/19 — those pages' `export default` functions use it, so Task 25 Step 2 finalizes them
-- [x] All type imports use `@sdd-monitor/api` — no hand-written API types
+- [x] All type imports use `@sdd-telemetry/api` — no hand-written API types
 - [x] No TBD/TODO placeholders
 - [x] `statusVariant` exported from `lib/format.ts` and imported in `StatusBadge.tsx`
 - [x] `TimeRange` type exported from `TopBar.tsx` and used in `AppShell.tsx`

@@ -13,7 +13,7 @@ import {
   type EventTimeline,
   type FieldCoverage,
   type FieldValues,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { EventsQueryService } from './events-query.service';

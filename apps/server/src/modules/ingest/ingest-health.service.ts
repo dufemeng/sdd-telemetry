@@ -5,7 +5,7 @@ import type {
   BatchListQuery,
   BatchListResponse,
   IngestHealth,
-} from '@sdd-monitor/api';
+} from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { toIsoDate, toNumber, toStringId } from '../query-utils';
 

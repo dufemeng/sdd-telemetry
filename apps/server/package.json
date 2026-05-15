@@ -1,5 +1,5 @@
 {
-  "name": "@sdd-monitor/server",
+  "name": "@sdd-telemetry/server",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
@@ -14,7 +14,9 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "tsx src/infrastructure/mysql/run-migrations.ts",
     "db:seed": "tsx src/infrastructure/mysql/seed.ts",
-    "db:verify": "tsx src/infrastructure/mysql/verify-schema.ts"
+    "db:verify": "tsx src/infrastructure/mysql/verify-schema.ts",
+    "db:reset-local": "CONFIRM_RESET=1 tsx src/infrastructure/mysql/reset-local-data.ts",
+    "db:import-legacy-sqlite": "tsx src/infrastructure/mysql/import-legacy-sqlite-raw.ts"
   },
   "dependencies": {
     "@midwayjs/bootstrap": "^4.1.0",
@@ -22,7 +24,7 @@
     "@midwayjs/koa": "^4.1.0",
     "@midwayjs/logger": "^4.0.1",
     "@midwayjs/typeorm": "^4.1.0",
-    "@sdd-monitor/api": "workspace:*",
+    "@sdd-telemetry/api": "workspace:*",
     "bullmq": "^5.76.8",
     "ioredis": "^5.10.1",
     "mysql2": "^3.22.3",
@@ -32,7 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@sdd-monitor/config": "workspace:*",
+    "@sdd-telemetry/config": "workspace:*",
     "@types/node": "^22.19.3",
     "tsx": "^4.22.0",
     "typescript": "^5.9.3",

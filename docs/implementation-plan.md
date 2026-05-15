@@ -6,7 +6,7 @@
 
 ## 1. 目标
 
-本项目不是继续修补旧 `sdd-monitor` demo，而是新建一套更接近公司 Chair 体系的全栈工程，用于跑通 SDD 工作流观测。
+本项目不是继续修补旧 `sdd-telemetry` demo，而是新建一套更接近公司 Chair 体系的全栈工程，用于跑通 SDD 工作流观测。
 
 核心目标按优先级排序：
 
@@ -97,7 +97,7 @@ TypeORM 使用约束：
 ## 5. Monorepo 结构
 
 ```text
-sdd-chair-backend/
+sdd-telemetry/
   apps/
     web/                 # React + Vite dashboard
     server/              # MidwayJS HTTP API

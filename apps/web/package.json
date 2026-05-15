@@ -1,5 +1,5 @@
 {
-  "name": "@sdd-monitor/web",
+  "name": "@sdd-telemetry/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@sdd-monitor/api": "workspace:*",
+    "@sdd-telemetry/api": "workspace:*",
     "@tanstack/react-query": "^5.100.10",
     "@tanstack/react-table": "^8.21.3",
     "lucide-react": "^1.14.0",
@@ -21,7 +21,7 @@
     "react-router-dom": "^7.15.1"
   },
   "devDependencies": {
-    "@sdd-monitor/config": "workspace:*",
+    "@sdd-telemetry/config": "workspace:*",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

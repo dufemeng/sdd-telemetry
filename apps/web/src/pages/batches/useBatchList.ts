@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { BatchListResponse, BatchStatus } from '@sdd-monitor/api';
+import type { BatchListResponse, BatchStatus } from '@sdd-telemetry/api';
 import { requestData } from '../../api/client';
 
 export function useBatchList(status?: BatchStatus | BatchStatus[], limit = 50) {

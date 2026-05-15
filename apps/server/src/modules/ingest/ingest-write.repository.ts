@@ -1,5 +1,5 @@
 import { Provide } from '@midwayjs/core';
-import type { BatchStatus, IngestLogsResponse } from '@sdd-monitor/api';
+import type { BatchStatus, IngestLogsResponse } from '@sdd-telemetry/api';
 import type { EntityManager } from 'typeorm';
 import type { OtlpPayloadSummary } from './otel-payload-inspector';
 
