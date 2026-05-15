@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@midwayjs/core';
+import { Controller, Get, Inject, Post } from '@midwayjs/core';
+import type { Context } from '@midwayjs/koa';
 import {
   BatchDetailSchema,
   BatchListQuerySchema,
@@ -19,6 +20,9 @@ import { IngestReceiveService } from './ingest-receive.service';
 
 @Controller('/api/ingest')
 export class IngestController {
+  @Inject()
+  ctx!: Context;
+
   @Inject('ingestHealthService')
   ingestHealthService!: IngestHealthService;
 
@@ -26,33 +30,32 @@ export class IngestController {
   ingestReceiveService!: IngestReceiveService;
 
   @Post('/otlp-logs')
-  async receiveLogs(@Body() rawBody: unknown, @Headers('content-type') contentType?: string) {
-    const payload = parseWithSchema(OtlpLogsPayloadSchema, rawBody);
+  async receiveLogs() {
+    const payload = parseWithSchema(OtlpLogsPayloadSchema, this.ctx.request.body);
     const data: IngestLogsResponse = await this.ingestReceiveService.receiveLogs({
       payload,
-      contentType: contentType ?? null,
+      contentType: this.ctx.get('content-type') ?? null,
     });
     return ok(parseWithSchema(IngestLogsResponseSchema, data));
   }
 
   @Get('/health')
-  async health(@Query('windowHours') rawWindowHours?: string) {
-    const query = parseWithSchema(IngestHealthQuerySchema, {
-      windowHours: rawWindowHours,
-    });
+  async health() {
+    const query = parseWithSchema(IngestHealthQuerySchema, this.ctx.query);
     const data: IngestHealth = await this.ingestHealthService.getHealth(query.windowHours);
     return ok(parseWithSchema(IngestHealthSchema, data));
   }
 
   @Get('/batches')
-  async batches(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(BatchListQuerySchema, rawQuery);
+  async batches() {
+    const query = parseWithSchema(BatchListQuerySchema, this.ctx.query);
     const data: BatchListResponse = await this.ingestHealthService.listBatches(query);
     return ok(parseWithSchema(BatchListResponseSchema, data));
   }
 
   @Get('/batches/:batchId')
-  async batchDetail(@Param('batchId') batchId: string) {
+  async batchDetail() {
+    const batchId = this.ctx.params.batchId as string;
     const data: BatchDetail | null = await this.ingestHealthService.getBatchDetail(batchId);
     if (!data) {
       throw new Error(`batch not found: ${batchId}`);

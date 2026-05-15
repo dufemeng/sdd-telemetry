@@ -20,7 +20,7 @@ P0 至少准备 4 类 fixture：
 | `basic-otlp.json` | 正常上报、事件拆解、基础统计 |
 | `skill-usage-otlp.json` | skill alias 匹配、semantic 归类 |
 | `split-interaction-otlp-a.json` / `split-interaction-otlp-b.json` | prompt / response 跨 batch 配对 |
-| `error-otlp.json` | strong error 识别和错误视图 |
+| `error-otlp.json` | strong error 入库验证；错误视图今日 MVP 延后 |
 
 fixture 来源优先级：
 
@@ -114,7 +114,7 @@ BullMQ 暂停时：
 
 1. 同一个 job 重试不会重复插入事件。
 2. 同一个 job 重试不会重复插入 usage。
-3. 人工 reprocess 后派生数据数量稳定。
+3. reprocess 后续补齐后，派生数据数量应保持稳定；今日 MVP 不验收 reprocess。
 
 跨 batch 检查：
 
@@ -138,9 +138,7 @@ GET /api/sdd/semantics
 GET /api/sdd/funnel
 GET /api/sdd/usages
 GET /api/sdd/interactions
-GET /api/sdd/errors
 GET /api/sdd/users
-GET /api/sdd/versions
 GET /api/sdd/work-items
 GET /api/ops/tables
 GET /api/ops/jobs
@@ -168,9 +166,14 @@ GET /api/ops/queue
 5. 清洗完成后事件分布有数据。
 6. Skill 调用漏斗有数据。
 7. 用户 / 机器维度有数据。
-8. 异常 / 错误视图只显示 strong error。
-9. Raw 批次详情能看到 batch 状态。
-10. ops 表页面能查看 MySQL 表。
+8. Raw 批次详情能看到 batch 状态。
+9. Skill 使用概览能看到按 skill / semantic 聚合后的调用统计。
+10. ops 数据库浏览能查看 MySQL 表结构和表数据。
+
+今日 MVP 暂不验收：
+
+1. 异常 / 错误视图。
+2. 版本分析。
 
 命令建议：
 
@@ -201,6 +204,6 @@ P0 不做复杂压测，但要证明 100 人团队 MVP 规模不会立刻崩。
 5. outbox 能可靠投递。
 6. worker 能清洗并生成派生数据。
 7. 所有 P0 API 通过 Zod contract test。
-8. dashboard 可用。
-9. retention 和 reprocess 可用。
+8. dashboard 今日 MVP 页面可用。
+9. retention 可用；reprocess 作为后续能力补齐。
 10. README 有本地启动、测试、排障说明。

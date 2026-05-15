@@ -1,4 +1,5 @@
-import { Controller, Get, Inject, Param, Query } from '@midwayjs/core';
+import { Controller, Get, Inject } from '@midwayjs/core';
+import type { Context } from '@midwayjs/koa';
 import {
   OpsJobsResponseSchema,
   OpsQueueSchema,
@@ -17,6 +18,9 @@ import { OpsQueryService } from './ops-query.service';
 
 @Controller('/api/ops')
 export class OpsController {
+  @Inject()
+  ctx!: Context;
+
   @Inject('opsQueryService')
   opsQueryService!: OpsQueryService;
 
@@ -27,15 +31,16 @@ export class OpsController {
   }
 
   @Get('/tables/:tableName/rows')
-  async tableRows(@Param('tableName') tableName: string, @Query() rawQuery: unknown) {
-    const query = parseWithSchema(OpsTableRowsQuerySchema, rawQuery);
+  async tableRows() {
+    const tableName = this.ctx.params.tableName as string;
+    const query = parseWithSchema(OpsTableRowsQuerySchema, this.ctx.query);
     const data: OpsTableRowsResponse = await this.opsQueryService.listTableRows(tableName, query);
     return ok(parseWithSchema(OpsTableRowsResponseSchema, data));
   }
 
   @Get('/jobs')
-  async jobs(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(PaginationQuerySchema, rawQuery);
+  async jobs() {
+    const query = parseWithSchema(PaginationQuerySchema, this.ctx.query);
     const data: OpsJobsResponse = await this.opsQueryService.listJobs(query.limit, query.cursor);
     return ok(parseWithSchema(OpsJobsResponseSchema, data));
   }

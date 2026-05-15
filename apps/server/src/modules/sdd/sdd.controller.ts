@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from '@midwayjs/core';
+import { Controller, Get, Inject, Post } from '@midwayjs/core';
+import type { Context } from '@midwayjs/koa';
 import {
   CreateSddSemanticRequestSchema,
   ReportUserSettingsRequestSchema,
@@ -29,6 +30,9 @@ import { SddQueryService } from './sdd-query.service';
 
 @Controller('/api/sdd')
 export class SddController {
+  @Inject()
+  ctx!: Context;
+
   @Inject('sddQueryService')
   sddQueryService!: SddQueryService;
 
@@ -39,36 +43,36 @@ export class SddController {
   }
 
   @Post('/semantics')
-  async createSemantic(@Body() rawBody: unknown) {
-    const input = parseWithSchema(CreateSddSemanticRequestSchema, rawBody);
+  async createSemantic() {
+    const input = parseWithSchema(CreateSddSemanticRequestSchema, this.ctx.request.body);
     const data: SddSemantic = await this.sddQueryService.createSemantic(input);
     return ok(parseWithSchema(SddSemanticSchema, data));
   }
 
   @Get('/funnel')
-  async funnel(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(SddFunnelQuerySchema, rawQuery);
+  async funnel() {
+    const query = parseWithSchema(SddFunnelQuerySchema, this.ctx.query);
     const data: SddFunnel = await this.sddQueryService.getFunnel(query);
     return ok(parseWithSchema(SddFunnelSchema, data));
   }
 
   @Get('/usages')
-  async usages(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(SddListQuerySchema, rawQuery);
+  async usages() {
+    const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
     const data: SddUsageItem[] = await this.sddQueryService.listUsages(query);
     return ok(parseWithSchema(SddUsageItemSchema.array(), data));
   }
 
   @Get('/interactions')
-  async interactions(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(SddListQuerySchema, rawQuery);
+  async interactions() {
+    const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
     const data: SddInteractionItem[] = await this.sddQueryService.listInteractions(query);
     return ok(parseWithSchema(SddInteractionItemSchema.array(), data));
   }
 
   @Get('/errors')
-  async errors(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(SddListQuerySchema, rawQuery);
+  async errors() {
+    const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
     const data: SddErrorItem[] = await this.sddQueryService.listErrors(query);
     return ok(parseWithSchema(SddErrorItemSchema.array(), data));
   }
@@ -86,14 +90,15 @@ export class SddController {
   }
 
   @Get('/work-items')
-  async workItems(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(SddListQuerySchema, rawQuery);
+  async workItems() {
+    const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
     const data: SddWorkItem[] = await this.sddQueryService.listWorkItems(query);
     return ok(parseWithSchema(SddWorkItemSchema.array(), data));
   }
 
   @Get('/work-items/:workItemId')
-  async workItemDetail(@Param('workItemId') workItemId: string) {
+  async workItemDetail() {
+    const workItemId = this.ctx.params.workItemId as string;
     const data: SddWorkItemDetail | null = await this.sddQueryService.getWorkItemDetail(workItemId);
     if (!data) {
       throw new Error(`work item not found: ${workItemId}`);
@@ -103,8 +108,8 @@ export class SddController {
   }
 
   @Post('/user-settings')
-  async reportUserSettings(@Body() rawBody: unknown) {
-    const input = parseWithSchema(ReportUserSettingsRequestSchema, rawBody);
+  async reportUserSettings() {
+    const input = parseWithSchema(ReportUserSettingsRequestSchema, this.ctx.request.body);
     const data: SddUserItem = await this.sddQueryService.reportUserSettings(input);
     return ok(parseWithSchema(SddUserItemSchema, data));
   }

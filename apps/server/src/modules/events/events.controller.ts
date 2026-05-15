@@ -1,4 +1,5 @@
-import { Controller, Get, Inject, Query } from '@midwayjs/core';
+import { Controller, Get, Inject } from '@midwayjs/core';
+import type { Context } from '@midwayjs/koa';
 import {
   EventDistributionQuerySchema,
   EventDistributionSchema,
@@ -19,33 +20,36 @@ import { EventsQueryService } from './events-query.service';
 
 @Controller('/api/events')
 export class EventsController {
+  @Inject()
+  ctx!: Context;
+
   @Inject('eventsQueryService')
   eventsQueryService!: EventsQueryService;
 
   @Get('/distribution')
-  async distribution(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(EventDistributionQuerySchema, rawQuery);
+  async distribution() {
+    const query = parseWithSchema(EventDistributionQuerySchema, this.ctx.query);
     const data: EventDistribution = await this.eventsQueryService.getDistribution(query);
     return ok(parseWithSchema(EventDistributionSchema, data));
   }
 
   @Get('/field-coverage')
-  async fieldCoverage(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(TimeRangeQuerySchema, rawQuery);
+  async fieldCoverage() {
+    const query = parseWithSchema(TimeRangeQuerySchema, this.ctx.query);
     const data: FieldCoverage = await this.eventsQueryService.getFieldCoverage(query);
     return ok(parseWithSchema(FieldCoverageSchema, data));
   }
 
   @Get('/field-values')
-  async fieldValues(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(FieldValuesQuerySchema, rawQuery);
+  async fieldValues() {
+    const query = parseWithSchema(FieldValuesQuerySchema, this.ctx.query);
     const data: FieldValues = await this.eventsQueryService.getFieldValues(query);
     return ok(parseWithSchema(FieldValuesSchema, data));
   }
 
   @Get('/timeline')
-  async timeline(@Query() rawQuery: unknown) {
-    const query = parseWithSchema(EventTimelineQuerySchema, rawQuery);
+  async timeline() {
+    const query = parseWithSchema(EventTimelineQuerySchema, this.ctx.query);
     const data: EventTimeline = await this.eventsQueryService.getTimeline(query);
     return ok(parseWithSchema(EventTimelineSchema, data));
   }
