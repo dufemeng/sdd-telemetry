@@ -1,23 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OpsTableRowsResponse } from '@sdd-telemetry/api';
+import type { OpsTableFilter, OpsTableRowsResponse } from '@sdd-telemetry/api';
 import { requestData } from '../../../api/client';
 
 interface TableRowsParams {
   tableName: string;
-  filterColumn?: string;
-  filterValue?: string;
+  filters?: OpsTableFilter[];
   limit?: number;
 }
 
-export function useTableRows({ tableName, filterColumn, filterValue, limit = 50 }: TableRowsParams) {
-  const filters =
-    filterColumn && filterValue
-      ? encodeURIComponent(JSON.stringify([{ column: filterColumn, operator: 'like', value: `%${filterValue}%` }]))
-      : '';
-  const url = `/api/ops/tables/${tableName}/rows?limit=${limit}${filters ? `&filters=${filters}` : ''}`;
+export function useTableRows({ tableName, filters = [], limit = 50 }: TableRowsParams) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (filters.length > 0) {
+    params.set('filters', JSON.stringify(filters));
+  }
+  const url = `/api/ops/tables/${tableName}/rows?${params}`;
 
   return useQuery({
-    queryKey: ['table-rows', tableName, filterColumn, filterValue],
+    queryKey: ['table-rows', tableName, filters],
     queryFn: () => requestData<OpsTableRowsResponse>(url),
     enabled: Boolean(tableName),
     staleTime: 15_000,
