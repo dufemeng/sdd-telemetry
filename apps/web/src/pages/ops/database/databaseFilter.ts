@@ -11,11 +11,6 @@ export interface FilterCondition {
   valueTo?: string;
 }
 
-export interface FilterGroup {
-  id: string;
-  conditions: FilterCondition[];
-}
-
 interface OperatorChoice {
   value: UiFilterOperator;
   label: string;
@@ -71,11 +66,6 @@ export function defaultOperator(column: OpsColumn | undefined): UiFilterOperator
   return isDateColumn(column) ? 'gte' : 'eq';
 }
 
-export function operatorLabel(operator: UiFilterOperator): string {
-  const all = [...TEXT_OPERATORS, ...DATE_OPERATORS];
-  return all.find((item) => item.value === operator)?.label ?? operator;
-}
-
 export function operatorNeedsValue(operator: UiFilterOperator): boolean {
   return !VALUELESS.has(operator);
 }
@@ -97,56 +87,37 @@ export function makeCondition(columns: OpsColumn[], columnName?: string): Filter
   };
 }
 
-export function makeGroup(columns: OpsColumn[]): FilterGroup {
-  return { id: makeId(), conditions: [makeCondition(columns)] };
+/** Whether a condition is complete enough to be submitted as a query filter. */
+export function isConditionReady(c: FilterCondition): boolean {
+  if (!c.column) return false;
+  if (!operatorNeedsValue(c.operator)) return true;
+  if (c.operator === 'between') return Boolean(c.value && c.valueTo);
+  return Boolean(c.value.trim());
 }
 
-/** Drop conditions with no value (except IS NULL / IS NOT NULL which need none). */
-export function compactGroup(group: FilterGroup): FilterGroup | null {
-  const conditions = group.conditions.filter((c) => {
-    if (!c.column) return false;
-    if (!operatorNeedsValue(c.operator)) return true;
-    if (c.operator === 'between') return Boolean(c.value && c.valueTo);
-    if (c.operator === 'in' || c.operator === 'not_in') return Boolean(c.value.trim());
-    return Boolean(c.value);
-  });
-  return conditions.length > 0 ? { ...group, conditions } : null;
-}
-
-export function summarizeGroup(group: FilterGroup): string {
-  return group.conditions
-    .map((c) => {
-      if (!operatorNeedsValue(c.operator)) return `${c.column} ${operatorLabel(c.operator)}`;
-      if (c.operator === 'between') return `${c.column} 在 ${c.value} ~ ${c.valueTo}`;
-      return `${c.column} ${operatorLabel(c.operator)} ${c.value}`;
-    })
-    .join(' 且 ');
-}
-
-/** Expand UI-level conditions into backend contract filters. `between` → `gte` + `lte`. */
-export function toBackendFilters(groups: FilterGroup[]): OpsTableFilter[] {
+/** Expand UI-level conditions into backend contract filters. Skips incomplete conditions. */
+export function toBackendFilters(conditions: FilterCondition[]): OpsTableFilter[] {
   const result: OpsTableFilter[] = [];
-  for (const group of groups) {
-    for (const c of group.conditions) {
-      if (c.operator === 'between') {
-        if (c.value)   result.push({ column: c.column, operator: 'gte', value: c.value });
-        if (c.valueTo) result.push({ column: c.column, operator: 'lte', value: c.valueTo });
-        continue;
-      }
-      if (!operatorNeedsValue(c.operator)) {
-        result.push({ column: c.column, operator: c.operator });
-        continue;
-      }
-      if (c.operator === 'in' || c.operator === 'not_in') {
-        const values = c.value.split(',').map((s) => s.trim()).filter(Boolean);
-        result.push({ column: c.column, operator: c.operator, value: values });
-        continue;
-      }
-      const value = c.operator === 'like' || c.operator === 'not_like'
-        ? `%${c.value}%`
-        : c.value;
-      result.push({ column: c.column, operator: c.operator, value });
+  for (const c of conditions) {
+    if (!isConditionReady(c)) continue;
+    if (c.operator === 'between') {
+      result.push({ column: c.column, operator: 'gte', value: c.value });
+      result.push({ column: c.column, operator: 'lte', value: c.valueTo! });
+      continue;
     }
+    if (!operatorNeedsValue(c.operator)) {
+      result.push({ column: c.column, operator: c.operator });
+      continue;
+    }
+    if (c.operator === 'in' || c.operator === 'not_in') {
+      const values = c.value.split(',').map((s) => s.trim()).filter(Boolean);
+      result.push({ column: c.column, operator: c.operator, value: values });
+      continue;
+    }
+    const value = c.operator === 'like' || c.operator === 'not_like'
+      ? `%${c.value}%`
+      : c.value;
+    result.push({ column: c.column, operator: c.operator, value });
   }
   return result;
 }
