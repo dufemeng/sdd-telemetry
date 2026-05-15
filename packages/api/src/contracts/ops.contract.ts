@@ -29,6 +29,7 @@ export const OpsFilterOperatorSchema = z.enum([
   'like',
   'not_like',
   'in',
+  'not_in',
   'gt',
   'gte',
   'lt',

@@ -379,13 +379,14 @@ function appendFilterClauses(
       continue;
     }
 
-    if (operator === 'in') {
+    if (operator === 'in' || operator === 'not_in') {
       const values = filterValueList(filter.value);
       if (values.length === 0) {
-        clauses.push('1 = 0');
+        clauses.push(operator === 'in' ? '1 = 0' : '1 = 1');
         continue;
       }
-      clauses.push(`${columnSql} IN (${values.map(() => '?').join(',')})`);
+      const sqlVerb = operator === 'in' ? 'IN' : 'NOT IN';
+      clauses.push(`${columnSql} ${sqlVerb} (${values.map(() => '?').join(',')})`);
       params.push(...values);
       continue;
     }
@@ -397,7 +398,10 @@ function appendFilterClauses(
 }
 
 function sqlOperator(operator: OpsFilterOperator): string {
-  const operators: Record<Exclude<OpsFilterOperator, 'in' | 'is_null' | 'is_not_null'>, string> = {
+  const operators: Record<
+    Exclude<OpsFilterOperator, 'in' | 'not_in' | 'is_null' | 'is_not_null'>,
+    string
+  > = {
     eq: '=',
     ne: '<>',
     like: 'LIKE',
@@ -408,7 +412,12 @@ function sqlOperator(operator: OpsFilterOperator): string {
     lte: '<=',
   };
 
-  if (operator === 'in' || operator === 'is_null' || operator === 'is_not_null') {
+  if (
+    operator === 'in' ||
+    operator === 'not_in' ||
+    operator === 'is_null' ||
+    operator === 'is_not_null'
+  ) {
     throw new Error(`operator does not use scalar comparison: ${operator}`);
   }
 
