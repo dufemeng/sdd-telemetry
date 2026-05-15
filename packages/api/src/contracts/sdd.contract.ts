@@ -29,6 +29,15 @@ export const SddFunnelQuerySchema = TimeRangeQuerySchema.extend({
 export const SddFunnelSchema = z.object({
   totalInteractions: z.number(),
   totalSkillUsages: z.number(),
+  callQuality: z.object({
+    triggeredCount: z.number(),
+    withPromptCount: z.number(),
+    withResponseCount: z.number(),
+    pairedCount: z.number(),
+    promptCoverageRate: z.number().nullable(),
+    responseCoverageRate: z.number().nullable(),
+    pairingSuccessRate: z.number().nullable(),
+  }),
   stages: z.array(
     z.object({
       semanticCode: z.string(),
@@ -48,6 +57,34 @@ export const SddListQuerySchema = PaginationQuerySchema.merge(TimeRangeQuerySche
   sessionId: z.string().optional(),
   promptId: z.string().optional(),
   status: z.string().optional(),
+});
+
+export const SddUsageSummaryQuerySchema = TimeRangeQuerySchema.extend({
+  semanticCode: z.string().optional(),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export const SddUsageSummaryItemSchema = z.object({
+  semanticCode: z.string().nullable(),
+  semanticDisplayName: z.string().nullable(),
+  rawSkillName: z.string(),
+  usageCount: z.number(),
+  activeUserCount: z.number(),
+  sessionCount: z.number(),
+  workItemCount: z.number(),
+  versions: z.array(
+    z.object({
+      version: z.string(),
+      count: z.number(),
+    }),
+  ),
+  firstSeenAt: ISODateTimeSchema.nullable(),
+  lastSeenAt: ISODateTimeSchema.nullable(),
+});
+
+export const SddUsageSummaryResponseSchema = z.object({
+  items: z.array(SddUsageSummaryItemSchema),
 });
 
 export const SddUsageItemSchema = z.object({
@@ -156,6 +193,9 @@ export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSc
 export type SddFunnelQuery = z.infer<typeof SddFunnelQuerySchema>;
 export type SddFunnel = z.infer<typeof SddFunnelSchema>;
 export type SddListQuery = z.infer<typeof SddListQuerySchema>;
+export type SddUsageSummaryQuery = z.infer<typeof SddUsageSummaryQuerySchema>;
+export type SddUsageSummaryItem = z.infer<typeof SddUsageSummaryItemSchema>;
+export type SddUsageSummaryResponse = z.infer<typeof SddUsageSummaryResponseSchema>;
 export type SddUsageItem = z.infer<typeof SddUsageItemSchema>;
 export type SddInteractionItem = z.infer<typeof SddInteractionItemSchema>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;

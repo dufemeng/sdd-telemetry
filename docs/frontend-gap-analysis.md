@@ -13,15 +13,15 @@
 | 2 | 事件分布 | `GET /api/events/distribution?hours=` | `GET /api/events/distribution?from=&to=&limit=` + `GET /api/events/timeline` | ⚠️ 需组合 |
 | 3 | 数据质量 | `GET /api/data-quality` | `GET /api/events/field-coverage` | ⚠️ 缺警告/衍生指标 |
 | 4 | Raw 批次 | `GET /api/raw-batches` | `GET /api/ingest/batches` | ⚠️ 字段缺失 |
-| 5 | Skill 漏斗 | `GET /api/skills/funnel` | `GET /api/sdd/funnel` | ❌ 结构不兼容 |
+| 5 | Skill 漏斗 | `GET /api/skills/funnel` | `GET /api/sdd/funnel` | ✅ 已按新口径补调用质量指标 |
 | 6 | 异常错误 | `GET /api/errors/summary` | `GET /api/sdd/errors` | ⏸ 今日 MVP 不做，挂后续 TODO |
 | 7 | 用户机器 | `GET /api/users/machines` | `GET /api/sdd/users` | ⚠️ schema 已定义，字段需适配 |
 | 8 | 版本分析 | `GET /api/skills/versions?days=` | `GET /api/sdd/versions` | ⏸ 今日 MVP 移除，当前数据只能做弱分析 |
-| 9 | Skill 使用概览 | `GET /api/skills/usage` | 新增 `GET /api/sdd/usage-summary` | ⚠️ 需补聚合 API |
+| 9 | Skill 使用概览 | `GET /api/skills/usage` | `GET /api/sdd/usage-summary` | ✅ 已补聚合 API |
 | 10 | Skill 调用明细 | `GET /api/skills/{name}/interactions` | `GET /api/sdd/interactions` | ⚠️ schema 已定义，字段需适配 |
 | 11 | Raw 字段审计 | `GET /debug/field-audit` | `GET /api/events/field-coverage` | ⚠️ 合并到数据质量 |
-| 12 | 表结构 | `GET /debug/db/tables` | `GET /api/ops/tables` | ⚠️ schema 已定义，展示能力简化 |
-| 13 | 数据库检索 | `GET /debug/db/tables/{t}/data` | 增强 `GET /api/ops/tables` + `GET /api/ops/tables/{t}/rows` | ⚠️ 需补完整调试台能力 |
+| 12 | 表结构 | `GET /debug/db/tables` | `GET /api/ops/tables` | ✅ 已补字段元数据和最大 size 估算 |
+| 13 | 数据库检索 | `GET /debug/db/tables/{t}/data` | `GET /api/ops/tables` + `GET /api/ops/tables/{t}/rows` | ✅ 已补字段筛选和表数据查询 |
 
 状态说明：
 - ✅ 可直接适配
@@ -36,13 +36,13 @@
 
 | 决策项 | 结论 | 影响 |
 |---|---|---|
-| Skill 漏斗 | 按后端补 prompt/response/paired 的方向设计，但今日最短路径可先展示语义分布 + 调用质量指标 | 不把旧 4 级漏斗硬塞到前端聚合 |
+| Skill 漏斗 | 已在 `GET /api/sdd/funnel` 补 `callQuality` | 不把旧 4 级漏斗硬塞到前端聚合，按新调用质量口径展示 |
 | 异常错误 | 今日 MVP 不做这个 Tab，挂后续 TODO | 后端 `sdd_errors` 保留，但前端不进入今日验收 |
 | 弱文本错误 | 走最短路径，不做弱文本匹配 | 避免噪音和错误归因复杂度 |
-| Skill 概览 | 前端需要，后端补聚合 API | 不改数据库，基于 `sdd_skill_usages` 聚合 |
+| Skill 概览 | 已补 `GET /api/sdd/usage-summary` | 不改数据库，基于 `sdd_skill_usages` 聚合 |
 | prompt/response | 列表页使用 preview；全文后续走详情接口 | 当前数据库已有全文表，当前 API 只暴露 preview |
 | 版本分析 | 今日 MVP 移除 Tab | 当前只能做全局版本分布，缺 skill 维度和错误率，价值不足 |
-| 数据库浏览 | 要完整功能 | 不改核心业务库表，增强 ops API 的 schema detail 和 filter 查询能力 |
+| 数据库浏览 | 要完整功能，已补 ops API | 不改核心业务库表，增强 ops API 的 schema detail 和 filter 查询能力 |
 | 语义配置 / Work Item | 按建议保留 | 语义配置做入口；Work Item 做 SDD 分析二级页面 |
 
 ---
@@ -212,6 +212,10 @@ duplicateCount, receivedAt, parseDurationMs, lastError
 **新 API 响应** (`GET /api/sdd/funnel`):
 ```
 totalInteractions, totalSkillUsages,
+callQuality: {
+  triggeredCount, withPromptCount, withResponseCount, pairedCount,
+  promptCoverageRate, responseCoverageRate, pairingSuccessRate
+},
 stages: Array<{ semanticCode, displayName, usageCount, userCount, workItemCount, conversionRate }>
 ```
 参数：`from`/`to`/`groupBy` (semantic|user|work_item)。注意：contract 已定义 `groupBy`，但当前 server 实现仍按 semantic 聚合，未真正切换 user/work_item。
@@ -220,19 +224,19 @@ stages: Array<{ semanticCode, displayName, usageCount, userCount, workItemCount,
 | 旧展示模块 | 新 API | 状态 |
 |---|---|---|
 | 触发次数 | `totalSkillUsages` | ✅ 近似 |
-| 成功配对率 | `conversionRate`（per-stage） | ⚠️ 不是全局配对率，是每语义的转化率 |
+| 成功配对率 | `callQuality.pairingSuccessRate` | ✅ 新口径 |
 | 低置信配对 | **完全缺失** | ❌ 新 API 无此概念 |
 | 活跃用户/会话 | 需从 stages 聚合 userCount | ⚠️ 需前端聚合 |
-| **4 级漏斗**（triggered→prompt→response→paired） | **结构完全不同**。新 API 是按语义分组的并行对比，不是串行漏斗 | ❌ **无法复刻** |
+| **4 级漏斗**（triggered→prompt→response→paired） | `callQuality.triggeredCount/withPromptCount/withResponseCount/pairedCount` | ✅ 按调用质量口径展示 |
 | 按 Skill 分组表格 | `stages[]` 按 semanticCode 分组 | ⚠️ 可用但结构不同：旧按 rawSkillName 分组，新按 semanticCode 分组 |
-| withPrompt / withResponse / successfulPairs | **完全缺失** | ❌ 新 API 没有 prompt/response/paired 三级 |
+| withPrompt / withResponse / successfulPairs | `callQuality.withPromptCount/withResponseCount/pairedCount` | ✅ 已补 |
 
-**结论**：**这是结构变化最大的 Tab**。旧前端的 4 级串行漏斗（触发→Prompt→Response→配对）在新 API 中不存在。新 API 提供的是按语义维度（proposal/design/task 等）的并行统计，更适合做"语义调用分布对比"而非"漏斗"。
+**结论**：旧前端的 4 级串行漏斗不再原样复刻；新 API 同时提供 `callQuality` 调用质量指标和 `stages[]` 语义分布，更适合展示“调用质量 + 语义使用分布”。
 
 **今日决策**：
 - 不把旧 4 级漏斗硬塞到前端聚合。
-- 后端后续补 prompt/response/paired 统计，形成调用质量漏斗。
-- 今日最短路径先展示语义分布 + 基础调用质量指标。
+- 后端已补 prompt/response/paired 统计，形成调用质量漏斗。
+- 今日最短路径展示语义分布 + 基础调用质量指标。
 
 ---
 
@@ -336,19 +340,19 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 1. 可排序表格（skillName/calls/activeUsers/sessions/versions[]/firstSeenAt/lastSeenAt）
 2. 点击 skillName 跳转到交互明细
 
-**新 API**：当前 `GET /api/sdd/usages` 是调用明细列表；今日 MVP 需要新增聚合概览 API，例如 `GET /api/sdd/usage-summary`。
+**新 API**：`GET /api/sdd/usage-summary` 已补，按 `rawSkillName` 聚合，并关联 semantic、用户、会话、需求和版本分布。
 
-当前查询参数：`semanticCode`/`userId`/`workItemId`/`sessionId`/`promptId`/`status`/`from`/`to`/`limit`/`cursor`
+当前查询参数：`semanticCode`/`status`/`from`/`to`/`limit`
 
 **Gap**：
 | 旧展示字段 | 新 API | 状态 |
 |---|---|---|
-| skillName | 明细接口返回 `rawSkillName`；概览接口建议返回 `semanticCode` + `rawSkillName` | ⚠️ 需新增聚合响应 |
-| calls / activeUsers / sessions | 基于 `sdd_skill_usages` 聚合 | ⚠️ 需新增聚合 SQL |
-| versions[] | 基于 `observed_version/service_version` 聚合 | ⚠️ 需新增聚合 SQL |
-| firstSeenAt / lastSeenAt | `MIN/MAX(event_time)` | ⚠️ 需新增聚合 SQL |
+| skillName | `rawSkillName`，并返回 `semanticCode` + `semanticDisplayName` | ✅ |
+| calls / activeUsers / sessions | `usageCount` / `activeUserCount` / `sessionCount` | ✅ |
+| versions[] | `versions[]`，基于 `observed_version/service_version` 聚合 | ✅ |
+| firstSeenAt / lastSeenAt | `MIN/MAX(event_time)` | ✅ |
 
-**结论**：需要做，但不需要改数据库。`sdd_skill_usages` 已有 `raw_skill_name`、`semantic_id`、`user_id`、`session_id`、`observed_version`、`service_version`、`event_time` 及相关索引，符合先基于明细表实时聚合的最佳实践；只有数据量明显变大后，才考虑日聚合表。
+**结论**：已实现，不需要改数据库。`sdd_skill_usages` 已有 `raw_skill_name`、`semantic_id`、`user_id`、`session_id`、`observed_version`、`service_version`、`event_time` 及相关索引，符合先基于明细表实时聚合的最佳实践；只有数据量明显变大后，才考虑日聚合表。
 
 ---
 
@@ -406,18 +410,18 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 - 数据库检索：筛选器构建器（AND/OR 组）+ 分页数据表格
 
 **新 API**：
-- `GET /api/ops/tables` — 当前只返回表名、估算行数、更新时间；需要增强列结构详情
-- `GET /api/ops/tables/:tableName/rows` — 当前返回 columns + rows + cursor；需要增强筛选器
+- `GET /api/ops/tables` — 返回表名、估算行数、更新时间和字段元数据
+- `GET /api/ops/tables/:tableName/rows` — 返回 columns + rows + cursor，并支持字段筛选
 
 **Gap**：
 | 旧展示模块 | 新 API | 状态 |
 |---|---|---|
 | 表列表 sidebar | `GET /api/ops/tables` | ✅ schema 已定义 |
-| schema 详情 | 当前 `/rows` 返回 column name；`/tables` 不返回 column type/primaryKey/notNull/default/estimatedBytes | ⚠️ 需增强 |
-| 筛选器构建器 | 当前只支持 `limit/cursor/orderBy/order` | ❌ 需增强 |
+| schema 详情 | `/tables` 返回 column type/primaryKey/notNull/default/estimatedBytes/sizeBasis | ✅ |
+| 筛选器构建器 | `/rows` 支持 `filters` JSON、字段白名单、常用比较操作 | ✅ |
 | 分页 | `rows` 已支持 cursor 分页 | ✅ |
 
-**结论**：你要求完整功能，影响主要在 ops API 和 contract，不影响核心数据库设计。需要补 `OpsColumnSchema`、表详情、白名单字段过滤、AND/OR filter DSL、排序和分页；这是中等工作量，但符合“调试台”定位。
+**结论**：已按完整调试台方向补齐 `OpsColumnSchema`、表详情、白名单字段过滤、排序和分页；当前 filter 是 AND 组合，暂不做 OR 分组。
 
 ---
 
@@ -436,9 +440,9 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 
 ### P0 — 后端必须补齐的接口/字段
 
-1. **`GET /api/sdd/usage-summary` 新增 Skill 概览聚合** — 前端需要 Skill 概览页，基于 `sdd_skill_usages` 实时聚合，不改数据库
-2. **`GET /api/sdd/funnel` 增加 prompt/response/paired 统计**（或新增独立字段） — 漏斗页核心依赖，否则无法复刻调用质量漏斗
-3. **增强 `GET /api/ops/tables` 和 `GET /api/ops/tables/:tableName/rows`** — 数据库浏览要完整调试台能力，包括 column metadata 和 filters
+1. **`GET /api/sdd/usage-summary` 新增 Skill 概览聚合** — 已补，前端需要 Skill 概览页，基于 `sdd_skill_usages` 实时聚合，不改数据库
+2. **`GET /api/sdd/funnel` 增加 prompt/response/paired 统计** — 已补 `callQuality`
+3. **增强 `GET /api/ops/tables` 和 `GET /api/ops/tables/:tableName/rows`** — 已补 column metadata 和 filters
 4. **语义配置入口** — `GET/POST /api/sdd/semantics` 已有，前端今日应提供基础管理入口
 
 ### P1 — 后端建议补充

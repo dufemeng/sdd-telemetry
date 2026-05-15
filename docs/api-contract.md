@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-05-14  
+更新时间：2026-05-15  
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -306,6 +306,15 @@ Response data：
 export const SddFunnelSchema = z.object({
   totalInteractions: z.number(),
   totalSkillUsages: z.number(),
+  callQuality: z.object({
+    triggeredCount: z.number(),
+    withPromptCount: z.number(),
+    withResponseCount: z.number(),
+    pairedCount: z.number(),
+    promptCoverageRate: z.number().nullable(),
+    responseCoverageRate: z.number().nullable(),
+    pairingSuccessRate: z.number().nullable(),
+  }),
   stages: z.array(
     z.object({
       semanticCode: z.string(),
@@ -319,9 +328,55 @@ export const SddFunnelSchema = z.object({
 });
 ```
 
-说明：P0 的 funnel 不假设固定流程顺序，只统计语义之间的出现、缺失和组合关系。
+说明：
 
-### 6.6 GET /api/sdd/usages
+1. P0 的 funnel 不假设固定流程顺序，只统计语义之间的出现、缺失和组合关系。
+2. `callQuality` 用于今日 MVP 的调用质量漏斗：触发 Skill、有 prompt、有 response、prompt/response 成功配对。
+3. `triggeredCount` 等于当前时间范围内的 `sdd_skill_usages` 数量；prompt/response 相关计数来自 `sdd_interactions` + `sdd_interaction_texts`。
+
+### 6.6 GET /api/sdd/usage-summary
+
+Skill 使用概览，按 `rawSkillName` 聚合，并关联语义、用户、会话、需求和版本分布。
+
+Query：
+
+```ts
+export const SddUsageSummaryQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  semanticCode: z.string().optional(),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+```
+
+Response data：
+
+```ts
+export const SddUsageSummaryResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      semanticCode: z.string().nullable(),
+      semanticDisplayName: z.string().nullable(),
+      rawSkillName: z.string(),
+      usageCount: z.number(),
+      activeUserCount: z.number(),
+      sessionCount: z.number(),
+      workItemCount: z.number(),
+      versions: z.array(
+        z.object({
+          version: z.string(),
+          count: z.number(),
+        })
+      ),
+      firstSeenAt: z.string().nullable(),
+      lastSeenAt: z.string().nullable(),
+    })
+  ),
+});
+```
+
+### 6.7 GET /api/sdd/usages
 
 Skill usage 列表和过滤。
 
@@ -337,7 +392,7 @@ from / to
 limit / cursor
 ```
 
-### 6.7 GET /api/sdd/interactions
+### 6.8 GET /api/sdd/interactions
 
 prompt / response 交互列表。
 
@@ -354,7 +409,7 @@ from / to
 limit / cursor
 ```
 
-### 6.8 GET /api/sdd/errors
+### 6.9 GET /api/sdd/errors
 
 异常 / 错误视图。
 
@@ -387,23 +442,27 @@ uncaught_exception
 schema_parse_failed
 ```
 
-### 6.9 GET /api/sdd/users
+今日 MVP 不展示异常 / 错误 Tab，但保留 API 和数据表，后续再设计降噪视图。
+
+### 6.10 GET /api/sdd/users
 
 用户 / 机器维度。
 
-### 6.10 GET /api/sdd/versions
+### 6.11 GET /api/sdd/versions
 
 版本分析。
 
-### 6.11 GET /api/sdd/work-items
+今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
+
+### 6.12 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.12 GET /api/sdd/work-items/:workItemId
+### 6.13 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
-### 6.13 POST /api/sdd/user-settings
+### 6.14 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 
@@ -427,17 +486,85 @@ ops API 面向本地和公司内网排障，不作为业务公开接口。
 
 ### 7.1 GET /api/ops/tables
 
-返回 MySQL 表列表、行数估算、最近更新时间。
+返回 MySQL 表列表、行数估算、最近更新时间和字段元数据。
+
+Response item：
+
+```ts
+export const OpsColumnSchema = z.object({
+  columnName: z.string(),
+  dataType: z.string(),
+  nullable: z.boolean(),
+  key: z.string().nullable(),
+  defaultValue: z.string().nullable(),
+  extra: z.string().nullable(),
+  estimatedMaxSize: z.number().nullable(),
+  sizeBasis: z.string(),
+});
+
+export const OpsTableSchema = z.object({
+  tableName: z.string(),
+  estimatedRows: z.number(),
+  updatedAt: z.string().nullable(),
+  columns: z.array(OpsColumnSchema),
+});
+```
+
+字段说明：
+
+| 字段 | 语义 |
+|---|---|
+| `dataType` | MySQL `COLUMN_TYPE`，例如 `varchar(191)`、`bigint unsigned`、`longtext` |
+| `estimatedMaxSize` | 当前字段理论最大占用字节估算，不是当前已使用 size |
+| `sizeBasis` | size 估算依据，例如 `CHARACTER_MAXIMUM_LENGTH * utf8mb4 4 bytes` 或 `MySQL type maximum` |
 
 ### 7.2 GET /api/ops/tables/:tableName/rows
 
 分页查看表数据。
 
+Query：
+
+```ts
+export const OpsTableRowsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().optional(),
+  orderBy: z.string().optional(),
+  order: z.enum(['asc', 'desc']).default('desc'),
+  filters: z.array(
+    z.object({
+      column: z.string(),
+      operator: z.enum([
+        'eq',
+        'ne',
+        'like',
+        'not_like',
+        'in',
+        'gt',
+        'gte',
+        'lt',
+        'lte',
+        'is_null',
+        'is_not_null',
+      ]),
+      value: z.union([z.string(), z.array(z.string())]).optional(),
+    })
+  ),
+});
+```
+
+`filters` 在 URL query 中使用 JSON 字符串传递，例如：
+
+```text
+GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","operator":"like","value":"bk-fe:%"}]
+```
+
 限制：
 
 1. `tableName` 必须在 allowlist 中。
 2. 默认 limit 50，最大 200。
-3. `LONGTEXT` 字段默认截断，详情页再展开。
+3. `orderBy` 和 `filters.column` 必须是目标表真实字段。
+4. `LONGTEXT` / `BLOB` / `JSON` 字段默认截断为 500 字符，详情页再展开。
+5. cursor 仅对默认 `id` 排序提供稳定翻页；指定其他 `orderBy` 时只返回当前页。
 
 ### 7.3 GET /api/ops/jobs
 

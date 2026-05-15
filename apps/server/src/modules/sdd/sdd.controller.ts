@@ -9,6 +9,8 @@ import {
   SddInteractionItemSchema,
   SddListQuerySchema,
   SddSemanticSchema,
+  SddUsageSummaryQuerySchema,
+  SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
   SddUserItemSchema,
   SddVersionItemSchema,
@@ -18,6 +20,7 @@ import {
   type SddFunnel,
   type SddInteractionItem,
   type SddSemantic,
+  type SddUsageSummaryResponse,
   type SddUsageItem,
   type SddUserItem,
   type SddVersionItem,
@@ -54,6 +57,13 @@ export class SddController {
     const query = parseWithSchema(SddFunnelQuerySchema, this.ctx.query);
     const data: SddFunnel = await this.sddQueryService.getFunnel(query);
     return ok(parseWithSchema(SddFunnelSchema, data));
+  }
+
+  @Get('/usage-summary')
+  async usageSummary() {
+    const query = parseWithSchema(SddUsageSummaryQuerySchema, this.ctx.query);
+    const data: SddUsageSummaryResponse = await this.sddQueryService.getUsageSummary(query);
+    return ok(parseWithSchema(SddUsageSummaryResponseSchema, data));
   }
 
   @Get('/usages')

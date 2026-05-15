@@ -273,8 +273,14 @@
 - KPI：
   - totalInteractions
   - totalSkillUsages
+  - pairingSuccessRate（来自 callQuality）
   - 覆盖语义数
   - 活跃用户数
+- 调用质量漏斗：
+  - triggeredCount
+  - withPromptCount
+  - withResponseCount
+  - pairedCount
 - 语义分布条形图：
   - displayName
   - semanticCode
@@ -292,12 +298,13 @@
 注意：
 - 当前 `groupBy` 虽然在 contract 中存在，但 server 还没有真正实现 user/work_item 分组。不要设计 groupBy 切换控件。
 - `conversionRate` 不是严格的流程转化率，UI 文案用“调用占比/参考转化”更稳妥。
+- `callQuality` 是当前 Skill 分布页的核心质量指标，不需要前端自行推导 prompt/response 配对率。
 
 ### 4.7 Skill 概览
 
 目标：这是 MVP 重要页面。展示每个 skill 或语义的聚合使用情况。
 
-需要后端新增聚合接口：`GET /api/sdd/usage-summary`
+使用聚合接口：`GET /api/sdd/usage-summary`
 
 建议展示字段：
 - semanticCode
@@ -462,7 +469,7 @@
 
 目标：完整调试台。用户认为这是基础功能。
 
-这部分可以设计成目标态，允许后端后续增强 ops API，但不要改核心业务表。
+这部分按当前 MVP 能力设计：后端已增强 ops API，不改核心业务表。
 
 页面结构：
 - 左侧表列表：
@@ -504,10 +511,11 @@
   - limit 10 / 20 / 50 / 100
   - cursor 下一页
 
-后端增强建议：
+接口约束：
 - `GET /api/ops/tables` 返回 table + columns metadata。
 - `GET /api/ops/tables/:tableName/rows` 支持 filters、orderBy、order、limit、cursor。
-- 对 tableName 和 columnName 使用白名单，避免 SQL 注入。
+- `filters` 是 AND 条件组合，今日 MVP 不设计 OR 分组。
+- tableName 和 columnName 都由后端白名单校验。
 
 ---
 

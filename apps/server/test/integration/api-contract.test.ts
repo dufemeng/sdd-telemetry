@@ -12,6 +12,7 @@ import {
   EventTimelineSchema,
   SddSemanticSchema,
   SddFunnelSchema,
+  SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
   SddInteractionItemSchema,
   SddErrorItemSchema,
@@ -226,6 +227,12 @@ describe('API Contract Tests', () => {
       const { status, body } = await api('GET', '/api/sdd/funnel');
       expect(status).toBe(200);
       validateContract('SddFunnel', body, SddFunnelSchema);
+    });
+
+    it('GET /api/sdd/usage-summary — returns SddUsageSummaryResponse', async () => {
+      const { status, body } = await api('GET', '/api/sdd/usage-summary');
+      expect(status).toBe(200);
+      validateContract('SddUsageSummaryResponse', body, SddUsageSummaryResponseSchema);
     });
 
     it('GET /api/sdd/usages — returns SddUsageItem[]', async () => {

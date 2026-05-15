@@ -1,9 +1,12 @@
 import { Inject, Provide } from '@midwayjs/core';
 import type {
+  OpsColumn,
+  OpsFilterOperator,
   OpsJob,
   OpsJobsResponse,
   OpsQueue,
   OpsTable,
+  OpsTableFilter,
   OpsTableRowsQuery,
   OpsTableRowsResponse,
   OpsTablesResponse,
@@ -21,10 +24,26 @@ interface TableRow {
 }
 
 interface ColumnRow {
+  table_name?: string;
+  TABLE_NAME?: string;
   column_name?: string;
   COLUMN_NAME?: string;
   data_type?: string;
   DATA_TYPE?: string;
+  column_type?: string;
+  COLUMN_TYPE?: string;
+  is_nullable?: string;
+  IS_NULLABLE?: string;
+  column_key?: string;
+  COLUMN_KEY?: string;
+  column_default?: string | null;
+  COLUMN_DEFAULT?: string | null;
+  extra?: string;
+  EXTRA?: string;
+  character_maximum_length?: string | number | null;
+  CHARACTER_MAXIMUM_LENGTH?: string | number | null;
+  numeric_precision?: string | number | null;
+  NUMERIC_PRECISION?: string | number | null;
 }
 
 interface QueueRow {
@@ -66,20 +85,28 @@ export class OpsQueryService {
 
   async listTables(): Promise<OpsTablesResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT table_name, table_rows AS estimated_rows, update_time AS updated_at
+    const [tableRows, columnRows] = await Promise.all([
+      dataSource.query(
+        `SELECT table_name, table_rows AS estimated_rows, update_time AS updated_at
        FROM information_schema.tables
        WHERE table_schema = DATABASE()
          AND table_name IN (${allowedTables.map(() => '?').join(',')})
        ORDER BY table_name ASC`,
-      allowedTables,
-    )) as TableRow[];
+        allowedTables,
+      ) as Promise<TableRow[]>,
+      this.listColumnsForTables(allowedTables),
+    ]);
+    const columnsByTable = groupColumnsByTable(columnRows);
 
-    const tables: OpsTable[] = rows.map(row => ({
-      tableName: String(row.table_name ?? row.TABLE_NAME),
-      estimatedRows: toNumber(row.estimated_rows ?? row.TABLE_ROWS),
-      updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
-    }));
+    const tables: OpsTable[] = tableRows.map(row => {
+      const tableName = String(row.table_name ?? row.TABLE_NAME);
+      return {
+        tableName,
+        estimatedRows: toNumber(row.estimated_rows ?? row.TABLE_ROWS),
+        updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+        columns: columnsByTable.get(tableName) ?? [],
+      };
+    });
 
     return { tables };
   }
@@ -88,43 +115,43 @@ export class OpsQueryService {
     assertAllowedTable(tableName);
 
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const columns = (await dataSource.query(
-      `SELECT column_name, data_type
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = ?
-       ORDER BY ordinal_position ASC`,
-      [tableName],
-    )) as ColumnRow[];
-    const columnNames = columns.map(column => String(column.column_name ?? column.COLUMN_NAME));
+    const columns = toOpsColumns(await this.listColumnsForTables([tableName]));
+    const columnNames = columns.map(column => column.columnName);
+    const columnSet = new Set(columnNames);
     const orderBy = columnNames.includes(query.orderBy ?? '') ? query.orderBy : 'id';
     const direction = query.order === 'asc' ? 'ASC' : 'DESC';
     const clauses: string[] = [];
     const params: unknown[] = [];
 
-    if (query.cursor) {
+    appendFilterClauses(query.filters, columnSet, clauses, params);
+
+    if (query.cursor && orderBy === 'id') {
       clauses.push(`id ${query.order === 'asc' ? '>' : '<'} ?`);
       params.push(query.cursor);
     }
 
+    const orderSql =
+      orderBy === 'id'
+        ? `ORDER BY \`${orderBy}\` ${direction}`
+        : `ORDER BY \`${orderBy}\` ${direction}, \`id\` ${direction}`;
     const rows = (await dataSource.query(
       `SELECT *
        FROM \`${tableName}\`
        ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
-       ORDER BY \`${orderBy}\` ${direction}
+       ${orderSql}
        LIMIT ?`,
       [...params, query.limit + 1],
     )) as Array<Record<string, unknown>>;
     const visibleRows = rows.slice(0, query.limit);
     const longTextColumns = new Set(
       columns
-        .filter(column => String(column.data_type ?? column.DATA_TYPE).toLowerCase().includes('text'))
-        .map(column => String(column.column_name ?? column.COLUMN_NAME)),
+        .filter(column => isLargeTextType(column.dataType))
+        .map(column => column.columnName),
     );
 
     return {
       tableName,
-      columns: columnNames,
+      columns,
       rows: visibleRows.map(row => {
         const nextRow: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(row)) {
@@ -138,7 +165,7 @@ export class OpsQueryService {
         }
         return nextRow;
       }),
-      nextCursor: rows.length > query.limit ? toStringId(visibleRows.at(-1)?.id) : null,
+      nextCursor: rows.length > query.limit && orderBy === 'id' ? toStringId(visibleRows.at(-1)?.id) : null,
     };
   }
 
@@ -199,10 +226,218 @@ export class OpsQueryService {
       updatedAt: toIsoDate(row.updated_at),
     };
   }
+
+  private async listColumnsForTables(tableNames: string[]): Promise<ColumnRow[]> {
+    if (tableNames.length === 0) {
+      return [];
+    }
+
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT table_name, column_name, data_type, column_type, is_nullable,
+              column_key, column_default, extra, character_maximum_length,
+              numeric_precision
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name IN (${tableNames.map(() => '?').join(',')})
+       ORDER BY table_name ASC, ordinal_position ASC`,
+      tableNames,
+    )) as ColumnRow[];
+  }
 }
 
 function assertAllowedTable(tableName: string): void {
   if (!allowedTables.includes(tableName)) {
     throw new Error(`table is not allowed: ${tableName}`);
   }
+}
+
+function groupColumnsByTable(rows: ColumnRow[]): Map<string, OpsColumn[]> {
+  const grouped = new Map<string, OpsColumn[]>();
+
+  for (const row of rows) {
+    const tableName = String(row.table_name ?? row.TABLE_NAME);
+    const columns = grouped.get(tableName) ?? [];
+    columns.push(toOpsColumn(row));
+    grouped.set(tableName, columns);
+  }
+
+  return grouped;
+}
+
+function toOpsColumns(rows: ColumnRow[]): OpsColumn[] {
+  return rows.map(row => toOpsColumn(row));
+}
+
+function toOpsColumn(row: ColumnRow): OpsColumn {
+  const dataType = String(row.data_type ?? row.DATA_TYPE);
+  const columnType = String(row.column_type ?? row.COLUMN_TYPE ?? dataType);
+  const estimated = estimateMaxSize(row);
+  const key = String(row.column_key ?? row.COLUMN_KEY ?? '');
+  const extra = String(row.extra ?? row.EXTRA ?? '');
+  const defaultValue = row.column_default ?? row.COLUMN_DEFAULT ?? null;
+
+  return {
+    columnName: String(row.column_name ?? row.COLUMN_NAME),
+    dataType: columnType,
+    nullable: String(row.is_nullable ?? row.IS_NULLABLE).toUpperCase() === 'YES',
+    key: key === '' ? null : key,
+    defaultValue: defaultValue === null ? null : String(defaultValue),
+    extra: extra === '' ? null : extra,
+    estimatedMaxSize: estimated.estimatedMaxSize,
+    sizeBasis: estimated.sizeBasis,
+  };
+}
+
+function estimateMaxSize(row: ColumnRow): { estimatedMaxSize: number | null; sizeBasis: string } {
+  const dataType = String(row.data_type ?? row.DATA_TYPE).toLowerCase();
+  const columnType = String(row.column_type ?? row.COLUMN_TYPE ?? dataType).toLowerCase();
+  const charLength = toNumber(row.character_maximum_length ?? row.CHARACTER_MAXIMUM_LENGTH);
+  const precision = toNumber(row.numeric_precision ?? row.NUMERIC_PRECISION);
+
+  if (['char', 'varchar'].includes(dataType)) {
+    return {
+      estimatedMaxSize: charLength > 0 ? charLength * 4 : null,
+      sizeBasis: 'CHARACTER_MAXIMUM_LENGTH * utf8mb4 4 bytes',
+    };
+  }
+
+  const fixedSizes: Record<string, number> = {
+    tinyint: 1,
+    smallint: 2,
+    mediumint: 3,
+    int: 4,
+    integer: 4,
+    bigint: 8,
+    float: 4,
+    double: 8,
+    real: 8,
+    date: 3,
+    time: 3,
+    datetime: 8,
+    timestamp: 8,
+    year: 1,
+  };
+  if (fixedSizes[dataType] !== undefined) {
+    return { estimatedMaxSize: fixedSizes[dataType], sizeBasis: 'MySQL fixed storage estimate' };
+  }
+
+  const largeSizes: Record<string, number> = {
+    tinytext: 255,
+    tinyblob: 255,
+    text: 65_535,
+    blob: 65_535,
+    mediumtext: 16_777_215,
+    mediumblob: 16_777_215,
+    longtext: 4_294_967_295,
+    longblob: 4_294_967_295,
+    json: 4_294_967_295,
+  };
+  if (largeSizes[dataType] !== undefined) {
+    return { estimatedMaxSize: largeSizes[dataType], sizeBasis: 'MySQL type maximum' };
+  }
+
+  if (['decimal', 'numeric'].includes(dataType)) {
+    return {
+      estimatedMaxSize: precision > 0 ? Math.ceil(precision / 2) + 1 : null,
+      sizeBasis: 'MySQL DECIMAL storage estimate from NUMERIC_PRECISION',
+    };
+  }
+
+  if (['enum', 'set'].includes(dataType)) {
+    return {
+      estimatedMaxSize: columnType.length > 0 ? columnType.length * 4 : null,
+      sizeBasis: 'COLUMN_TYPE definition length * utf8mb4 4 bytes',
+    };
+  }
+
+  return { estimatedMaxSize: null, sizeBasis: 'Unknown or engine-dependent' };
+}
+
+function appendFilterClauses(
+  filters: OpsTableFilter[],
+  columnSet: Set<string>,
+  clauses: string[],
+  params: unknown[],
+): void {
+  for (const filter of filters) {
+    if (!columnSet.has(filter.column)) {
+      throw new Error(`filter column is not allowed: ${filter.column}`);
+    }
+
+    const columnSql = `\`${filter.column}\``;
+    const operator = filter.operator;
+
+    if (operator === 'is_null') {
+      clauses.push(`${columnSql} IS NULL`);
+      continue;
+    }
+
+    if (operator === 'is_not_null') {
+      clauses.push(`${columnSql} IS NOT NULL`);
+      continue;
+    }
+
+    if (operator === 'in') {
+      const values = filterValueList(filter.value);
+      if (values.length === 0) {
+        clauses.push('1 = 0');
+        continue;
+      }
+      clauses.push(`${columnSql} IN (${values.map(() => '?').join(',')})`);
+      params.push(...values);
+      continue;
+    }
+
+    const value = filterScalarValue(filter.value);
+    clauses.push(`${columnSql} ${sqlOperator(operator)} ?`);
+    params.push(value);
+  }
+}
+
+function sqlOperator(operator: OpsFilterOperator): string {
+  const operators: Record<Exclude<OpsFilterOperator, 'in' | 'is_null' | 'is_not_null'>, string> = {
+    eq: '=',
+    ne: '<>',
+    like: 'LIKE',
+    not_like: 'NOT LIKE',
+    gt: '>',
+    gte: '>=',
+    lt: '<',
+    lte: '<=',
+  };
+
+  if (operator === 'in' || operator === 'is_null' || operator === 'is_not_null') {
+    throw new Error(`operator does not use scalar comparison: ${operator}`);
+  }
+
+  return operators[operator];
+}
+
+function filterScalarValue(value: OpsTableFilter['value']): string {
+  if (Array.isArray(value)) {
+    return value[0] ?? '';
+  }
+
+  return value ?? '';
+}
+
+function filterValueList(value: OpsTableFilter['value']): string[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function isLargeTextType(dataType: string): boolean {
+  const normalized = dataType.toLowerCase();
+  return normalized.includes('text') || normalized.includes('blob') || normalized.includes('json');
 }

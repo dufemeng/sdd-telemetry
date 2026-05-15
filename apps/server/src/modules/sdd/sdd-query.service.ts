@@ -9,6 +9,9 @@ import type {
   SddInteractionItem,
   SddListQuery,
   SddSemantic,
+  SddUsageSummaryItem,
+  SddUsageSummaryQuery,
+  SddUsageSummaryResponse,
   SddUsageItem,
   SddUserItem,
   SddVersionItem,
@@ -42,7 +45,31 @@ interface FunnelRow {
   work_item_count: string | number;
 }
 
+interface FunnelQualityRow {
+  with_prompt_count: string | number | null;
+  with_response_count: string | number | null;
+  paired_count: string | number | null;
+}
+
 interface CountRow {
+  count_value: string | number;
+}
+
+interface UsageSummaryRow {
+  semantic_code: string | null;
+  semantic_display_name: string | null;
+  raw_skill_name: string;
+  usage_count: string | number;
+  active_user_count: string | number;
+  session_count: string | number;
+  work_item_count: string | number;
+  first_seen_at: Date | string | null;
+  last_seen_at: Date | string | null;
+}
+
+interface UsageVersionRow {
+  raw_skill_name: string;
+  version: string | null;
   count_value: string | number;
 }
 
@@ -229,11 +256,24 @@ export class SddQueryService {
     const interactionParams: unknown[] = [];
     addTimeRangeWhere(interactionWhere, interactionParams, 'i.started_at', query);
 
-    const [interactionRows, usageRows] = await Promise.all([
+    const [interactionRows, qualityRows, usageRows] = await Promise.all([
       dataSource.query(
         `SELECT COUNT(*) AS count_value FROM sdd_interactions i ${whereSql(interactionWhere)}`,
         interactionParams,
       ) as Promise<CountRow[]>,
+      dataSource.query(
+        `SELECT
+           SUM(t.prompt_text IS NOT NULL AND t.prompt_text <> '') AS with_prompt_count,
+           SUM(t.response_text IS NOT NULL AND t.response_text <> '') AS with_response_count,
+           SUM(
+             t.prompt_text IS NOT NULL AND t.prompt_text <> ''
+             AND t.response_text IS NOT NULL AND t.response_text <> ''
+           ) AS paired_count
+         FROM sdd_interactions i
+         LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+         ${whereSql(interactionWhere)}`,
+        interactionParams,
+      ) as Promise<FunnelQualityRow[]>,
       dataSource.query(
         `SELECT s.semantic_code, s.display_name,
                 COUNT(u.id) AS usage_count,
@@ -249,10 +289,22 @@ export class SddQueryService {
     ]);
     const totalInteractions = toNumber(interactionRows[0]?.count_value);
     const totalSkillUsages = usageRows.reduce((sum, row) => sum + toNumber(row.usage_count), 0);
+    const withPromptCount = toNumber(qualityRows[0]?.with_prompt_count);
+    const withResponseCount = toNumber(qualityRows[0]?.with_response_count);
+    const pairedCount = toNumber(qualityRows[0]?.paired_count);
 
     return {
       totalInteractions,
       totalSkillUsages,
+      callQuality: {
+        triggeredCount: totalSkillUsages,
+        withPromptCount,
+        withResponseCount,
+        pairedCount,
+        promptCoverageRate: totalInteractions > 0 ? withPromptCount / totalInteractions : null,
+        responseCoverageRate: totalInteractions > 0 ? withResponseCount / totalInteractions : null,
+        pairingSuccessRate: totalInteractions > 0 ? pairedCount / totalInteractions : null,
+      },
       stages: usageRows.map(row => {
         const usageCount = toNumber(row.usage_count);
         return {
@@ -264,6 +316,72 @@ export class SddQueryService {
           conversionRate: totalInteractions > 0 ? usageCount / totalInteractions : null,
         };
       }),
+    };
+  }
+
+  async getUsageSummary(query: SddUsageSummaryQuery): Promise<SddUsageSummaryResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const { where, params } = this.buildUsageSummaryWhere(query);
+    const rows = (await dataSource.query(
+      `SELECT s.semantic_code, s.display_name AS semantic_display_name,
+              u.raw_skill_name,
+              COUNT(*) AS usage_count,
+              COUNT(DISTINCT u.user_id) AS active_user_count,
+              COUNT(DISTINCT u.session_id) AS session_count,
+              COUNT(DISTINCT u.work_item_id) AS work_item_count,
+              MIN(u.event_time) AS first_seen_at,
+              MAX(u.event_time) AS last_seen_at
+       FROM sdd_skill_usages u
+       LEFT JOIN sdd_skill_semantics s ON s.id = u.semantic_id
+       ${where}
+       GROUP BY s.semantic_code, s.display_name, u.raw_skill_name
+       ORDER BY usage_count DESC, u.raw_skill_name ASC
+       LIMIT ?`,
+      [...params, query.limit],
+    )) as UsageSummaryRow[];
+
+    if (rows.length === 0) {
+      return { items: [] };
+    }
+
+    const rawSkillNames = rows.map(row => row.raw_skill_name);
+    const versionWhere = [...params];
+    const versionRows = (await dataSource.query(
+      `SELECT u.raw_skill_name,
+              COALESCE(u.observed_version, u.service_version, 'unknown') AS version,
+              COUNT(*) AS count_value
+       FROM sdd_skill_usages u
+       LEFT JOIN sdd_skill_semantics s ON s.id = u.semantic_id
+       ${where}
+         ${where ? 'AND' : 'WHERE'} u.raw_skill_name IN (${rawSkillNames.map(() => '?').join(',')})
+       GROUP BY u.raw_skill_name, version
+       ORDER BY count_value DESC, version ASC`,
+      [...versionWhere, ...rawSkillNames],
+    )) as UsageVersionRow[];
+    const versionsBySkill = new Map<string, Array<{ version: string; count: number }>>();
+
+    for (const row of versionRows) {
+      const versions = versionsBySkill.get(row.raw_skill_name) ?? [];
+      versions.push({
+        version: row.version ?? 'unknown',
+        count: toNumber(row.count_value),
+      });
+      versionsBySkill.set(row.raw_skill_name, versions);
+    }
+
+    return {
+      items: rows.map((row): SddUsageSummaryItem => ({
+        semanticCode: row.semantic_code,
+        semanticDisplayName: row.semantic_display_name,
+        rawSkillName: row.raw_skill_name,
+        usageCount: toNumber(row.usage_count),
+        activeUserCount: toNumber(row.active_user_count),
+        sessionCount: toNumber(row.session_count),
+        workItemCount: toNumber(row.work_item_count),
+        versions: versionsBySkill.get(row.raw_skill_name) ?? [],
+        firstSeenAt: toIsoDate(row.first_seen_at),
+        lastSeenAt: toIsoDate(row.last_seen_at),
+      })),
     };
   }
 
@@ -570,6 +688,27 @@ export class SddQueryService {
     if (query.semanticCode) {
       clauses.push(`s.semantic_code = ?`);
       params.push(query.semanticCode);
+    }
+
+    return {
+      where: whereSql(clauses),
+      params,
+    };
+  }
+
+  private buildUsageSummaryWhere(query: SddUsageSummaryQuery): { where: string; params: unknown[] } {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    addTimeRangeWhere(clauses, params, 'u.event_time', query);
+
+    if (query.semanticCode) {
+      clauses.push('s.semantic_code = ?');
+      params.push(query.semanticCode);
+    }
+
+    if (query.status) {
+      clauses.push('u.status = ?');
+      params.push(query.status);
     }
 
     return {

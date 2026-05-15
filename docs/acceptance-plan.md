@@ -1,6 +1,6 @@
 # P0 验收计划
 
-更新时间：2026-05-14
+更新时间：2026-05-15
 
 ## 1. 验收原则
 
@@ -134,13 +134,17 @@ GET /api/ingest/health
 GET /api/ingest/batches
 GET /api/events/distribution
 GET /api/events/field-coverage
+GET /api/events/field-values
+GET /api/events/timeline
 GET /api/sdd/semantics
 GET /api/sdd/funnel
+GET /api/sdd/usage-summary
 GET /api/sdd/usages
 GET /api/sdd/interactions
 GET /api/sdd/users
 GET /api/sdd/work-items
 GET /api/ops/tables
+GET /api/ops/tables/:tableName/rows
 GET /api/ops/jobs
 GET /api/ops/queue
 ```
@@ -168,7 +172,7 @@ GET /api/ops/queue
 7. 用户 / 机器维度有数据。
 8. Raw 批次详情能看到 batch 状态。
 9. Skill 使用概览能看到按 skill / semantic 聚合后的调用统计。
-10. ops 数据库浏览能查看 MySQL 表结构和表数据。
+10. ops 数据库浏览能查看 MySQL 表结构、字段最大 size 估算、字段筛选和表数据。
 
 今日 MVP 暂不验收：
 
