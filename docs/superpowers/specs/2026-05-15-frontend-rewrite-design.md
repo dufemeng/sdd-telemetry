@@ -86,13 +86,13 @@ apps/web/
     ├── api/
     │   └── client.ts         ← requestData<T>，统一错误处理
     ├── components/
-    │   ├── ui/               ← Atomic 层，纯展示
-    │   │   ├── Badge.tsx     ← StatusBadge（good/warn/bad/neutral）
-    │   │   ├── BarList.tsx   ← 水平条形图列表
-    │   │   ├── DataTable.tsx ← 通用紧凑表格
+    │   ├── ui/                  ← Atomic 层，纯展示
+    │   │   ├── StatusBadge.tsx  ← 状态徽章（good/warn/bad/neutral）
+    │   │   ├── BarList.tsx      ← 水平条形排行列表
+    │   │   ├── DataTable.tsx    ← 通用紧凑表格
     │   │   ├── EmptyState.tsx
-    │   │   ├── Kpi.tsx       ← 数字指标卡片
-    │   │   └── Panel.tsx     ← 带标题的内容面板
+    │   │   ├── StatCard.tsx     ← 数字指标卡片
+    │   │   └── Panel.tsx        ← 带标题的内容面板
     │   └── layout/           ← Shell 层
     │       ├── AppShell.tsx  ← 整体网格布局
     │       ├── Sidebar.tsx   ← 左侧导航
@@ -192,7 +192,7 @@ export function useIngestHealth(windowHours = 24) {
 ```ts
 // pages/ingest/IngestPage.tsx
 import { useIngestHealth } from './useIngestHealth';
-import { Kpi } from '../../components/ui/Kpi';
+import { StatCard } from '../../components/ui/StatCard';
 import { Panel } from '../../components/ui/Panel';
 
 export function IngestPage() {
@@ -201,8 +201,8 @@ export function IngestPage() {
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-4 gap-3">
-        <Kpi label="已解析" value={data?.parsedBatches} loading={isLoading} />
-        <Kpi label="失败" value={data?.failedBatches} loading={isLoading} />
+        <StatCard label="已解析" value={data?.parsedBatches} loading={isLoading} />
+        <StatCard label="失败" value={data?.failedBatches} loading={isLoading} />
         ...
       </div>
       <Panel title="链路状态">...</Panel>
