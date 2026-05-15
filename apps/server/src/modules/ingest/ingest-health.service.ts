@@ -106,9 +106,10 @@ export class IngestHealthService {
     const clauses: string[] = [];
     const params: unknown[] = [];
 
-    if (query.status) {
-      clauses.push('status = ?');
-      params.push(query.status);
+    if (query.status && query.status.length > 0) {
+      const placeholders = query.status.map(() => '?').join(', ');
+      clauses.push(`status IN (${placeholders})`);
+      params.push(...query.status);
     }
 
     if (query.cursor) {

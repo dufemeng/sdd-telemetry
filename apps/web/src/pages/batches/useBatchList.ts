@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import type { BatchListResponse } from '@sdd-monitor/api';
+import type { BatchListResponse, BatchStatus } from '@sdd-monitor/api';
 import { requestData } from '../../api/client';
 
-export function useBatchList(status?: string, limit = 50) {
+export function useBatchList(status?: BatchStatus | BatchStatus[], limit = 50) {
+  const statusParam = Array.isArray(status) ? status.join(',') : status;
   const params = new URLSearchParams({ limit: String(limit) });
-  if (status) params.set('status', status);
+  if (statusParam) params.set('status', statusParam);
   return useQuery({
-    queryKey: ['batches', status, limit],
+    queryKey: ['batches', statusParam, limit],
     queryFn: () => requestData<BatchListResponse>(`/api/ingest/batches?${params}`),
     staleTime: 15_000,
   });

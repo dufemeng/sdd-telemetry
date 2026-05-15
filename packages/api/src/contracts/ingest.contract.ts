@@ -49,7 +49,12 @@ export const IngestHealthSchema = z.object({
 });
 
 export const BatchListQuerySchema = PaginationQuerySchema.extend({
-  status: BatchStatusSchema.optional(),
+  status: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.split(',').map((s) => s.trim()).filter(Boolean) : v),
+      z.array(BatchStatusSchema).min(1),
+    )
+    .optional(),
 });
 
 export const BatchListItemSchema = z.object({

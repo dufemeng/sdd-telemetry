@@ -10,7 +10,7 @@ import { formatInteger, formatBytes, formatTime } from '../../lib/format';
 
 export default function IngestPage() {
   const { data } = useIngestHealth();
-  const failedBatches = useBatchList('failed_retryable,failed_terminal');
+  const failedBatches = useBatchList(['failed_retryable', 'failed_terminal']);
 
   const latestMs = data?.latestReceivedAt ? Date.now() - new Date(data.latestReceivedAt).getTime() : null;
   const collectorStatus =
