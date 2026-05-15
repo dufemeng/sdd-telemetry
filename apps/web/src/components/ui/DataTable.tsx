@@ -29,7 +29,9 @@ export function DataTable({ headers, rows, emptyText = '暂无数据' }: DataTab
         </thead>
         <tbody>
           {rows.map((row, ri) => (
-            <tr key={ri} className="group">
+            // Use first cell as key when it's a stable string ID; otherwise fall back to index
+            // (rows are server-fetched and displayed read-only, so index keys are acceptable here)
+            <tr key={typeof row[0] === 'string' ? row[0] : ri} className="group">
               {row.map((cell, ci) => (
                 <td
                   key={ci}

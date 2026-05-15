@@ -10,11 +10,13 @@ import { BarList } from '../../components/ui/BarList';
 import { DataTable } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { formatInteger, formatTime, formatBytes } from '../../lib/format';
+import { useShellContext } from '../../components/layout/AppShell';
 
 export default function OverviewPage() {
+  const { timeRange } = useShellContext();
   const health  = useIngestHealth();
-  const funnel  = useSddFunnel('24h');
-  const dist    = useEventDistribution('24h');
+  const funnel  = useSddFunnel(timeRange);
+  const dist    = useEventDistribution(timeRange);
   const users   = useSddUsers();
   const batches = useBatchList();
 

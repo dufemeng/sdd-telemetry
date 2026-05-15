@@ -6,7 +6,7 @@ function Loading() {
   return <div className="p-4 text-[var(--color-muted)] text-[13px]">加载中…</div>;
 }
 
-function wrap(Component: React.LazyExoticComponent<() => React.ReactElement>) {
+function wrap(Component: React.LazyExoticComponent<React.ComponentType>) {
   return (
     <Suspense fallback={<Loading />}>
       <Component />
