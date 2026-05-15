@@ -1,3 +1,29 @@
+import { Workflow } from 'lucide-react';
+import { useSddInteractions } from './useSddInteractions';
+import { Panel } from '../../../components/ui/Panel';
+import { DataTable } from '../../../components/ui/DataTable';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
+import { formatTime, truncate } from '../../../lib/format';
+
 export default function InteractionsPage() {
-  return <div className="p-4 text-[12px] text-[var(--color-muted)]">交互明细 — 加载中</div>;
+  const { data } = useSddInteractions('24h');
+
+  return (
+    <Panel title="交互明细" icon={<Workflow size={18} />}>
+      <DataTable
+        headers={['时间', '用户', 'sessionId', 'promptId', '模型', '状态', '耗时', '提示词预览', '回答预览']}
+        rows={(data ?? []).map((item) => [
+          formatTime(item.completedAt ?? item.startedAt),
+          item.userId ?? '—',
+          item.sessionId ?? '—',
+          item.promptId ?? '—',
+          item.model ?? '—',
+          <StatusBadge key="s" status={item.status} />,
+          item.durationMs == null ? '—' : `${item.durationMs} ms`,
+          truncate(item.promptPreview, 140),
+          truncate(item.responsePreview, 160),
+        ])}
+      />
+    </Panel>
+  );
 }
