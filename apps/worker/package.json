@@ -8,6 +8,7 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
+    "once": "WORKER_ONCE=true node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit -p tsconfig.json"
@@ -16,6 +17,7 @@
     "@sdd-monitor/api": "workspace:*",
     "bullmq": "^5.76.8",
     "ioredis": "^5.10.1",
+    "mysql2": "^3.22.3",
     "pino": "^10.1.0",
     "zod": "^4.4.3"
   },

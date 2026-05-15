@@ -1,0 +1,203 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "install_id",
+            "value": {
+              "stringValue": "local-install-sdd-cleaning-001"
+            }
+          },
+          {
+            "key": "user.name",
+            "value": {
+              "stringValue": "local-user"
+            }
+          },
+          {
+            "key": "machine.id",
+            "value": {
+              "stringValue": "local-machine-001"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "local-host"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "claude-code"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "0.0.0-cleaning-smoke"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "sdd-monitor-cleaning-smoke"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1778769901000000000",
+              "severityText": "INFO",
+              "body": {
+                "kvlistValue": {
+                  "values": [
+                    {
+                      "key": "prompt",
+                      "value": {
+                        "stringValue": "请为解冻组件生成技术提案"
+                      }
+                    }
+                  ]
+                }
+              },
+              "attributes": [
+                {
+                  "key": "event_name",
+                  "value": {
+                    "stringValue": "api_request_body"
+                  }
+                },
+                {
+                  "key": "session_id",
+                  "value": {
+                    "stringValue": "session-cleaning-001"
+                  }
+                },
+                {
+                  "key": "prompt_id",
+                  "value": {
+                    "stringValue": "prompt-cleaning-001"
+                  }
+                },
+                {
+                  "key": "skill_name",
+                  "value": {
+                    "stringValue": "bk-fe:proposal"
+                  }
+                },
+                {
+                  "key": "artifact.path",
+                  "value": {
+                    "stringValue": "/Users/loomisli/work/bk-fe-requirements-trade/cashier/2026-04-10-unfreeze-component/proposal.md"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1778769903000000000",
+              "severityText": "INFO",
+              "body": {
+                "kvlistValue": {
+                  "values": [
+                    {
+                      "key": "response",
+                      "value": {
+                        "stringValue": "已生成 proposal.md，并写入需求文档库。"
+                      }
+                    }
+                  ]
+                }
+              },
+              "attributes": [
+                {
+                  "key": "event_name",
+                  "value": {
+                    "stringValue": "api_response_body"
+                  }
+                },
+                {
+                  "key": "session_id",
+                  "value": {
+                    "stringValue": "session-cleaning-001"
+                  }
+                },
+                {
+                  "key": "prompt_id",
+                  "value": {
+                    "stringValue": "prompt-cleaning-001"
+                  }
+                },
+                {
+                  "key": "skill_name",
+                  "value": {
+                    "stringValue": "bk-fe:proposal"
+                  }
+                },
+                {
+                  "key": "artifact.path",
+                  "value": {
+                    "stringValue": "/Users/loomisli/work/bk-fe-requirements-trade/cashier/2026-04-10-unfreeze-component/proposal.md"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1778769905000000000",
+              "severityText": "ERROR",
+              "severityNumber": 17,
+              "body": {
+                "stringValue": "write proposal.md failed once and recovered"
+              },
+              "attributes": [
+                {
+                  "key": "event_name",
+                  "value": {
+                    "stringValue": "tool_exception"
+                  }
+                },
+                {
+                  "key": "session_id",
+                  "value": {
+                    "stringValue": "session-cleaning-001"
+                  }
+                },
+                {
+                  "key": "prompt_id",
+                  "value": {
+                    "stringValue": "prompt-cleaning-001"
+                  }
+                },
+                {
+                  "key": "skill_name",
+                  "value": {
+                    "stringValue": "bk-fe:proposal"
+                  }
+                },
+                {
+                  "key": "exception.type",
+                  "value": {
+                    "stringValue": "ToolExecutionError"
+                  }
+                },
+                {
+                  "key": "exception.message",
+                  "value": {
+                    "stringValue": "write proposal.md failed once and recovered"
+                  }
+                },
+                {
+                  "key": "artifact.path",
+                  "value": {
+                    "stringValue": "/Users/loomisli/work/bk-fe-requirements-trade/cashier/2026-04-10-unfreeze-component/proposal.md"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

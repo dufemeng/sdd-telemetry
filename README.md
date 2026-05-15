@@ -80,4 +80,18 @@ pnpm build
 curl -sS http://127.0.0.1:4318/api/ingest/health
 ```
 
-当前已完成 Milestone 1 工程骨架和 Milestone 2 数据库模型基线。raw 写入、outbox 投递和清洗 worker 会在后续 Milestone 落地。
+单次清洗 worker 冒烟：
+
+```bash
+pnpm --filter @sdd-monitor/worker once
+```
+
+如果本机 Redis 需要密码，设置：
+
+```bash
+REDIS_PASSWORD=your-password pnpm --filter @sdd-monitor/worker once
+```
+
+本仓库默认 Redis 端口是 `46379`，避免和本机已有 `6379` 服务冲突；如需使用已有 Redis，可设置 `REDIS_PORT`。
+
+当前已完成 Milestone 1-4：工程骨架、数据库模型、raw 写入/outbox、异步清洗 worker。

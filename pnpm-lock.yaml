@@ -148,6 +148,9 @@ importers:
       ioredis:
         specifier: ^5.10.1
         version: 5.10.1
+      mysql2:
+        specifier: ^3.22.3
+        version: 3.22.3(@types/node@22.19.19)
       pino:
         specifier: ^10.1.0
         version: 10.3.1
