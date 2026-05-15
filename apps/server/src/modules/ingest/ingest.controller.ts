@@ -1,7 +1,14 @@
-import { Body, Controller, Get, Headers, Inject, Post, Query } from '@midwayjs/core';
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from '@midwayjs/core';
 import {
+  BatchDetailSchema,
+  BatchListQuerySchema,
+  BatchListResponseSchema,
+  IngestHealthSchema,
   IngestHealthQuerySchema,
+  IngestLogsResponseSchema,
   OtlpLogsPayloadSchema,
+  type BatchDetail,
+  type BatchListResponse,
   type IngestHealth,
   type IngestLogsResponse,
 } from '@sdd-monitor/api';
@@ -25,7 +32,7 @@ export class IngestController {
       payload,
       contentType: contentType ?? null,
     });
-    return ok(data);
+    return ok(parseWithSchema(IngestLogsResponseSchema, data));
   }
 
   @Get('/health')
@@ -34,6 +41,23 @@ export class IngestController {
       windowHours: rawWindowHours,
     });
     const data: IngestHealth = await this.ingestHealthService.getHealth(query.windowHours);
-    return ok(data);
+    return ok(parseWithSchema(IngestHealthSchema, data));
+  }
+
+  @Get('/batches')
+  async batches(@Query() rawQuery: unknown) {
+    const query = parseWithSchema(BatchListQuerySchema, rawQuery);
+    const data: BatchListResponse = await this.ingestHealthService.listBatches(query);
+    return ok(parseWithSchema(BatchListResponseSchema, data));
+  }
+
+  @Get('/batches/:batchId')
+  async batchDetail(@Param('batchId') batchId: string) {
+    const data: BatchDetail | null = await this.ingestHealthService.getBatchDetail(batchId);
+    if (!data) {
+      throw new Error(`batch not found: ${batchId}`);
+    }
+
+    return ok(parseWithSchema(BatchDetailSchema, data));
   }
 }

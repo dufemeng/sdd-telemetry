@@ -14,6 +14,9 @@ export function createAppDataSource(): DataSource {
     timezone: 'Z',
     synchronize: false,
     logging: false,
+    extra: {
+      connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT ?? 5),
+    },
     entities: appEntities,
     migrations: [CreateP0Schema1778769900000],
   });
