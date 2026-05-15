@@ -70,7 +70,7 @@ async function claimOutboxRows(options: DispatchOutboxOptions): Promise<OutboxRo
              attempts = attempts + 1,
              locked_by = ?,
              locked_until = DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND),
-             updated_at = CURRENT_TIMESTAMP(3)
+             gmt_modified = CURRENT_TIMESTAMP(3)
          WHERE id IN (${ids.map(() => '?').join(',')})`,
         [options.workerId, lockSeconds, ...ids],
       );
@@ -94,7 +94,7 @@ async function markOutboxDispatched(pool: Pool, outboxId: string, batchId: strin
            locked_until = NULL,
            last_error = NULL,
            dispatched_at = CURRENT_TIMESTAMP(3),
-           updated_at = CURRENT_TIMESTAMP(3)
+           gmt_modified = CURRENT_TIMESTAMP(3)
        WHERE id = ?`,
       [outboxId],
     );
@@ -103,7 +103,7 @@ async function markOutboxDispatched(pool: Pool, outboxId: string, batchId: strin
       `UPDATE otel_ingest_batches
        SET status = 'queued',
            status_reason = 'queued by outbox dispatcher',
-           updated_at = CURRENT_TIMESTAMP(3)
+           gmt_modified = CURRENT_TIMESTAMP(3)
        WHERE id = ?
          AND status IN ('received', 'failed_retryable')`,
       [batchId],
@@ -128,7 +128,7 @@ async function markOutboxDispatchFailed(
            locked_until = NULL,
            next_retry_at = IF(?, NULL, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND)),
            last_error = ?,
-           updated_at = CURRENT_TIMESTAMP(3)
+           gmt_modified = CURRENT_TIMESTAMP(3)
        WHERE id = ?`,
       [
         terminal ? 'failed_terminal' : 'pending',
@@ -153,7 +153,7 @@ async function markTerminalInTransaction(
          locked_until = NULL,
          next_retry_at = NULL,
          last_error = ?,
-         updated_at = CURRENT_TIMESTAMP(3)
+         gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE id = ?`,
     [reason, row.id],
   );

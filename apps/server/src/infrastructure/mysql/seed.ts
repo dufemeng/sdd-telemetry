@@ -54,12 +54,12 @@ async function main(): Promise<void> {
     for (const semantic of seedSemantics) {
       await dataSource.query(
         `INSERT INTO sdd_skill_semantics
-          (semantic_code, display_name, description, created_at, updated_at)
+          (semantic_code, display_name, description, gmt_create, gmt_modified)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
         ON DUPLICATE KEY UPDATE
           display_name = VALUES(display_name),
           description = VALUES(description),
-          updated_at = CURRENT_TIMESTAMP(3)`,
+          gmt_modified = CURRENT_TIMESTAMP(3)`,
         [semantic.semanticCode, semantic.displayName, semantic.description],
       );
 
@@ -76,11 +76,11 @@ async function main(): Promise<void> {
       for (const skillName of semantic.aliases) {
         await dataSource.query(
           `INSERT INTO sdd_skill_aliases
-            (semantic_id, skill_name, created_at, updated_at)
+            (semantic_id, skill_name, gmt_create, gmt_modified)
           VALUES (?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
           ON DUPLICATE KEY UPDATE
             semantic_id = VALUES(semantic_id),
-            updated_at = CURRENT_TIMESTAMP(3)`,
+            gmt_modified = CURRENT_TIMESTAMP(3)`,
           [semanticId, skillName],
         );
       }

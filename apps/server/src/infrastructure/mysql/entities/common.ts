@@ -11,14 +11,14 @@ export abstract class IdEntity {
 
 export abstract class TimestampedEntity extends IdEntity {
   @CreateDateColumn({
-    name: 'created_at',
+    name: 'gmt_create',
     type: 'datetime',
     precision: 3,
   })
   createdAt!: Date;
 
   @UpdateDateColumn({
-    name: 'updated_at',
+    name: 'gmt_modified',
     type: 'datetime',
     precision: 3,
   })

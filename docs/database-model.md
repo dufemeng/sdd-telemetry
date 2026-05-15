@@ -64,8 +64,8 @@ SDD 业务层
 | `settings_reported_at` | DATETIME(3) | NULL | setting 上报时间 |
 | `first_seen_at` | DATETIME(3) | NULL, INDEX | 首次看到该用户 |
 | `last_seen_at` | DATETIME(3) | NULL, INDEX | 最近看到该用户 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `user_key` 生成规则：
 
@@ -90,8 +90,8 @@ SDD 语义配置表。语义是页面展示、归类、评测、故障排查的�
 | `semantic_code` | VARCHAR(64) | NOT NULL, UNIQUE | 稳定语义编码，如 `proposal`、`design`、`task` |
 | `display_name` | VARCHAR(191) | NOT NULL | 展示名，如“技术提案” |
 | `description` | VARCHAR(1000) | NULL | 页面小字描述 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 不设计 `stage_order` 和 `enabled`。配置存在即生效，流程顺序不在配置层强行定义。
 
@@ -104,8 +104,8 @@ SDD 语义配置表。语义是页面展示、归类、评测、故障排查的�
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `semantic_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_skill_semantics.id` |
 | `skill_name` | VARCHAR(191) | NOT NULL, UNIQUE | 原始 skill 名，如 `bk-fe:proposal` |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 P0 只做 exact match，不设计 `match_type`。
 
@@ -134,8 +134,8 @@ P0 只做 exact match，不设计 `match_type`。
 | `parse_duration_ms` | INT UNSIGNED | NULL | 清洗耗时 |
 | `retry_count` | INT UNSIGNED | NOT NULL DEFAULT 0 | 清洗重试次数 |
 | `last_error` | LONGTEXT | NULL | 最近失败原因 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 建议索引：
 
@@ -157,7 +157,8 @@ KEY idx_user_received(user_id, received_at)
 | `payload_bytes` | INT UNSIGNED | NOT NULL | 字节数 |
 | `content_type` | VARCHAR(128) | NULL | 请求 `Content-Type` |
 | `expires_at` | DATETIME(3) | NOT NULL, INDEX | raw 过期时间，约接收后 7 天 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 应用层限制：
 
@@ -168,7 +169,7 @@ MySQL max_allowed_packet 需大于应用限制
 
 ### 4.3 ingest_outbox
 
-可靠投递表。保证 raw 写入成功后，清洗任务不会因为 Redis / BullMQ 短暂失败而丢失。
+可靠投递表。保证 raw 写入成功后，清洗任务不会因为定时任务短暂失败或实例重启而丢失。BullMQ / MQ 可用后仍复用该表做可靠投递。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -184,8 +185,8 @@ MySQL max_allowed_packet 需大于应用限制
 | `locked_until` | DATETIME(3) | NULL | 锁过期时间 |
 | `last_error` | LONGTEXT | NULL | 最近投递失败原因 |
 | `dispatched_at` | DATETIME(3) | NULL | 投递成功时间 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 建议索引：
 
@@ -221,8 +222,8 @@ KEY idx_status_retry(status, next_retry_at)
 | `body_json` | JSON | NULL | body 结构 |
 | `body_text` | LONGTEXT | NULL | body 文本 |
 | `expires_at` | DATETIME(3) | NOT NULL, INDEX | 事件过期时间，约 30 天 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `event_id` 生成建议：
 
@@ -262,8 +263,8 @@ sha256(
 | `duration_ms` | INT UNSIGNED | NULL | 耗时 |
 | `source_batch_id` | BIGINT UNSIGNED | NULL, INDEX | 首次触发派生的 batch |
 | `evidence_json` | JSON | NULL | 配对证据 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `interaction_key` 生成建议：
 
@@ -287,8 +288,8 @@ prompt / response 明文和结构化 response。与元数据拆开，便于 30 �
 | `response_text` | LONGTEXT | NULL | LLM response 文本 |
 | `response_json` | LONGTEXT | NULL | response 原始结构 |
 | `expires_at` | DATETIME(3) | NOT NULL, INDEX | 明文过期时间，约 30 天 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 ## 6. SDD 业务层
 
@@ -318,8 +319,8 @@ prompt / response 明文和结构化 response。与元数据拆开，便于 30 �
 | `event_sequence` | INT UNSIGNED | NULL | 同一 prompt 下的事件顺序 |
 | `status` | VARCHAR(32) | NOT NULL | `started` / `completed` / `failed` / `unknown` |
 | `event_time` | DATETIME(3) | NULL, INDEX | 调用时间 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `usage_key` 生成建议：
 
@@ -348,8 +349,8 @@ sha256(
 | `relative_dir` | VARCHAR(1024) | NOT NULL | 相对 requirements root 的需求目录 |
 | `first_seen_at` | DATETIME(3) | NULL | 首次出现 |
 | `last_seen_at` | DATETIME(3) | NULL, INDEX | 最近出现 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `work_item_key` 生成建议：
 
@@ -373,8 +374,8 @@ sha256(requirements_repo_name + ":" + business_domain + ":" + work_item_slug)
 | `first_seen_event_id` | CHAR(64) | NULL | 首次发现来源事件 |
 | `first_seen_at` | DATETIME(3) | NULL | 首次出现 |
 | `last_seen_at` | DATETIME(3) | NULL | 最近出现 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 ### 6.4 sdd_errors
 
@@ -399,8 +400,8 @@ sha256(requirements_repo_name + ":" + business_domain + ":" + work_item_slug)
 | `stack_hash` | CHAR(64) | NULL | 堆栈 hash |
 | `stack_trace` | LONGTEXT | NULL | 堆栈 |
 | `event_time` | DATETIME(3) | NULL, INDEX | 错误发生时间 |
-| `created_at` | DATETIME(3) | NOT NULL | 创建时间 |
-| `updated_at` | DATETIME(3) | NOT NULL | 更新时间 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
 `error_key` 生成建议：
 
@@ -426,7 +427,7 @@ P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。
 | `sdd_errors` | 至少 6 个月 | P0 可不清理 |
 | `sdd_work_items` | 长期 | P0 不清理 |
 
-Retention worker 建议每天执行一次，每批删除 500-2000 行，避免长事务。
+Retention 定时任务建议每天执行一次，每批删除 500-2000 行，避免长事务。
 
 ## 8. MySQL 配置建议
 

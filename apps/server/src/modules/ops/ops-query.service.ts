@@ -199,7 +199,8 @@ export class OpsQueryService {
     }
 
     const rows = (await dataSource.query(
-      `SELECT id, status, aggregate_id, attempts, last_error, created_at, updated_at
+      `SELECT id, status, aggregate_id, attempts, last_error,
+              gmt_create AS created_at, gmt_modified AS updated_at
        FROM ingest_outbox
        ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
        ORDER BY id DESC

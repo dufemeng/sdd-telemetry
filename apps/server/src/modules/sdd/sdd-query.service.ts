@@ -208,12 +208,12 @@ export class SddQueryService {
     await dataSource.transaction(async manager => {
       await manager.query(
         `INSERT INTO sdd_skill_semantics
-          (semantic_code, display_name, description, created_at, updated_at)
+          (semantic_code, display_name, description, gmt_create, gmt_modified)
          VALUES (?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
          ON DUPLICATE KEY UPDATE
            display_name = VALUES(display_name),
            description = VALUES(description),
-           updated_at = CURRENT_TIMESTAMP(3)`,
+           gmt_modified = CURRENT_TIMESTAMP(3)`,
         [input.semanticCode, input.displayName, input.description ?? null],
       );
       const rows = (await manager.query(
@@ -228,11 +228,11 @@ export class SddQueryService {
       for (const skillName of input.aliases) {
         await manager.query(
           `INSERT INTO sdd_skill_aliases
-            (semantic_id, skill_name, created_at, updated_at)
+            (semantic_id, skill_name, gmt_create, gmt_modified)
            VALUES (?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
            ON DUPLICATE KEY UPDATE
              semantic_id = VALUES(semantic_id),
-             updated_at = CURRENT_TIMESTAMP(3)`,
+             gmt_modified = CURRENT_TIMESTAMP(3)`,
           [semanticId, skillName],
         );
       }
@@ -645,7 +645,7 @@ export class SddQueryService {
       `INSERT INTO sdd_users
         (user_key, install_id, user_name, machine_id, machine_name,
          requirements_root_path, wiki_root_path, settings_json, settings_reported_at,
-         first_seen_at, last_seen_at, created_at, updated_at)
+         first_seen_at, last_seen_at, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3),
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
@@ -658,7 +658,7 @@ export class SddQueryService {
          settings_json = VALUES(settings_json),
          settings_reported_at = CURRENT_TIMESTAMP(3),
          last_seen_at = CURRENT_TIMESTAMP(3),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         userKey,
         input.installId ?? null,

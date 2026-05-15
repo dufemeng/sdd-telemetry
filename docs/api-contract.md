@@ -568,15 +568,15 @@ GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","o
 
 ### 7.3 GET /api/ops/jobs
 
-查看 outbox 和 BullMQ job 状态。
+查看 outbox 和清洗调度状态。P0 公司环境使用定时任务，BullMQ job 状态仅作为后续目标态增强。
 
 ### 7.4 GET /api/ops/jobs/:jobId
 
-查看单个 job 的错误、attempts、payload。
+查看单个 outbox/job 的错误、attempts、payload。
 
 ### 7.5 GET /api/ops/queue
 
-查看队列深度。
+查看 outbox 积压和清洗调度健康度。
 
 ## 8. 前端适配策略
 

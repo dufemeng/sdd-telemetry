@@ -35,7 +35,7 @@ export class IngestWriteRepository {
         `UPDATE otel_ingest_batches
          SET duplicate_count = duplicate_count + 1,
              last_duplicate_at = CURRENT_TIMESTAMP(3),
-             updated_at = CURRENT_TIMESTAMP(3)
+             gmt_modified = CURRENT_TIMESTAMP(3)
          WHERE id = ?`,
         [existingBatch.id],
       );
@@ -87,7 +87,7 @@ export class IngestWriteRepository {
     await manager.query(
       `INSERT INTO sdd_users
         (user_key, install_id, user_name, machine_id, machine_name, os_name, os_version,
-         client_name, client_version, first_seen_at, last_seen_at, created_at, updated_at)
+         client_name, client_version, first_seen_at, last_seen_at, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3),
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
@@ -100,7 +100,7 @@ export class IngestWriteRepository {
          client_name = COALESCE(VALUES(client_name), client_name),
          client_version = COALESCE(VALUES(client_version), client_version),
          last_seen_at = CURRENT_TIMESTAMP(3),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         input.userKey,
         hints.installId,
@@ -135,7 +135,7 @@ export class IngestWriteRepository {
       `INSERT INTO otel_ingest_batches
         (payload_hash, user_id, status, status_reason, payload_bytes, raw_log_count,
          event_count, derived_count, duplicate_count, received_at, retry_count,
-         created_at, updated_at)
+         gmt_create, gmt_modified)
        VALUES (?, ?, 'received', NULL, ?, ?, 0, 0, 0, CURRENT_TIMESTAMP(3), 0,
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
       [input.summary.payloadHash, userId, input.summary.payloadBytes, input.summary.rawLogCount],
@@ -155,8 +155,8 @@ export class IngestWriteRepository {
   ): Promise<void> {
     await manager.query(
       `INSERT INTO otel_raw_payloads
-        (batch_id, payload_json, payload_bytes, content_type, expires_at, created_at)
-       VALUES (?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY), CURRENT_TIMESTAMP(3))`,
+        (batch_id, payload_json, payload_bytes, content_type, expires_at, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
       [
         batchId,
         input.summary.payloadJson,
@@ -171,13 +171,13 @@ export class IngestWriteRepository {
     await manager.query(
       `INSERT INTO ingest_outbox
         (event_type, aggregate_id, payload_json, status, attempts, max_attempts,
-         next_retry_at, created_at, updated_at)
+         next_retry_at, gmt_create, gmt_modified)
        VALUES ('clean_batch', ?, ?, 'pending', 0, 20,
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          status = IF(status = 'failed_terminal', status, 'pending'),
          next_retry_at = CURRENT_TIMESTAMP(3),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [batchId, JSON.stringify({ batchId })],
     );
   }

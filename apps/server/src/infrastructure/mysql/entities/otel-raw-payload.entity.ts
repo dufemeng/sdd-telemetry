@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, UpdateDateColumn } from 'typeorm';
 import { IdEntity } from './common';
 
 @Entity({ name: 'otel_raw_payloads' })
@@ -20,6 +20,9 @@ export class OtelRawPayloadEntity extends IdEntity {
   @Column({ name: 'expires_at', type: 'datetime', precision: 3 })
   expiresAt!: Date;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 3 })
+  @CreateDateColumn({ name: 'gmt_create', type: 'datetime', precision: 3 })
   createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'gmt_modified', type: 'datetime', precision: 3 })
+  updatedAt!: Date;
 }

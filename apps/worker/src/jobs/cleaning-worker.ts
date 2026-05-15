@@ -139,7 +139,7 @@ export async function markBatchFailed(
            TIMESTAMPDIFF(MICROSECOND, parse_started_at, CURRENT_TIMESTAMP(3)) DIV 1000
          ),
          last_error = ?,
-         updated_at = CURRENT_TIMESTAMP(3)
+         gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE id = ?`,
     [status, status === 'failed_terminal' ? 'terminal cleaning failure' : 'retryable cleaning failure', stringifyError(error), batchId],
   );
@@ -179,7 +179,7 @@ async function markBatchProcessing(pool: Pool, batchId: string): Promise<LoadedB
            parse_duration_ms = NULL,
            retry_count = retry_count + 1,
            last_error = NULL,
-           updated_at = CURRENT_TIMESTAMP(3)
+           gmt_modified = CURRENT_TIMESTAMP(3)
        WHERE id = ?`,
       [batchId],
     );
@@ -235,7 +235,7 @@ async function upsertLogEvent(
       (event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
        display_name, service_name, service_version, severity_text, severity_number, event_time,
        observed_at, attributes_json, resource_json, body_json, body_text, expires_at,
-       created_at, updated_at)
+       gmt_create, gmt_modified)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
        DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
      ON DUPLICATE KEY UPDATE
@@ -258,7 +258,7 @@ async function upsertLogEvent(
        body_json = VALUES(body_json),
        body_text = VALUES(body_text),
        expires_at = VALUES(expires_at),
-       updated_at = CURRENT_TIMESTAMP(3)`,
+       gmt_modified = CURRENT_TIMESTAMP(3)`,
     [
       event.eventId,
       batch.batchId,
@@ -310,7 +310,7 @@ async function loadScopedEvents(
             attributes_json, body_json, body_text
      FROM otel_log_events
      WHERE ${clauses.map(clause => `(${clause})`).join(' OR ')}
-     ORDER BY COALESCE(event_time, created_at), id`,
+     ORDER BY COALESCE(event_time, gmt_create), id`,
     params,
   );
 
@@ -347,7 +347,7 @@ async function upsertInteractions(
       `INSERT INTO sdd_interactions
         (interaction_key, user_id, session_id, prompt_id, request_event_id, response_event_id,
          status, model, command_name, command_source, pairing_method, started_at, completed_at,
-         duration_ms, source_batch_id, evidence_json, created_at, updated_at)
+         duration_ms, source_batch_id, evidence_json, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          user_id = VALUES(user_id),
@@ -365,7 +365,7 @@ async function upsertInteractions(
          duration_ms = VALUES(duration_ms),
          source_batch_id = VALUES(source_batch_id),
          evidence_json = VALUES(evidence_json),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         key,
         userId,
@@ -400,7 +400,7 @@ async function upsertInteractions(
 
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_interaction_texts
-        (interaction_id, prompt_text, response_text, response_json, expires_at, created_at, updated_at)
+        (interaction_id, prompt_text, response_text, response_json, expires_at, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY),
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
@@ -408,7 +408,7 @@ async function upsertInteractions(
          response_text = VALUES(response_text),
          response_json = VALUES(response_json),
          expires_at = VALUES(expires_at),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         interactionId,
         extractPromptText(requestEvent),
@@ -460,7 +460,7 @@ async function upsertSkillUsages(
         (usage_key, semantic_id, alias_id, interaction_id, work_item_id, user_id, session_id,
          prompt_id, raw_skill_name, skill_source, invocation_trigger, command_name,
          service_version, observed_version, matched_by, rule_version, event_sequence,
-         status, event_time, created_at, updated_at)
+         status, event_time, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'alias_exact', 'p0-cleaner-v1',
          NULL, 'observed', ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
@@ -478,7 +478,7 @@ async function upsertSkillUsages(
          observed_version = VALUES(observed_version),
          status = VALUES(status),
          event_time = VALUES(event_time),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         usageKey,
         alias.semantic_id,
@@ -535,7 +535,7 @@ async function upsertErrors(
       `INSERT INTO sdd_errors
         (error_key, user_id, batch_id, event_id, interaction_id, usage_id, work_item_id,
          error_type, severity, source, retryable, error_message_hash, error_message,
-         stack_hash, stack_trace, event_time, created_at, updated_at)
+         stack_hash, stack_trace, event_time, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          user_id = VALUES(user_id),
@@ -551,7 +551,7 @@ async function upsertErrors(
          stack_hash = VALUES(stack_hash),
          stack_trace = VALUES(stack_trace),
          event_time = VALUES(event_time),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         sha256(`error:${event.event_id}:${messageHash ?? ''}`),
         event.user_id,
@@ -595,7 +595,7 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_work_items
         (work_item_key, requirements_repo_name, business_domain, work_item_slug,
-         work_item_title, relative_dir, first_seen_at, last_seen_at, created_at, updated_at)
+         work_item_title, relative_dir, first_seen_at, last_seen_at, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          requirements_repo_name = COALESCE(VALUES(requirements_repo_name), requirements_repo_name),
@@ -605,7 +605,7 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
          relative_dir = VALUES(relative_dir),
          first_seen_at = COALESCE(first_seen_at, VALUES(first_seen_at)),
          last_seen_at = GREATEST(COALESCE(last_seen_at, VALUES(last_seen_at)), VALUES(last_seen_at)),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         artifact.workItemKey,
         artifact.repoName,
@@ -629,7 +629,7 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
       `INSERT INTO sdd_work_item_artifacts
         (artifact_key, work_item_id, artifact_type, artifact_relative_path,
          artifact_full_path, system_module, first_seen_event_id, first_seen_at,
-         last_seen_at, created_at, updated_at)
+         last_seen_at, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          work_item_id = VALUES(work_item_id),
@@ -640,7 +640,7 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
          first_seen_event_id = COALESCE(first_seen_event_id, VALUES(first_seen_event_id)),
          first_seen_at = COALESCE(first_seen_at, VALUES(first_seen_at)),
          last_seen_at = GREATEST(COALESCE(last_seen_at, VALUES(last_seen_at)), VALUES(last_seen_at)),
-         updated_at = CURRENT_TIMESTAMP(3)`,
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         artifact.artifactKey,
         workItemId,
@@ -678,7 +678,7 @@ async function markBatchParsed(
            TIMESTAMPDIFF(MICROSECOND, parse_started_at, CURRENT_TIMESTAMP(3)) DIV 1000
          ),
          last_error = NULL,
-         updated_at = CURRENT_TIMESTAMP(3)
+         gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE id = ?`,
     [eventCount, derivedCount, batchId],
   );

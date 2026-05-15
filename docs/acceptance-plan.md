@@ -8,7 +8,7 @@
 2. 验收对象是新数据链路，不包括旧 SQLite 历史数据。
 3. 所有 API response 必须通过 `packages/api` 的 Zod schema。
 4. 所有数据库结构变化必须通过 migration。
-5. 清洗 worker 必须用 fixture 证明幂等、重试、跨 batch 配对。
+5. 定时清洗任务必须用 fixture 证明幂等、重试、跨 batch 配对。
 6. 前端必须用浏览器 smoke test 证明页面可用。
 
 ## 2. Fixture 策略
@@ -90,11 +90,11 @@ POST /api/ingest/otlp-logs basic-otlp.json
 2. `duplicate_count` 增加。
 3. response 返回相同 `batchId`、`duplicate=true`。
 
-BullMQ 暂停时：
+定时清洗任务未触发时：
 
 1. raw 仍能写入。
 2. outbox 保留 pending。
-3. Redis 恢复后 dispatcher 能补投。
+3. 下次定时任务触发后能 claim 并清洗。
 
 ## 6. Cleaning Integration Test
 
@@ -112,8 +112,8 @@ BullMQ 暂停时：
 
 幂等检查：
 
-1. 同一个 job 重试不会重复插入事件。
-2. 同一个 job 重试不会重复插入 usage。
+1. 同一个 batch 被重复调度不会重复插入事件。
+2. 同一个 batch 被重复调度不会重复插入 usage。
 3. reprocess 后续补齐后，派生数据数量应保持稳定；今日 MVP 不验收 reprocess。
 
 跨 batch 检查：
@@ -192,8 +192,8 @@ P0 不做复杂压测，但要证明 100 人团队 MVP 规模不会立刻崩。
 最小检查：
 
 1. 连续上传 1000 个 fixture batch。
-2. dispatcher 不丢 outbox。
-3. worker 能在可接受时间内清洗完成。
+2. 定时任务不丢 outbox。
+3. 清洗任务能在可接受时间内完成。
 4. dashboard 查询 P95 小于 2s。
 5. raw / text 大字段不会被默认列表接口全量返回。
 
@@ -201,12 +201,12 @@ P0 不做复杂压测，但要证明 100 人团队 MVP 规模不会立刻崩。
 
 全部满足才算 P0 完成：
 
-1. `pnpm dev` 能启动 web / server / worker。
-2. Docker Compose 能启动 MySQL / Redis。
+1. `pnpm dev` 能启动 web / server / 本地清洗运行时。
+2. Docker Compose 能启动 MySQL。
 3. migration 和 seed 可重复执行。
 4. 新上报 payload 能入 raw。
-5. outbox 能可靠投递。
-6. worker 能清洗并生成派生数据。
+5. outbox 能被定时任务可靠 claim。
+6. 定时清洗任务能生成派生数据。
 7. 所有 P0 API 通过 Zod contract test。
 8. dashboard 今日 MVP 页面可用。
 9. retention 可用；reprocess 作为后续能力补齐。
