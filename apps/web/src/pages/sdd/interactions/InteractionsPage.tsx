@@ -12,9 +12,11 @@ export default function InteractionsPage() {
 
   const rows = (data ?? []).filter((item) => {
     if (!search) return true;
-    return `${item.sessionId} ${item.promptId} ${item.userId} ${item.commandName}`
-      .toLowerCase()
-      .includes(search.toLowerCase());
+    const haystack = [item.sessionId, item.promptId, item.userId, item.commandName]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(search.toLowerCase());
   });
 
   return (

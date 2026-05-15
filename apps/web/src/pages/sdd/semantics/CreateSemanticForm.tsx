@@ -17,12 +17,18 @@ export function CreateSemanticForm() {
         className="grid gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          mutation.mutate({
-            semanticCode: code,
-            displayName:  name,
-            aliases:      aliases.split('\n').map((s) => s.trim()).filter(Boolean),
-          });
-          setCode(''); setName(''); setAliases('');
+          mutation.mutate(
+            {
+              semanticCode: code,
+              displayName:  name,
+              aliases:      aliases.split('\n').map((s) => s.trim()).filter(Boolean),
+            },
+            {
+              onSuccess: () => {
+                setCode(''); setName(''); setAliases('');
+              },
+            },
+          );
         }}
       >
         <label className="grid gap-1.5 text-[12px] text-[var(--color-secondary)]">
