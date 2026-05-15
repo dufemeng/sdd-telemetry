@@ -1,8 +1,21 @@
-import { Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Outlet, useOutletContext } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
+import { TopBar, type TimeRange } from './TopBar';
+
+interface ShellContext {
+  timeRange: TimeRange;
+  search: string;
+}
+
+export function useShellContext() {
+  return useOutletContext<ShellContext>();
+}
 
 export function AppShell() {
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [search,    setSearch]    = useState('');
+
   return (
     <div
       className="h-screen w-screen overflow-hidden text-[var(--color-text)]"
@@ -14,12 +27,17 @@ export function AppShell() {
       }}
     >
       <Sidebar />
-      <TopBar />
+      <TopBar
+        timeRange={timeRange}
+        onTimeRangeChange={setTimeRange}
+        search={search}
+        onSearchChange={setSearch}
+      />
       <main
         className="overflow-auto p-[18px]"
         style={{ background: 'var(--color-base)', gridColumn: 2, gridRow: 2 }}
       >
-        <Outlet />
+        <Outlet context={{ timeRange, search } satisfies ShellContext} />
       </main>
     </div>
   );

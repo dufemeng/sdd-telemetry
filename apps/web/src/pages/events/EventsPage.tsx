@@ -1,4 +1,5 @@
 import { Activity, BarChart3, Clock3, Search } from 'lucide-react';
+import { useShellContext } from '../../components/layout/AppShell';
 import { useEventDistribution } from './useEventDistribution';
 import { useEventTimeline } from './useEventTimeline';
 import { StatCard } from '../../components/ui/StatCard';
@@ -8,7 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { formatInteger, formatTime, formatDateTime } from '../../lib/format';
 
 export default function EventsPage() {
-  const timeRange = '24h';
+  const { timeRange } = useShellContext();
   const dist     = useEventDistribution(timeRange);
   const timeline = useEventTimeline(timeRange);
   const peak     = [...(timeline.data?.buckets ?? [])].sort((a, b) => b.eventCount - a.eventCount)[0];

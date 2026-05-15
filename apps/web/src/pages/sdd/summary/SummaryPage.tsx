@@ -1,11 +1,13 @@
 import { Layers3 } from 'lucide-react';
+import { useShellContext } from '../../../components/layout/AppShell';
 import { useSddUsageSummary } from './useSddUsageSummary';
 import { Panel } from '../../../components/ui/Panel';
 import { DataTable } from '../../../components/ui/DataTable';
 import { formatInteger, formatTime } from '../../../lib/format';
 
 export default function SummaryPage() {
-  const { data } = useSddUsageSummary('24h');
+  const { timeRange } = useShellContext();
+  const { data } = useSddUsageSummary(timeRange);
 
   return (
     <Panel title="技能概览" icon={<Layers3 size={18} />}>
