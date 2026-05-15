@@ -1,0 +1,88 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "install_id",
+            "value": {
+              "stringValue": "local-install-001"
+            }
+          },
+          {
+            "key": "user.name",
+            "value": {
+              "stringValue": "local-user"
+            }
+          },
+          {
+            "key": "machine.id",
+            "value": {
+              "stringValue": "local-machine-001"
+            }
+          },
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "local-host"
+            }
+          },
+          {
+            "key": "os.name",
+            "value": {
+              "stringValue": "darwin"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "claude-code"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "0.0.0-smoke"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "sdd-monitor-smoke"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1778769875000000000",
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "smoke event"
+              },
+              "attributes": [
+                {
+                  "key": "event_name",
+                  "value": {
+                    "stringValue": "api_request_body"
+                  }
+                },
+                {
+                  "key": "session_id",
+                  "value": {
+                    "stringValue": "session-smoke-001"
+                  }
+                },
+                {
+                  "key": "prompt_id",
+                  "value": {
+                    "stringValue": "prompt-smoke-001"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

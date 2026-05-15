@@ -18,6 +18,11 @@ export default {
   koa: {
     port: Number(process.env.PORT ?? 4318),
   },
+  bodyParser: {
+    jsonLimit: process.env.MAX_OTLP_BODY_LIMIT ?? '20mb',
+    textLimit: process.env.MAX_OTLP_BODY_LIMIT ?? '20mb',
+    formLimit: process.env.MAX_OTLP_BODY_LIMIT ?? '20mb',
+  },
   sddMonitor: {
     maxOtlpPayloadBytes: Number(process.env.MAX_OTLP_PAYLOAD_BYTES ?? 16 * 1024 * 1024),
     rawRetentionDays: Number(process.env.RAW_RETENTION_DAYS ?? 7),

@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/bootstrap.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "tsx src/infrastructure/mysql/run-migrations.ts",
     "db:seed": "tsx src/infrastructure/mysql/seed.ts",
