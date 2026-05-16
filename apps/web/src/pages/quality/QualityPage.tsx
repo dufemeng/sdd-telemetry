@@ -3,7 +3,11 @@ import { useFieldCoverage } from './useFieldCoverage';
 import { StatCard } from '../../components/ui/StatCard';
 import { Panel } from '../../components/ui/Panel';
 import { DataTable } from '../../components/ui/DataTable';
+import { Pagination } from '../../components/ui/Pagination';
 import { formatInteger, formatPercent, truncate } from '../../lib/format';
+import { useClientPagination } from '../../lib/useClientPagination';
+
+const PAGE_SIZE = 20;
 
 export default function QualityPage() {
   const { data } = useFieldCoverage();
@@ -12,6 +16,8 @@ export default function QualityPage() {
   const average     = fields.length > 0
     ? fields.reduce((s, f) => s + f.coverageRate, 0) / fields.length
     : null;
+
+  const { pageItems, pageNumber, hasNext, hasPrev, goNext, goPrev } = useClientPagination(fields, PAGE_SIZE);
 
   return (
     <div className="grid gap-3">
@@ -22,15 +28,25 @@ export default function QualityPage() {
         <StatCard icon={<Gauge       size={18} />} label="平均覆盖率"  value={formatPercent(average)}          hint="all fields" />
       </div>
       <Panel title="字段覆盖率" icon={<ListFilter size={18} />}>
-        <DataTable
-          headers={['字段', '覆盖率', '出现次数', '样例']}
-          rows={fields.map((f) => [
-            f.fieldPath,
-            formatPercent(f.coverageRate),
-            formatInteger(f.presentCount),
-            truncate(f.examples[0], 90),
-          ])}
-        />
+        <div className="grid gap-3">
+          <DataTable
+            headers={['字段', '覆盖率', '出现次数', '样例']}
+            rows={pageItems.map((f) => [
+              f.fieldPath,
+              formatPercent(f.coverageRate),
+              formatInteger(f.presentCount),
+              truncate(f.examples[0], 90),
+            ])}
+          />
+          <Pagination
+            pageNumber={pageNumber}
+            pageSize={PAGE_SIZE}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
+            onNext={goNext}
+            onPrev={goPrev}
+          />
+        </div>
       </Panel>
     </div>
   );

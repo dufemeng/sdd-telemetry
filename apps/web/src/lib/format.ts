@@ -31,7 +31,7 @@ export function formatDateTime(value: string | null | undefined): string {
 
 export function truncate(value: unknown, max = 120): string {
   if (value == null || value === '') return 'unknown';
-  const s = String(value);
+  const s = typeof value === 'object' ? JSON.stringify(value) : String(value);
   return s.length > max ? `${s.slice(0, max)}...` : s;
 }
 

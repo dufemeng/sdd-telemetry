@@ -5,12 +5,17 @@ import { useBatchList } from '../batches/useBatchList';
 import { StatCard } from '../../components/ui/StatCard';
 import { Panel } from '../../components/ui/Panel';
 import { DataTable } from '../../components/ui/DataTable';
+import { Pagination } from '../../components/ui/Pagination';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { formatInteger, formatBytes, formatTime } from '../../lib/format';
+import { useCursorPagination } from '../../lib/useCursorPagination';
+
+const PAGE_SIZE = 20;
 
 export default function IngestPage() {
   const { data } = useIngestHealth();
-  const failedBatches = useBatchList(['failed_retryable', 'failed_terminal']);
+  const { currentCursor, pageNumber, hasPrev, goNext, goPrev } = useCursorPagination();
+  const failedBatches = useBatchList(['failed_retryable', 'failed_terminal'], PAGE_SIZE, currentCursor);
 
   const latestMs = data?.latestReceivedAt ? Date.now() - new Date(data.latestReceivedAt).getTime() : null;
   const collectorStatus =
@@ -20,6 +25,8 @@ export default function IngestPage() {
   const statusVar =
     collectorStatus === '正在接收' ? 'good' :
     collectorStatus === '暂无数据' ? 'neutral' : 'warn';
+
+  const hasNext = Boolean(failedBatches.data?.nextCursor);
 
   return (
     <div className="grid gap-3">
@@ -61,17 +68,27 @@ export default function IngestPage() {
       </div>
 
       <Panel title="近期失败批次" icon={<AlertCircle size={18} />}>
-        <DataTable
-          headers={['状态', 'id', '接收时间', 'payload', '错误']}
-          rows={(failedBatches.data?.items ?? []).map((b) => [
-            <StatusBadge key="s" status={b.status} />,
-            b.id,
-            formatTime(b.receivedAt),
-            formatBytes(b.payloadBytes),
-            b.lastError ?? '—',
-          ])}
-          emptyText="暂无失败批次"
-        />
+        <div className="grid gap-3">
+          <DataTable
+            headers={['状态', 'id', '接收时间', 'payload', '错误']}
+            rows={(failedBatches.data?.items ?? []).map((b) => [
+              <StatusBadge key="s" status={b.status} />,
+              b.id,
+              formatTime(b.receivedAt),
+              formatBytes(b.payloadBytes),
+              b.lastError ?? '—',
+            ])}
+            emptyText="暂无失败批次"
+          />
+          <Pagination
+            pageNumber={pageNumber}
+            pageSize={PAGE_SIZE}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
+            onNext={() => failedBatches.data?.nextCursor && goNext(failedBatches.data.nextCursor)}
+            onPrev={goPrev}
+          />
+        </div>
       </Panel>
     </div>
   );

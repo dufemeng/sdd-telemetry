@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Database, ListFilter, Table2 } from 'lucide-react';
+import { Database, ListFilter, Table2 } from 'lucide-react';
 import { useOpsTables } from './useOpsTables';
 import { useTableRows } from './useTableRows';
 import { Panel } from '../../../components/ui/Panel';
 import { DataTable } from '../../../components/ui/DataTable';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Pagination } from '../../../components/ui/Pagination';
 import { formatInteger, formatBytes, truncate } from '../../../lib/format';
 import { useDebouncedValue } from '../../../lib/useDebouncedValue';
+import { useCursorPagination } from '../../../lib/useCursorPagination';
 import { FilterStrip } from './FilterStrip';
 import { toBackendFilterGroups, type FilterGroup } from './databaseFilter';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 type Tab = 'data' | 'schema';
 
 function TabButton({
@@ -58,8 +60,9 @@ export default function DatabasePage() {
 
   const [selectedTable, setSelectedTable] = useState('');
   const [groups,        setGroups]        = useState<FilterGroup[]>([]);
-  const [cursorStack,   setCursorStack]   = useState<string[]>([]);
   const [activeTab,     setActiveTab]     = useState<Tab>('data');
+
+  const { currentCursor, pageNumber, hasPrev, goNext, goPrev, reset: resetPagination } = useCursorPagination();
 
   const activeName  = selectedTable || tables[0]?.tableName || '';
   const activeTable = tables.find((t) => t.tableName === activeName) ?? tables[0];
@@ -67,7 +70,6 @@ export default function DatabasePage() {
 
   const debouncedGroups = useDebouncedValue(groups, 300);
   const backendFilters  = useMemo(() => toBackendFilterGroups(debouncedGroups), [debouncedGroups]);
-  const currentCursor   = cursorStack[cursorStack.length - 1];
 
   const rows = useTableRows({
     tableName: activeName,
@@ -79,26 +81,16 @@ export default function DatabasePage() {
   const switchTable = (name: string) => {
     setSelectedTable(name);
     setGroups([]);
-    setCursorStack([]);
+    resetPagination();
     setActiveTab('data');
   };
 
   const updateGroups = (next: FilterGroup[]) => {
     setGroups(next);
-    setCursorStack([]);
+    resetPagination();
   };
 
-  const goNext = () => {
-    if (rows.data?.nextCursor) setCursorStack([...cursorStack, rows.data.nextCursor]);
-  };
-
-  const goPrev = () => {
-    setCursorStack(cursorStack.slice(0, -1));
-  };
-
-  const pageNumber = cursorStack.length + 1;
   const hasNext = Boolean(rows.data?.nextCursor);
-  const hasPrev = cursorStack.length > 0;
 
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}>
@@ -127,10 +119,6 @@ export default function DatabasePage() {
       </Panel>
 
       <div className="grid gap-3">
-        <Panel title={activeTable?.tableName ?? '—'} icon={<ListFilter size={18} />}>
-          <FilterStrip columns={columns} groups={groups} onGroupsChange={updateGroups} />
-        </Panel>
-
         <div
           className="flex items-end gap-0"
           style={{ borderBottom: '1px solid var(--color-border)' }}
@@ -150,7 +138,11 @@ export default function DatabasePage() {
         </div>
 
         {activeTab === 'data' && (
-          <div>
+          <div className="grid gap-3">
+            <Panel title={activeTable?.tableName ?? '—'} icon={<ListFilter size={18} />}>
+              <FilterStrip columns={columns} groups={groups} onGroupsChange={updateGroups} />
+            </Panel>
+
             {rows.isLoading ? (
               <EmptyState text="加载中…" />
             ) : (() => {
@@ -163,33 +155,14 @@ export default function DatabasePage() {
                     headers={cols.map((c) => c.columnName)}
                     rows={data.map((row) => cols.map((c) => truncate(row[c.columnName], 160)))}
                   />
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-[var(--color-muted)]">
-                      第 {pageNumber} 页 · 每页 {PAGE_SIZE} 行
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={goPrev}
-                        disabled={!hasPrev}
-                        className="flex items-center gap-1 min-h-8 px-3 rounded-[4px] text-[12px] cursor-pointer text-[var(--color-secondary)] disabled:opacity-50 disabled:cursor-not-allowed hover:text-[var(--color-primary)] hover:bg-[#202016]"
-                        style={{ border: '1px solid var(--color-border)', background: 'transparent' }}
-                      >
-                        <ChevronLeft size={14} />
-                        上一页
-                      </button>
-                      <button
-                        type="button"
-                        onClick={goNext}
-                        disabled={!hasNext}
-                        className="flex items-center gap-1 min-h-8 px-3 rounded-[4px] text-[12px] cursor-pointer text-[var(--color-secondary)] disabled:opacity-50 disabled:cursor-not-allowed hover:text-[var(--color-primary)] hover:bg-[#202016]"
-                        style={{ border: '1px solid var(--color-border)', background: 'transparent' }}
-                      >
-                        下一页
-                        <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  </div>
+                  <Pagination
+                    pageNumber={pageNumber}
+                    pageSize={PAGE_SIZE}
+                    hasNext={hasNext}
+                    hasPrev={hasPrev}
+                    onNext={() => rows.data?.nextCursor && goNext(rows.data.nextCursor)}
+                    onPrev={goPrev}
+                  />
                 </div>
               );
             })()}
