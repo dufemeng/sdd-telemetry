@@ -1,0 +1,9 @@
+{
+  "name": "bk-fe",
+  "version": "0.1.0",
+  "description": "SDD 规格驱动开发工作流：proposal → design → task → code → codereview",
+  "author": {
+    "name": "dufemeng"
+  },
+  "skills": "./skills/"
+}

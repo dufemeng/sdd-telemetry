@@ -1,0 +1,26 @@
+{
+  "name": "sdd-chair-skills",
+  "owner": {
+    "name": "dufemeng"
+  },
+  "metadata": {
+    "description": "sdd-chair-backend 项目专用 SDD 工作流 skills",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "bk-fe",
+      "description": "SDD 规格驱动开发工作流：proposal → design → task → code → codereview",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./docs/claude-skills/bk-fe-sdd/skills/proposal",
+        "./docs/claude-skills/bk-fe-sdd/skills/design",
+        "./docs/claude-skills/bk-fe-sdd/skills/task",
+        "./docs/claude-skills/bk-fe-sdd/skills/code",
+        "./docs/claude-skills/bk-fe-sdd/skills/codereview",
+        "./docs/claude-skills/bk-fe-sdd/skills/help"
+      ]
+    }
+  ]
+}
