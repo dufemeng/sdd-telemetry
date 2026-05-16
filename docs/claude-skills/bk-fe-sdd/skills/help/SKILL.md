@@ -1,5 +1,5 @@
 ---
-name: bk-fe:help
+name: help
 description: 当用户询问 SDD 工作流怎么用、各 bk-fe skill 的区别、下一步该用哪个 skill、或需要查看命令说明时使用。
 ---
 

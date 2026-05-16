@@ -1,5 +1,5 @@
 ---
-name: bk-fe:codereview
+name: codereview
 description: 当用户要审查代码改动、评估 PR 风险、排查实现是否符合设计，或不知道某条 review 意见该不该接受、怎么回应时使用。发起审查和处理收到的反馈都在这个 skill 里，根据场景进入对应模式。
 ---
 
