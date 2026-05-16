@@ -33,7 +33,7 @@ export function truncateText(value: unknown, maxLength = 240): string | null {
     return null;
   }
 
-  const text = String(value);
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 

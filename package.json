@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "start": "pnpm dev",
+    "stop": "lsof -tnP -iTCP:4318,5173,5174 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; pkill -f 'turbo run dev' 2>/dev/null; pkill -f 'tsx watch src/main' 2>/dev/null; sleep 1; true",
     "dev:web": "pnpm --filter @sdd-telemetry/web dev",
     "dev:server": "pnpm --filter @sdd-telemetry/server dev",
     "dev:worker": "pnpm --filter @sdd-telemetry/worker dev",
-    "restart": "pkill -f 'turbo run dev' 2>/dev/null; lsof -tnP -iTCP:4318,5173,5174 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; pkill -f 'tsx watch src/main' 2>/dev/null; sleep 1; pnpm dev",
     "restart:web": "lsof -tnP -iTCP:5173,5174 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; sleep 1; pnpm dev:web",
     "restart:server": "lsof -tnP -iTCP:4318 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null; sleep 1; pnpm dev:server",
     "restart:worker": "pkill -f 'tsx watch src/main' 2>/dev/null; sleep 1; pnpm dev:worker",

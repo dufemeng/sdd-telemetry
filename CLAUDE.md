@@ -42,9 +42,9 @@
 ## 本地开发
 
 - 默认 `pnpm dev` 起全部三个 app（watch 模式）；单服务用 `pnpm dev:web` / `dev:server` / `dev:worker`
-- 强制重启用 `pnpm restart`（或 `restart:web` / `restart:server` / `restart:worker`）
+- 强制重启用 `pnpm restart`（等价于 `pnpm stop && pnpm start`，pnpm 生命周期命令）；单服务用 `restart:web` / `restart:server` / `restart:worker`
 - watch 模式下改 `src/` 自动生效；改 `.env` / `vite.config.ts` / `tsconfig.json` / 装依赖 / 进程崩 需手动重启
-- 不要用 `start`（跑 `dist/` 跟 `src/` 脱节，会看到旧代码行为）
+- 不要用 `node dist/`（start 脚本等价于 dev，不是编译产物）
 
 ## 后端验证
 
