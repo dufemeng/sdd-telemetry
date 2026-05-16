@@ -1,5 +1,5 @@
 ---
-name: task
+name: bk-fe-task
 description: 用于把系统设计或明确的实现方向拆成带验收标准的可执行任务（tasks.md）。只要设计决策已确定或用户知道要做什么、需要排优先级和规划提交顺序，就应该使用这个 skill，不要求一定已有 design.md。不要直接编码。
 ---
 

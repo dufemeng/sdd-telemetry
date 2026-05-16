@@ -1,5 +1,5 @@
 ---
-name: proposal
+name: bk-fe-proposal
 description: 用于把模糊需求变成可评审的技术提案（proposal.md）。只要需求方向还不清晰、存在多个可选方案需要权衡、或用户在讨论目标和约束，就应该使用这个 skill——即使用户没有明确说"要写提案"。不要用于直接编码。
 ---
 

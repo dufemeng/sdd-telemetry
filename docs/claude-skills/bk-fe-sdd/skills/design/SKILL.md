@@ -1,5 +1,5 @@
 ---
-name: design
+name: bk-fe-design
 description: 用于把清晰目标转成可落地的系统设计（design.md），覆盖模块、数据模型、API、状态流和错误处理。只要目标已足够明确、可以讨论"怎么做"而不是"做什么"，就应该使用这个 skill，不要求一定已有 proposal.md。不要直接编码。
 ---
 
