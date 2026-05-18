@@ -1,115 +1,68 @@
-# SDD Chair-compatible Monorepo
+# SDD 质量观测台
 
-这是 SDD Monitor 的新 monorepo 方案仓库。
+SDD（Skill-Driven Development）工作流的全链路观测平台。收集 Claude Code 技能调用的遥测数据，提供实时 dashboard 用于分析技能使用分布、漏斗转化、用户维度和数据质量。
 
-目标不是在旧 `sdd-telemetry` demo 上继续修补，而是重新设计一套更贴近公司 Chair 体系的全栈工程：前端保留现有 dashboard 体验，后端按新领域模型、MySQL、异步清洗和 Zod contract 重新实现。
+## 技术栈
 
-## 核心目标
-
-- 功能目标：跑通 SDD 日志上报、raw 保存、异步清洗、派生分析和 dashboard 展示。
-- 学习目标：真实落地 Controller、Service、Repository、ORM、Migration、事务、队列、日志、测试、部署、API contract 和前端工程化。
-- 迁移目标：降低未来迁到 Chair（EggJS-like + tegg DI + dal v2 + FaaS）的成本。
-
-## 已冻结方向
-
-```text
-pnpm workspace + Turborepo
-web      # React + Vite dashboard
-server   # MidwayJS HTTP API
-worker   # BullMQ worker / outbox dispatcher
-packages/api  # Zod contract + shared types + API client
-packages/config # 共享 tsconfig / eslint / prettier
+```
+web/        React 19 + Vite + Tailwind CSS v4 + TanStack Query + React Router v7
+server/     MidwayJS 4 HTTP API（端口 4318）
+worker/     本地异步清洗 worker（BullMQ + outbox 模式）
+packages/
+  api/      Zod contract + 共享类型（前后端唯一类型来源）
+  config/   共享 tsconfig / eslint / prettier
 ```
 
-关键决策：
+数据库：MySQL 8；队列：Redis；构建：pnpm workspace + Turborepo。
 
-- 后端不兼容旧 API，按 `ingest / events / sdd / ops` 四个新域设计。
-- 前端最低成本适配新 API，不让历史接口污染后端。
-- raw 同步入 MySQL，清洗异步执行。
-- 使用 `ingest_outbox` 保证清洗任务可靠投递。
-- P0 不迁旧 SQLite 历史数据，只验收新上报数据链路。
+## 本地启动
 
-## 文档
-
-- [实施方案](./docs/implementation-plan.md)
-- [数据库模型](./docs/database-model.md)
-- [API Contract](./docs/api-contract.md)
-- [P0 验收计划](./docs/acceptance-plan.md)
-- [Agent 协作规范](./AGENTS.md)
-
-## 文档保鲜机制
-
-当目录结构、workspace 配置、启动脚本、API contract、数据库迁移或 worker/outbox 语义变化时，必须同步检查 `README.md`、`CLAUDE.md`、`AGENTS.md` 和相关 `docs/`。提交前用下面的命令抓旧路径和过期结构描述：
+**前置条件**：Node 20+、pnpm 9+、Docker
 
 ```bash
-rg --hidden "ap""ps/(web|server|worker)|\\.\\/ap""ps/(web|server|worker)|ap""ps/" . -g '!node_modules/**' -g '!.git/**'
-```
-
-基础保鲜验证：
-
-```bash
-pnpm typecheck
-pnpm build
-```
-
-涉及运行链路时，还要跑 MySQL/Redis、迁移、schema verify、worker once 和至少一个 HTTP health 请求。
-
-## 本地开发
-
-安装依赖：
-
-```bash
+# 1. 依赖
 pnpm install
-```
 
-启动基础设施：
-
-```bash
+# 2. 基础设施
 docker compose up -d mysql redis
-```
 
-初始化数据库：
-
-```bash
+# 3. 数据库初始化（仅首次）
 pnpm db:migrate
 pnpm db:seed
-pnpm db:verify
-```
 
-启动全部应用：
-
-```bash
+# 4. 启动全部服务（watch 模式）
 pnpm dev
 ```
 
-也可以单独启动：
+服务地址：API `http://localhost:4318`，Web `http://localhost:5173`
+
+## 常用命令
 
 ```bash
-pnpm --filter @sdd-telemetry/server dev
-pnpm --filter @sdd-telemetry/worker dev
-pnpm --filter @sdd-telemetry/web dev
+pnpm dev:web / dev:server / dev:worker   # 单独启动某个服务
+pnpm restart:server                      # 强制重启 server（改 .env 或 tsconfig 后用）
+pnpm typecheck                           # 全量类型检查
+pnpm build                               # 全量构建
+pnpm db:migrate                          # 跑迁移
+pnpm db:seed                             # 写入种子数据
+pnpm db:verify                           # 验证 schema
+pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
 ```
 
-基础验收：
+## 数据链路
 
-```bash
-pnpm typecheck
-pnpm build
-curl -sS http://127.0.0.1:4318/api/ingest/health
+```
+Claude Code 插件
+  └─ POST /api/ingest/batch
+        └─ 写 otel_raw_payloads + ingest_outbox（事务）
+              └─ worker 轮询 outbox → 清洗 → 写 sdd_* 派生表
+                    └─ Dashboard 查询派生表展示
 ```
 
-单次清洗 worker 冒烟：
+## 文档
 
-```bash
-pnpm --filter @sdd-telemetry/worker once
-```
-
-如果本机 Redis 需要密码，设置：
-
-```bash
-REDIS_PASSWORD=your-password pnpm --filter @sdd-telemetry/worker once
-```
-
-本仓库默认 Redis 端口是 `46379`，避免和本机已有 `6379` 服务冲突；如需使用已有 Redis，可设置 `REDIS_PORT`。
-
-当前已完成 Milestone 1-4：工程骨架、数据库模型、raw 写入/outbox、异步清洗 worker。
+- [API Contract](./docs/api-contract.md)
+- [数据库模型](./docs/database-model.md)
+- [实施方案](./docs/implementation-plan.md)
+- [Agent 协作规范](./AGENTS.md)
+- [Claude 协作规范](./CLAUDE.md)
