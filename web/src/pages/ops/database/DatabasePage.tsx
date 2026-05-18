@@ -118,7 +118,7 @@ export default function DatabasePage() {
         </div>
       </Panel>
 
-      <div className="grid gap-3">
+      <div className="grid gap-3 self-start">
         <div
           className="flex items-end gap-0"
           style={{ borderBottom: '1px solid var(--color-border)' }}

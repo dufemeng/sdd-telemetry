@@ -86,26 +86,34 @@ export class OpsQueryService {
 
   async listTables(): Promise<OpsTablesResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const [tableRows, columnRows] = await Promise.all([
+    const [tableRows, columnRows, countRows] = await Promise.all([
       dataSource.query(
-        `SELECT table_name, table_rows AS estimated_rows, update_time AS updated_at
-       FROM information_schema.tables
-       WHERE table_schema = DATABASE()
-         AND table_name IN (${allowedTables.map(() => '?').join(',')})
-       ORDER BY table_name ASC`,
+        `SELECT table_name, update_time AS updated_at
+         FROM information_schema.tables
+         WHERE table_schema = DATABASE()
+           AND table_name IN (${allowedTables.map(() => '?').join(',')})
+         ORDER BY table_name ASC`,
         allowedTables,
       ) as Promise<TableRow[]>,
       this.listColumnsForTables(allowedTables),
+      Promise.all(
+        allowedTables.map(name =>
+          (dataSource.query(`SELECT COUNT(*) AS cnt FROM \`${name}\``) as Promise<[{ cnt: string | number }]>)
+            .then(rows => ({ name, count: toNumber(rows[0]?.cnt) })),
+        ),
+      ),
     ]);
-    const columnsByTable = groupColumnsByTable(columnRows);
+
+    const rowCountByTable = new Map(countRows.map(r => [r.name, r.count]));
+    const columnsByTable  = groupColumnsByTable(columnRows);
 
     const tables: OpsTable[] = tableRows.map(row => {
       const tableName = String(row.table_name ?? row.TABLE_NAME);
       return {
         tableName,
-        estimatedRows: toNumber(row.estimated_rows ?? row.TABLE_ROWS),
-        updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
-        columns: columnsByTable.get(tableName) ?? [],
+        estimatedRows: rowCountByTable.get(tableName) ?? 0,
+        updatedAt:     toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+        columns:       columnsByTable.get(tableName) ?? [],
       };
     });
 
