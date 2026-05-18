@@ -14,6 +14,7 @@ services:
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_0900_ai_ci"
       - "--max-allowed-packet=67108864"
+      - "--max-connections=300"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
