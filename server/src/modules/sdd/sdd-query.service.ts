@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Provide } from '@midwayjs/core';
 import type {
   CreateSddSemanticRequest,
+  UpdateSddSemanticRequest,
   ReportUserSettingsRequest,
   SddErrorItem,
   SddFunnel,
@@ -244,6 +245,46 @@ export class SddQueryService {
     }
 
     return semantic;
+  }
+
+  async updateSemantic(id: string, input: UpdateSddSemanticRequest): Promise<SddSemantic> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    await dataSource.transaction(async manager => {
+      await manager.query(
+        `UPDATE sdd_skill_semantics
+         SET display_name = ?, description = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+         WHERE id = ?`,
+        [input.displayName, input.description ?? null, id],
+      );
+      await manager.query(
+        `DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`,
+        [id],
+      );
+      for (const skillName of input.aliases) {
+        await manager.query(
+          `INSERT INTO sdd_skill_aliases
+            (semantic_id, skill_name, gmt_create, gmt_modified)
+           VALUES (?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
+          [id, skillName],
+        );
+      }
+    });
+
+    const all = await this.listSemantics();
+    const updated = all.find(item => item.id === id);
+    if (!updated) {
+      throw new Error(`semantic not found after update: ${id}`);
+    }
+
+    return updated;
+  }
+
+  async deleteSemantic(id: string): Promise<void> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    await dataSource.transaction(async manager => {
+      await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
+      await manager.query(`DELETE FROM sdd_skill_semantics WHERE id = ?`, [id]);
+    });
   }
 
   async getFunnel(query: SddFunnelQuery): Promise<SddFunnel> {

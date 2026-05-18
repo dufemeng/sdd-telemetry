@@ -1,7 +1,8 @@
-import { Controller, Get, Inject, Post } from '@midwayjs/core';
+import { Controller, Del, Get, Inject, Post, Put } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import {
   CreateSddSemanticRequestSchema,
+  UpdateSddSemanticRequestSchema,
   ReportUserSettingsRequestSchema,
   SddErrorItemSchema,
   SddFunnelQuerySchema,
@@ -50,6 +51,21 @@ export class SddController {
     const input = parseWithSchema(CreateSddSemanticRequestSchema, this.ctx.request.body);
     const data: SddSemantic = await this.sddQueryService.createSemantic(input);
     return ok(parseWithSchema(SddSemanticSchema, data));
+  }
+
+  @Put('/semantics/:id')
+  async updateSemantic() {
+    const id = this.ctx.params.id as string;
+    const input = parseWithSchema(UpdateSddSemanticRequestSchema, this.ctx.request.body);
+    const data: SddSemantic = await this.sddQueryService.updateSemantic(id, input);
+    return ok(parseWithSchema(SddSemanticSchema, data));
+  }
+
+  @Del('/semantics/:id')
+  async deleteSemantic() {
+    const id = this.ctx.params.id as string;
+    await this.sddQueryService.deleteSemantic(id);
+    return ok({ deleted: true });
   }
 
   @Get('/funnel')

@@ -22,6 +22,8 @@ export const CreateSddSemanticRequestSchema = z.object({
   aliases: z.array(z.string().min(1).max(191)).min(1),
 });
 
+export const UpdateSddSemanticRequestSchema = CreateSddSemanticRequestSchema.omit({ semanticCode: true });
+
 export const SddFunnelQuerySchema = TimeRangeQuerySchema.extend({
   groupBy: z.enum(['semantic', 'user', 'work_item']).default('semantic'),
 });
@@ -190,6 +192,7 @@ export const ReportUserSettingsRequestSchema = z.object({
 
 export type SddSemantic = z.infer<typeof SddSemanticSchema>;
 export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSchema>;
+export type UpdateSddSemanticRequest = z.infer<typeof UpdateSddSemanticRequestSchema>;
 export type SddFunnelQuery = z.infer<typeof SddFunnelQuerySchema>;
 export type SddFunnel = z.infer<typeof SddFunnelSchema>;
 export type SddListQuery = z.infer<typeof SddListQuerySchema>;
