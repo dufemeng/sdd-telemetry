@@ -30,6 +30,15 @@ export const SddFunnelQuerySchema = TimeRangeQuerySchema.extend({
   groupBy: z.enum(['semantic']).default('semantic'),
 });
 
+export const SddOverviewQuerySchema = TimeRangeQuerySchema;
+
+export const SddOverviewSchema = z.object({
+  activeUserCount: z.number(),
+  skillUsageCount: z.number(),
+  coveredWorkItemCount: z.number(),
+  generatedDocumentCount: z.number(),
+});
+
 export const SddFunnelSchema = z.object({
   totalInteractions: z.number(),
   totalSkillUsages: z.number(),
@@ -203,6 +212,8 @@ export const ReportUserSettingsRequestSchema = z.object({
 export type SddSemantic = z.infer<typeof SddSemanticSchema>;
 export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSchema>;
 export type UpdateSddSemanticRequest = z.infer<typeof UpdateSddSemanticRequestSchema>;
+export type SddOverviewQuery = z.infer<typeof SddOverviewQuerySchema>;
+export type SddOverview = z.infer<typeof SddOverviewSchema>;
 export type SddFunnelQuery = z.infer<typeof SddFunnelQuerySchema>;
 export type SddFunnel = z.infer<typeof SddFunnelSchema>;
 export type SddListQuery = z.infer<typeof SddListQuerySchema>;

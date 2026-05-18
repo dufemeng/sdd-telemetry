@@ -17,7 +17,10 @@ export function SemanticForm({ selected, onDeleteSuccess }: Props) {
 
   const [code,    setCode]    = useState('');
   const [name,    setName]    = useState('');
+  const [description, setDescription] = useState('');
   const [aliases, setAliases] = useState('');
+  const [artifactFilenamePatterns, setArtifactFilenamePatterns] = useState('');
+  const [patternsTouched, setPatternsTouched] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,10 +34,17 @@ export function SemanticForm({ selected, onDeleteSuccess }: Props) {
   useEffect(() => {
     if (selected) {
       setName(selected.displayName);
+      setDescription(selected.description ?? '');
       setAliases(selected.aliases.map((a) => a.skillName).join('\n'));
+      setArtifactFilenamePatterns(selected.artifactFilenamePatterns?.join('\n') ?? '');
     } else {
-      setCode(''); setName(''); setAliases('');
+      setCode('');
+      setName('');
+      setDescription('');
+      setAliases('');
+      setArtifactFilenamePatterns('');
     }
+    setPatternsTouched(false);
     setConfirming(false);
     createMutation.reset();
     updateMutation.reset();
@@ -42,19 +52,52 @@ export function SemanticForm({ selected, onDeleteSuccess }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
-  const aliasArr = () => aliases.split('\n').map((s) => s.trim()).filter(Boolean);
+  const linesToArray = (value: string) => value.split('\n').map((s) => s.trim()).filter(Boolean);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const descriptionValue = description.trim() || undefined;
+    const patternsValue = linesToArray(artifactFilenamePatterns);
+
     if (isEdit) {
+      const body = {
+        displayName: name,
+        description: descriptionValue,
+        aliases: linesToArray(aliases),
+      };
+
+      if (selected.artifactFilenamePatterns !== null || patternsTouched) {
+        Object.assign(body, { artifactFilenamePatterns: patternsValue });
+      }
+
       updateMutation.mutate({
         id: selected.id,
-        body: { displayName: name, aliases: aliasArr() },
+        body,
       });
     } else {
+      const body = {
+        semanticCode: code,
+        displayName: name,
+        description: descriptionValue,
+        aliases: linesToArray(aliases),
+      };
+
+      if (patternsValue.length > 0) {
+        Object.assign(body, { artifactFilenamePatterns: patternsValue });
+      }
+
       createMutation.mutate(
-        { semanticCode: code, displayName: name, aliases: aliasArr() },
-        { onSuccess: () => { setCode(''); setName(''); setAliases(''); } },
+        body,
+        {
+          onSuccess: () => {
+            setCode('');
+            setName('');
+            setDescription('');
+            setAliases('');
+            setArtifactFilenamePatterns('');
+            setPatternsTouched(false);
+          },
+        },
       );
     }
   };
@@ -97,12 +140,34 @@ export function SemanticForm({ selected, onDeleteSuccess }: Props) {
         </label>
 
         <label className="grid gap-1.5 text-[12px] text-[var(--color-secondary)]">
+          描述
+          <textarea
+            className={`${inputCls} min-h-[72px] p-2 resize-y`}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+
+        <label className="grid gap-1.5 text-[12px] text-[var(--color-secondary)]">
           技能别名（每行一个）
           <textarea
             className={`${inputCls} min-h-[108px] p-2 resize-y`}
             placeholder="每行一个 alias"
             value={aliases}
             onChange={(e) => setAliases(e.target.value)}
+          />
+        </label>
+
+        <label className="grid gap-1.5 text-[12px] text-[var(--color-secondary)]">
+          Artifact 文件名模式（每行一个）
+          <textarea
+            className={`${inputCls} min-h-[92px] p-2 resize-y`}
+            placeholder="design-*.md"
+            value={artifactFilenamePatterns}
+            onChange={(e) => {
+              setArtifactFilenamePatterns(e.target.value);
+              setPatternsTouched(true);
+            }}
           />
         </label>
 

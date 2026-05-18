@@ -10,6 +10,8 @@ import {
   SddInteractionDetailSchema,
   SddInteractionItemSchema,
   SddListQuerySchema,
+  SddOverviewQuerySchema,
+  SddOverviewSchema,
   SddSemanticSchema,
   SddUsageSummaryQuerySchema,
   SddUsageSummaryResponseSchema,
@@ -22,6 +24,7 @@ import {
   type SddFunnel,
   type SddInteractionDetail,
   type SddInteractionItem,
+  type SddOverview,
   type SddSemantic,
   type SddUsageSummaryResponse,
   type SddUsageItem,
@@ -68,6 +71,13 @@ export class SddController {
     const id = this.ctx.params.id as string;
     await this.sddQueryService.deleteSemantic(id);
     return ok({ deleted: true });
+  }
+
+  @Get('/overview')
+  async overview() {
+    const query = parseWithSchema(SddOverviewQuerySchema, this.ctx.query);
+    const data: SddOverview = await this.sddQueryService.getOverview(query);
+    return ok(parseWithSchema(SddOverviewSchema, data));
   }
 
   @Get('/funnel')

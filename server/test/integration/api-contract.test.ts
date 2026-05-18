@@ -11,6 +11,7 @@ import {
   FieldValuesSchema,
   EventTimelineSchema,
   SddSemanticSchema,
+  SddOverviewSchema,
   SddFunnelSchema,
   SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
@@ -40,7 +41,10 @@ let didReachServer = false;
 
 async function api(method: string, path: string, body?: unknown) {
   const url = `${BASE}${path}`;
-  const init: RequestInit = { method, headers: { 'Content-Type': 'application/json' } };
+  const init: RequestInit = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
@@ -49,16 +53,10 @@ async function api(method: string, path: string, body?: unknown) {
   return { status: res.status, body: json };
 }
 
-function validateContract<TSchema extends z.ZodType>(
-  label: string,
-  response: unknown,
-  dataSchema: TSchema,
-): z.infer<TSchema> {
+function validateContract<TSchema extends z.ZodType>(label: string, response: unknown, dataSchema: TSchema): z.infer<TSchema> {
   const result = createApiResponseSchema(dataSchema).safeParse(response);
   if (!result.success) {
-    const issues = result.error.issues.map(
-      (i) => `  ${i.path.join('.')}: ${i.message}`,
-    );
+    const issues = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`);
     throw new Error(`${label} contract violation:\n${issues.join('\n')}`);
   }
   return result.data.data;
@@ -78,57 +76,39 @@ async function cleanupContractData() {
   });
 
   try {
-    const [batchRows] = await connection.query(
+    const [batchRows] = (await connection.query(
       `SELECT b.id
        FROM otel_ingest_batches b
        JOIN sdd_users u ON u.id = b.user_id
        WHERE u.install_id IN (?, ?)`,
       [CONTRACT_SETTINGS_INSTALL_ID, CONTRACT_INGEST_INSTALL_ID],
-    ) as [Array<{ id: string }>, unknown];
-    const batchIds = [
-      ...batchRows.map(row => String(row.id)),
-      ...(contractBatchId ? [contractBatchId] : []),
-    ];
+    )) as [Array<{ id: string }>, unknown];
+    const batchIds = [...batchRows.map((row) => String(row.id)), ...(contractBatchId ? [contractBatchId] : [])];
 
     for (const batchId of new Set(batchIds)) {
       await connection.execute('DELETE FROM sdd_errors WHERE batch_id = ?', [batchId]);
       await connection.execute('DELETE FROM sdd_skill_usages WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [batchId]);
-      await connection.execute('DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [batchId]);
-      await connection.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [batchId]);
-      await connection.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [batchId]);
-      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', [
-        'clean_batch',
+      await connection.execute('DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [
         batchId,
       ]);
+      await connection.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [batchId]);
+      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', ['clean_batch', batchId]);
       await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [batchId]);
       await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [batchId]);
     }
 
     if (contractBatchId) {
-      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', [
-        'clean_batch',
-        contractBatchId,
-      ]);
+      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', ['clean_batch', contractBatchId]);
       await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [contractBatchId]);
       await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [contractBatchId]);
     }
 
-    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name = ?', [
-      CONTRACT_SKILL_ALIAS,
-    ]);
-    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name LIKE ?', [
-      'ct-skill-%',
-    ]);
-    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code = ?', [
-      CONTRACT_SEMANTIC_CODE,
-    ]);
-    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code LIKE ?', [
-      'contract-test-%',
-    ]);
-    await connection.execute('DELETE FROM sdd_users WHERE install_id IN (?, ?)', [
-      CONTRACT_SETTINGS_INSTALL_ID,
-      CONTRACT_INGEST_INSTALL_ID,
-    ]);
+    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name = ?', [CONTRACT_SKILL_ALIAS]);
+    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name LIKE ?', ['ct-skill-%']);
+    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code = ?', [CONTRACT_SEMANTIC_CODE]);
+    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code LIKE ?', ['contract-test-%']);
+    await connection.execute('DELETE FROM sdd_users WHERE install_id IN (?, ?)', [CONTRACT_SETTINGS_INSTALL_ID, CONTRACT_INGEST_INSTALL_ID]);
   } finally {
     await connection.end();
   }
@@ -136,7 +116,9 @@ async function cleanupContractData() {
 
 describe('API Contract Tests', () => {
   beforeAll(async () => {
-    const res = await fetch(`${BASE}/api/ingest/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+    const res = await fetch(`${BASE}/api/ingest/health`, {
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => null);
     if (!res?.ok) {
       throw new Error(`Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`);
     }
@@ -184,22 +166,34 @@ describe('API Contract Tests', () => {
 
     it('POST /api/ingest/otlp-logs — returns IngestLogsResponse', async () => {
       const payload = {
-        resourceLogs: [{
-          resource: {
-            attributes: [
-              { key: 'install_id', value: { stringValue: CONTRACT_INGEST_INSTALL_ID } },
-              { key: 'service.name', value: { stringValue: 'contract-test' } },
+        resourceLogs: [
+          {
+            resource: {
+              attributes: [
+                {
+                  key: 'install_id',
+                  value: { stringValue: CONTRACT_INGEST_INSTALL_ID },
+                },
+                {
+                  key: 'service.name',
+                  value: { stringValue: 'contract-test' },
+                },
+              ],
+            },
+            scopeLogs: [
+              {
+                scope: {},
+                logRecords: [
+                  {
+                    timeUnixNano: '1715699999000000000',
+                    body: { stringValue: 'contract-test' },
+                    attributes: [],
+                  },
+                ],
+              },
             ],
           },
-          scopeLogs: [{
-            scope: {},
-            logRecords: [{
-              timeUnixNano: '1715699999000000000',
-              body: { stringValue: 'contract-test' },
-              attributes: [],
-            }],
-          }],
-        }],
+        ],
       };
       const { status, body } = await api('POST', '/api/ingest/otlp-logs', payload);
       expect(status).toBe(200);
@@ -255,6 +249,12 @@ describe('API Contract Tests', () => {
       expect(status).toBe(200);
       const data = validateContract('SddSemantic', body, SddSemanticSchema);
       expect(data.semanticCode).toBe(CONTRACT_SEMANTIC_CODE);
+    });
+
+    it('GET /api/sdd/overview — returns SddOverview', async () => {
+      const { status, body } = await api('GET', '/api/sdd/overview');
+      expect(status).toBe(200);
+      validateContract('SddOverview', body, SddOverviewSchema);
     });
 
     it('GET /api/sdd/funnel — returns SddFunnel', async () => {

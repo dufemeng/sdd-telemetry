@@ -10,6 +10,8 @@ import type {
   SddInteractionDetail,
   SddInteractionItem,
   SddListQuery,
+  SddOverview,
+  SddOverviewQuery,
   SddSemantic,
   SddUsageSummaryItem,
   SddUsageSummaryQuery,
@@ -21,14 +23,7 @@ import type {
   SddWorkItemDetail,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import {
-  addTimeRangeWhere,
-  toIsoDate,
-  toNumber,
-  toStringId,
-  truncateText,
-  whereSql,
-} from '../query-utils';
+import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText, whereSql } from '../query-utils';
 
 interface SemanticRow {
   id: string | number;
@@ -46,6 +41,11 @@ interface FunnelRow {
   usage_count: string | number;
   user_count: string | number;
   work_item_count: string | number;
+}
+
+interface OverviewUsageRow {
+  active_user_count: string | number;
+  skill_usage_count: string | number;
 }
 
 interface FunnelQualityRow {
@@ -171,6 +171,8 @@ interface IdRow {
   id: string | number;
 }
 
+const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
+
 @Provide('sddQueryService')
 export class SddQueryService {
   @Inject('mysqlDataSourceManager')
@@ -216,7 +218,7 @@ export class SddQueryService {
 
   async createSemantic(input: CreateSddSemanticRequest): Promise<SddSemantic> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async manager => {
+    await dataSource.transaction(async (manager) => {
       await manager.query(
         `INSERT INTO sdd_skill_semantics
           (semantic_code, display_name, description, artifact_filename_patterns,
@@ -231,15 +233,10 @@ export class SddQueryService {
           input.semanticCode,
           input.displayName,
           input.description ?? null,
-          input.artifactFilenamePatterns === undefined
-            ? null
-            : JSON.stringify(input.artifactFilenamePatterns),
+          input.artifactFilenamePatterns === undefined ? null : JSON.stringify(input.artifactFilenamePatterns),
         ],
       );
-      const rows = (await manager.query(
-        `SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`,
-        [input.semanticCode],
-      )) as IdRow[];
+      const rows = (await manager.query(`SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`, [input.semanticCode])) as IdRow[];
       const semanticId = rows[0]?.id;
       if (!semanticId) {
         throw new Error(`failed to create semantic: ${input.semanticCode}`);
@@ -258,7 +255,7 @@ export class SddQueryService {
       }
     });
 
-    const semantic = (await this.listSemantics()).find(item => item.semanticCode === input.semanticCode);
+    const semantic = (await this.listSemantics()).find((item) => item.semanticCode === input.semanticCode);
     if (!semantic) {
       throw new Error(`semantic not found after create: ${input.semanticCode}`);
     }
@@ -268,7 +265,7 @@ export class SddQueryService {
 
   async updateSemantic(id: string, input: UpdateSddSemanticRequest): Promise<SddSemantic> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async manager => {
+    await dataSource.transaction(async (manager) => {
       await manager.query(
         `UPDATE sdd_skill_semantics
          SET display_name = ?,
@@ -279,16 +276,11 @@ export class SddQueryService {
         [
           input.displayName,
           input.description ?? null,
-          input.artifactFilenamePatterns === undefined
-            ? null
-            : JSON.stringify(input.artifactFilenamePatterns),
+          input.artifactFilenamePatterns === undefined ? null : JSON.stringify(input.artifactFilenamePatterns),
           id,
         ],
       );
-      await manager.query(
-        `DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`,
-        [id],
-      );
+      await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
       for (const skillName of input.aliases) {
         await manager.query(
           `INSERT INTO sdd_skill_aliases
@@ -300,7 +292,7 @@ export class SddQueryService {
     });
 
     const all = await this.listSemantics();
-    const updated = all.find(item => item.id === id);
+    const updated = all.find((item) => item.id === id);
     if (!updated) {
       throw new Error(`semantic not found after update: ${id}`);
     }
@@ -310,10 +302,55 @@ export class SddQueryService {
 
   async deleteSemantic(id: string): Promise<void> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async manager => {
+    await dataSource.transaction(async (manager) => {
       await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
       await manager.query(`DELETE FROM sdd_skill_semantics WHERE id = ?`, [id]);
     });
+  }
+
+  async getOverview(query: SddOverviewQuery): Promise<SddOverview> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const usageWhere: string[] = [];
+    const usageParams: unknown[] = [];
+    addTimeRangeWhere(usageWhere, usageParams, 'u.event_time', query);
+
+    const workItemWhere: string[] = [];
+    const workItemParams: unknown[] = [];
+    addTimeRangeWhere(workItemWhere, workItemParams, 'wi.last_seen_at', query);
+
+    const artifactWhere = [`a.artifact_type IN (${SDD_OVERVIEW_DOCUMENT_TYPES.map(() => '?').join(',')})`];
+    const artifactParams: unknown[] = [...SDD_OVERVIEW_DOCUMENT_TYPES];
+    addTimeRangeWhere(artifactWhere, artifactParams, 'COALESCE(a.first_seen_at, a.last_seen_at)', query);
+
+    const [usageRows, workItemRows, artifactRows] = await Promise.all([
+      dataSource.query(
+        `SELECT
+           COUNT(DISTINCT u.user_id) AS active_user_count,
+           COUNT(*) AS skill_usage_count
+         FROM sdd_skill_usages u
+         ${whereSql(usageWhere)}`,
+        usageParams,
+      ) as Promise<OverviewUsageRow[]>,
+      dataSource.query(
+        `SELECT COUNT(*) AS count_value
+         FROM sdd_work_items wi
+         ${whereSql(workItemWhere)}`,
+        workItemParams,
+      ) as Promise<CountRow[]>,
+      dataSource.query(
+        `SELECT COUNT(*) AS count_value
+         FROM sdd_work_item_artifacts a
+         ${whereSql(artifactWhere)}`,
+        artifactParams,
+      ) as Promise<CountRow[]>,
+    ]);
+
+    return {
+      activeUserCount: toNumber(usageRows[0]?.active_user_count),
+      skillUsageCount: toNumber(usageRows[0]?.skill_usage_count),
+      coveredWorkItemCount: toNumber(workItemRows[0]?.count_value),
+      generatedDocumentCount: toNumber(artifactRows[0]?.count_value),
+    };
   }
 
   async getFunnel(query: SddFunnelQuery): Promise<SddFunnel> {
@@ -327,10 +364,7 @@ export class SddQueryService {
     addTimeRangeWhere(interactionWhere, interactionParams, 'i.started_at', query);
 
     const [interactionRows, qualityRows, usageRows] = await Promise.all([
-      dataSource.query(
-        `SELECT COUNT(*) AS count_value FROM sdd_interactions i ${whereSql(interactionWhere)}`,
-        interactionParams,
-      ) as Promise<CountRow[]>,
+      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_interactions i ${whereSql(interactionWhere)}`, interactionParams) as Promise<CountRow[]>,
       dataSource.query(
         `SELECT
            SUM(t.prompt_text IS NOT NULL AND t.prompt_text <> '') AS with_prompt_count,
@@ -375,7 +409,7 @@ export class SddQueryService {
         responseCoverageRate: totalInteractions > 0 ? withResponseCount / totalInteractions : null,
         pairingSuccessRate: totalInteractions > 0 ? pairedCount / totalInteractions : null,
       },
-      stages: usageRows.map(row => {
+      stages: usageRows.map((row) => {
         const usageCount = toNumber(row.usage_count);
         return {
           semanticCode: row.semantic_code ?? 'unknown',
@@ -414,7 +448,7 @@ export class SddQueryService {
       return { items: [] };
     }
 
-    const rawSkillNames = rows.map(row => row.raw_skill_name);
+    const rawSkillNames = rows.map((row) => row.raw_skill_name);
     const versionWhere = [...params];
     const versionRows = (await dataSource.query(
       `SELECT u.raw_skill_name,
@@ -440,18 +474,20 @@ export class SddQueryService {
     }
 
     return {
-      items: rows.map((row): SddUsageSummaryItem => ({
-        semanticCode: row.semantic_code,
-        semanticDisplayName: row.semantic_display_name,
-        rawSkillName: row.raw_skill_name,
-        usageCount: toNumber(row.usage_count),
-        activeUserCount: toNumber(row.active_user_count),
-        sessionCount: toNumber(row.session_count),
-        workItemCount: toNumber(row.work_item_count),
-        versions: versionsBySkill.get(row.raw_skill_name) ?? [],
-        firstSeenAt: toIsoDate(row.first_seen_at),
-        lastSeenAt: toIsoDate(row.last_seen_at),
-      })),
+      items: rows.map(
+        (row): SddUsageSummaryItem => ({
+          semanticCode: row.semantic_code,
+          semanticDisplayName: row.semantic_display_name,
+          rawSkillName: row.raw_skill_name,
+          usageCount: toNumber(row.usage_count),
+          activeUserCount: toNumber(row.active_user_count),
+          sessionCount: toNumber(row.session_count),
+          workItemCount: toNumber(row.work_item_count),
+          versions: versionsBySkill.get(row.raw_skill_name) ?? [],
+          firstSeenAt: toIsoDate(row.first_seen_at),
+          lastSeenAt: toIsoDate(row.last_seen_at),
+        }),
+      ),
     };
   }
 
@@ -470,7 +506,7 @@ export class SddQueryService {
       [...params, query.limit],
     )) as UsageRow[];
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: toStringId(row.id),
       usageKey: row.usage_key,
       semanticCode: row.semantic_code,
@@ -584,7 +620,7 @@ export class SddQueryService {
       [...params, query.limit],
     )) as ErrorRow[];
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: toStringId(row.id),
       errorType: row.error_type,
       severity: row.severity,
@@ -615,7 +651,7 @@ export class SddQueryService {
        LIMIT 200`,
     )) as UserRow[];
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: toStringId(row.id),
       userKey: row.user_key,
       installId: row.install_id,
@@ -643,7 +679,7 @@ export class SddQueryService {
        LIMIT 100`,
     )) as VersionRow[];
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       version: row.version ?? 'unknown',
       usageCount: toNumber(row.usage_count),
       userCount: toNumber(row.user_count),
@@ -671,7 +707,7 @@ export class SddQueryService {
       [...params, query.limit],
     )) as WorkItemRow[];
 
-    return rows.map(row => this.toWorkItem(row));
+    return rows.map((row) => this.toWorkItem(row));
   }
 
   async getWorkItemDetail(workItemId: string): Promise<SddWorkItemDetail | null> {
@@ -692,14 +728,8 @@ export class SddQueryService {
          ORDER BY id ASC`,
         [workItemId],
       ) as Promise<ArtifactRow[]>,
-      dataSource.query(
-        `SELECT COUNT(*) AS count_value FROM sdd_skill_usages WHERE work_item_id = ?`,
-        [workItemId],
-      ) as Promise<CountRow[]>,
-      dataSource.query(
-        `SELECT COUNT(*) AS count_value FROM sdd_errors WHERE work_item_id = ?`,
-        [workItemId],
-      ) as Promise<CountRow[]>,
+      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_skill_usages WHERE work_item_id = ?`, [workItemId]) as Promise<CountRow[]>,
+      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_errors WHERE work_item_id = ?`, [workItemId]) as Promise<CountRow[]>,
     ]);
     const workItem = workRows[0];
 
@@ -709,7 +739,7 @@ export class SddQueryService {
 
     return {
       ...this.toWorkItem(workItem),
-      artifacts: artifactRows.map(row => ({
+      artifacts: artifactRows.map((row) => ({
         id: toStringId(row.id),
         artifactType: row.artifact_type,
         artifactRelativePath: row.artifact_relative_path,
@@ -755,7 +785,7 @@ export class SddQueryService {
       ],
     );
 
-    const user = (await this.listUsers()).find(item => item.userKey === userKey);
+    const user = (await this.listUsers()).find((item) => item.userKey === userKey);
     if (!user) {
       throw new Error(`user not found after settings report: ${userKey}`);
     }
@@ -780,7 +810,10 @@ export class SddQueryService {
     };
   }
 
-  private buildUsageSummaryWhere(query: SddUsageSummaryQuery): { where: string; params: unknown[] } {
+  private buildUsageSummaryWhere(query: SddUsageSummaryQuery): {
+    where: string;
+    params: unknown[];
+  } {
     const clauses: string[] = [];
     const params: unknown[] = [];
     addTimeRangeWhere(clauses, params, 'u.event_time', query);
@@ -801,12 +834,7 @@ export class SddQueryService {
     };
   }
 
-  private addCommonFilters(
-    clauses: string[],
-    params: unknown[],
-    query: SddListQuery,
-    alias: string,
-  ): void {
+  private addCommonFilters(clauses: string[], params: unknown[], query: SddListQuery, alias: string): void {
     if (query.userId) {
       clauses.push(`${alias}.user_id = ?`);
       params.push(query.userId);
@@ -889,9 +917,7 @@ function parseStringArray(value: unknown): string[] | null {
 
   try {
     const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string')
-      : null;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : null;
   } catch {
     return null;
   }

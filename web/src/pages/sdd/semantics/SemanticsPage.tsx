@@ -9,6 +9,12 @@ import type { SddSemantic } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;
 
+function formatArtifactFilenamePatterns(patterns: string[] | null) {
+  if (patterns === null) return '默认';
+  if (patterns.length === 0) return '已禁用';
+  return patterns.join(', ');
+}
+
 export default function SemanticsPage() {
   const { data } = useSddSemantics();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -34,7 +40,7 @@ export default function SemanticsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[var(--color-border)]">
-                  {['语义编码', '展示名', '描述', '技能别名'].map((h) => (
+                  {['语义编码', '展示名', '描述', '文件名模式', '技能别名'].map((h) => (
                     <th
                       key={h}
                       className="pb-2 pr-4 text-[11px] text-[var(--color-muted)] font-medium whitespace-nowrap"
@@ -59,6 +65,9 @@ export default function SemanticsPage() {
                     <td className="py-2 pr-4 text-[12px]">{item.semanticCode}</td>
                     <td className="py-2 pr-4 text-[12px]">{item.displayName}</td>
                     <td className="py-2 pr-4 text-[12px] text-[var(--color-muted)]">{item.description ?? '—'}</td>
+                    <td className="py-2 pr-4 text-[12px] text-[var(--color-muted)]">
+                      {formatArtifactFilenamePatterns(item.artifactFilenamePatterns)}
+                    </td>
                     <td className="py-2 text-[12px]">{item.aliases.map((a) => a.skillName).join(', ')}</td>
                   </tr>
                 ))}

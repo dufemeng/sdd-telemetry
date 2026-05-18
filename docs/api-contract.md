@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-05-15  
+更新时间：2026-05-18  
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -288,7 +288,37 @@ export const CreateSddSemanticRequestSchema = z.object({
 
 删除语义。P0 可做软限制：已有 usage 的 semantic 不允许删除，只允许改名和 alias。
 
-### 6.5 GET /api/sdd/funnel
+### 6.5 GET /api/sdd/overview
+
+总览页业务 KPI。
+
+Query：
+
+```ts
+export const SddOverviewQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+```
+
+Response data：
+
+```ts
+export const SddOverviewSchema = z.object({
+  activeUserCount: z.number(),
+  skillUsageCount: z.number(),
+  coveredWorkItemCount: z.number(),
+  generatedDocumentCount: z.number(),
+});
+```
+
+说明：
+
+1. `activeUserCount` 和 `skillUsageCount` 来自时间范围内的 `sdd_skill_usages`。
+2. `coveredWorkItemCount` 来自时间范围内最近出现的 `sdd_work_items`。
+3. `generatedDocumentCount` 统计 `proposal` / `design` / `task` / `codereview` 类型的 `sdd_work_item_artifacts`。
+
+### 6.6 GET /api/sdd/funnel
 
 Skill 调用漏斗。
 
@@ -298,7 +328,7 @@ Query：
 export const SddFunnelQuerySchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
-  groupBy: z.enum(['semantic', 'user', 'work_item']).default('semantic'),
+  groupBy: z.enum(['semantic']).default('semantic'),
 });
 ```
 
@@ -336,7 +366,7 @@ export const SddFunnelSchema = z.object({
 2. `callQuality` 用于今日 MVP 的调用质量漏斗：触发 Skill、有 prompt、有 response、prompt/response 成功配对。
 3. `triggeredCount` 等于当前时间范围内的 `sdd_skill_usages` 数量；prompt/response 相关计数来自 `sdd_interactions` + `sdd_interaction_texts`。
 
-### 6.6 GET /api/sdd/usage-summary
+### 6.7 GET /api/sdd/usage-summary
 
 Skill 使用概览，按 `rawSkillName` 聚合，并关联语义、用户、会话、需求和版本分布。
 
@@ -378,7 +408,7 @@ export const SddUsageSummaryResponseSchema = z.object({
 });
 ```
 
-### 6.7 GET /api/sdd/usages
+### 6.8 GET /api/sdd/usages
 
 Skill usage 列表和过滤。
 
@@ -393,7 +423,7 @@ from / to
 limit / cursor
 ```
 
-### 6.8 GET /api/sdd/interactions
+### 6.9 GET /api/sdd/interactions
 
 prompt / response 交互列表。列表只返回 `promptPreview` / `responsePreview`，用于表格快速浏览。
 
@@ -409,7 +439,7 @@ from / to
 limit / cursor
 ```
 
-### 6.9 GET /api/sdd/interactions/:interactionId
+### 6.10 GET /api/sdd/interactions/:interactionId
 
 单条交互详情，用于 Row Inspector 抽屉查看整行数据和完整 prompt / response。
 
@@ -423,7 +453,7 @@ export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
 });
 ```
 
-### 6.10 GET /api/sdd/errors
+### 6.11 GET /api/sdd/errors
 
 异常 / 错误视图。
 
@@ -458,27 +488,27 @@ schema_parse_failed
 
 今日 MVP 不展示异常 / 错误 Tab，但保留 API 和数据表，后续再设计降噪视图。
 
-### 6.11 GET /api/sdd/users
+### 6.12 GET /api/sdd/users
 
 用户 / 机器维度。
 
 Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
 
-### 6.12 GET /api/sdd/versions
+### 6.13 GET /api/sdd/versions
 
 版本分析。
 
 今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
 
-### 6.13 GET /api/sdd/work-items
+### 6.14 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.14 GET /api/sdd/work-items/:workItemId
+### 6.15 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
-### 6.15 POST /api/sdd/user-settings
+### 6.16 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 
