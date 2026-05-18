@@ -262,8 +262,8 @@ async function persistCleanedData(
     const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
     const interactions = await upsertInteractions(connection, scopedEvents, input.textRetentionDays);
     const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
-    const errors = await upsertErrors(connection, scopedEvents, interactions);
     const artifacts = await upsertWorkItems(connection, scopedEvents);
+    const errors = await upsertErrors(connection, scopedEvents, interactions);
 
     return interactions.size + usages + errors + artifacts;
   });
@@ -480,22 +480,21 @@ async function upsertSkillUsages(
   let count = 0;
 
   for (const event of events) {
+    if (normalizeEventName(event.event_name) !== 'skill_activated') {
+      continue;
+    }
+
     const rawSkillName = pickRowString(event, [
       'skill_name',
       'skill.name',
       'sdd.skill_name',
-      'command_name',
-      'command.name',
-      'tool.name',
     ]);
     if (!rawSkillName) {
       continue;
     }
 
     const alias = aliasBySkillName.get(rawSkillName);
-    if (!alias) {
-      continue;
-    }
+    const matchedBy = alias ? 'alias_exact' : 'unmatched';
 
     const interaction = interactions.get(interactionKeyForEvent(event));
     const usageKey = sha256(`usage:${event.event_id}:${rawSkillName}`);
@@ -506,7 +505,7 @@ async function upsertSkillUsages(
          prompt_id, raw_skill_name, skill_source, invocation_trigger, command_name,
          service_version, observed_version, matched_by, rule_version, event_sequence,
          status, event_time, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'alias_exact', 'p0-cleaner-v1',
+       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'p0-cleaner-v1',
          NULL, 'observed', ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          semantic_id = VALUES(semantic_id),
@@ -521,13 +520,14 @@ async function upsertSkillUsages(
          command_name = VALUES(command_name),
          service_version = VALUES(service_version),
          observed_version = VALUES(observed_version),
+         matched_by = VALUES(matched_by),
          status = VALUES(status),
          event_time = VALUES(event_time),
          gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         usageKey,
-        alias.semantic_id,
-        alias.alias_id,
+        alias?.semantic_id ?? null,
+        alias?.alias_id ?? null,
         interaction?.id ?? null,
         event.user_id,
         event.session_id,
@@ -538,6 +538,7 @@ async function upsertSkillUsages(
         pickRowString(event, ['command_name', 'command.name']) ?? rawSkillName,
         event.service_version,
         pickRowString(event, ['skill.version', 'sdd.skill_version']),
+        matchedBy,
         asDate(event.event_time),
       ],
     );
@@ -575,18 +576,21 @@ async function upsertErrors(
     const messageHash = errorMessage ? sha256(errorMessage) : null;
     const stackHash = stackTrace ? sha256(stackTrace) : null;
     const interaction = interactions.get(interactionKeyForEvent(event));
+    const { usageId, workItemId } = await findUsageAndWorkItemForError(connection, event);
 
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_errors
         (error_key, user_id, batch_id, event_id, interaction_id, usage_id, work_item_id,
          error_type, severity, source, retryable, error_message_hash, error_message,
          stack_hash, stack_trace, event_time, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          user_id = VALUES(user_id),
          batch_id = VALUES(batch_id),
          event_id = VALUES(event_id),
          interaction_id = VALUES(interaction_id),
+         usage_id = COALESCE(VALUES(usage_id), usage_id),
+         work_item_id = COALESCE(VALUES(work_item_id), work_item_id),
          error_type = VALUES(error_type),
          severity = VALUES(severity),
          source = VALUES(source),
@@ -603,6 +607,8 @@ async function upsertErrors(
         event.batch_id,
         event.event_id,
         interaction?.id ?? null,
+        usageId,
+        workItemId,
         errorType,
         normalizeSeverity(event.severity_text),
         pickRowString(event, ['error.source', 'source']),
@@ -954,6 +960,33 @@ function findSemanticByFileName(
   return null;
 }
 
+async function findUsageAndWorkItemForError(
+  connection: PoolConnection,
+  event: EventRow,
+): Promise<{ usageId: string | null; workItemId: string | null }> {
+  if (!event.session_id) {
+    return { usageId: null, workItemId: null };
+  }
+  const errorEventTime = asDate(event.event_time);
+  const [rows] = await connection.query<RowDataPacket[]>(
+    `SELECT id, work_item_id
+     FROM sdd_skill_usages
+     WHERE session_id = ?
+       AND (? IS NULL OR event_time IS NULL OR event_time <= ?)
+     ORDER BY event_time DESC, id DESC
+     LIMIT 1`,
+    [event.session_id, errorEventTime, errorEventTime],
+  );
+  const row = rows[0];
+  if (!row) {
+    return { usageId: null, workItemId: null };
+  }
+  return {
+    usageId: row.id != null ? String(row.id) : null,
+    workItemId: row.work_item_id != null ? String(row.work_item_id) : null,
+  };
+}
+
 async function linkSkillUsageToWorkItem(
   connection: PoolConnection,
   input: {
@@ -1049,7 +1082,17 @@ function extractPromptText(event: EventRow | undefined): string | null {
     return null;
   }
 
-  return pickRowString(event, ['prompt', 'request.prompt', 'input', 'message.content']) ?? event.body_text;
+  const explicit = pickRowString(event, ['prompt', 'request.prompt', 'input', 'message.content']);
+  if (explicit) return explicit;
+
+  // Claude Code api_request_body 事件：实际内容在 attributes.body 的 JSON 里
+  const attributes = parseJsonObject(event.attributes_json);
+  const bodyStr = readString(attributes['body']);
+  const fromBody = extractPromptFromApiBodyJson(bodyStr);
+  if (fromBody) return fromBody;
+
+  // fallback：过滤掉等于 event_name 的标识符（如 "claude_code.api_request_body"）
+  return event.body_text && event.body_text !== event.event_name ? event.body_text : null;
 }
 
 function extractResponseText(event: EventRow | null): string | null {
@@ -1057,7 +1100,68 @@ function extractResponseText(event: EventRow | null): string | null {
     return null;
   }
 
-  return pickRowString(event, ['response', 'completion', 'output', 'answer']) ?? event.body_text;
+  const explicit = pickRowString(event, ['response', 'completion', 'output', 'answer']);
+  if (explicit) return explicit;
+
+  // Claude Code api_response_body 事件：实际内容在 attributes.body 的 JSON 里
+  const attributes = parseJsonObject(event.attributes_json);
+  const bodyStr = readString(attributes['body']);
+  const fromBody = extractResponseFromApiBodyJson(bodyStr);
+  if (fromBody) return fromBody;
+
+  // fallback：过滤掉等于 event_name 的标识符（如 "claude_code.api_response_body"）
+  return event.body_text && event.body_text !== event.event_name ? event.body_text : null;
+}
+
+function extractPromptFromApiBodyJson(bodyStr: string | null): string | null {
+  if (!bodyStr) return null;
+  let body: unknown;
+  try { body = JSON.parse(bodyStr); } catch { return null; }
+  if (typeof body !== 'object' || body === null) return null;
+  const messages = (body as Record<string, unknown>).messages;
+  if (!Array.isArray(messages)) return null;
+  // 取最后一条 user 消息的文本
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (typeof msg !== 'object' || msg === null) continue;
+    const m = msg as Record<string, unknown>;
+    if (m.role !== 'user') continue;
+    const content = m.content;
+    if (typeof content === 'string' && content) return content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (typeof part === 'object' && part !== null) {
+          const p = part as Record<string, unknown>;
+          if (p.type === 'text' && typeof p.text === 'string' && p.text) return p.text;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractResponseFromApiBodyJson(bodyStr: string | null): string | null {
+  if (!bodyStr) return null;
+  let body: unknown;
+  try { body = JSON.parse(bodyStr); } catch { return null; }
+  if (typeof body !== 'object' || body === null) return null;
+  const content = (body as Record<string, unknown>).content;
+  if (!Array.isArray(content)) return null;
+  // 优先取第一个 text 块
+  for (const item of content) {
+    if (typeof item === 'object' && item !== null) {
+      const block = item as Record<string, unknown>;
+      if (block.type === 'text' && typeof block.text === 'string' && block.text) return block.text;
+    }
+  }
+  // fallback：取工具调用名称
+  for (const item of content) {
+    if (typeof item === 'object' && item !== null) {
+      const block = item as Record<string, unknown>;
+      if (block.type === 'tool_use' && typeof block.name === 'string') return `[工具: ${block.name}]`;
+    }
+  }
+  return null;
 }
 
 function pickRowString(event: EventRow | undefined | null, keys: string[]): string | null {

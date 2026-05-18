@@ -386,7 +386,6 @@ Query 支持：
 
 ```text
 semanticCode
-rawSkillName
 userId
 workItemId
 status
@@ -406,7 +405,6 @@ sessionId
 promptId
 userId
 workItemId
-hasError
 from / to
 limit / cursor
 ```

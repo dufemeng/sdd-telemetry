@@ -27,7 +27,7 @@ export const CreateSddSemanticRequestSchema = z.object({
 export const UpdateSddSemanticRequestSchema = CreateSddSemanticRequestSchema.omit({ semanticCode: true });
 
 export const SddFunnelQuerySchema = TimeRangeQuerySchema.extend({
-  groupBy: z.enum(['semantic', 'user', 'work_item']).default('semantic'),
+  groupBy: z.enum(['semantic']).default('semantic'),
 });
 
 export const SddFunnelSchema = z.object({

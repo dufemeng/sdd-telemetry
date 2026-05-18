@@ -8,8 +8,6 @@ interface SeedSemantic {
   artifactFilenamePatterns: string[];
 }
 
-const defaultRequirementsRootPath = '/Users/loomisli/Desktop/lm/bk-fe-requirements-trade';
-
 const seedSemantics: SeedSemantic[] = [
   {
     semanticCode: 'proposal',
@@ -111,12 +109,6 @@ export async function seedDatabase(dataSource = createAppDataSource()): Promise<
       }
     }
 
-    await dataSource.query(
-      `UPDATE sdd_users
-       SET requirements_root_path = ?,
-           gmt_modified = CURRENT_TIMESTAMP(3)`,
-      [defaultRequirementsRootPath],
-    );
   } finally {
     if (shouldOwnDataSource) {
       await dataSource.destroy();

@@ -218,7 +218,7 @@ callQuality: {
 },
 stages: Array<{ semanticCode, displayName, usageCount, userCount, workItemCount, conversionRate }>
 ```
-参数：`from`/`to`/`groupBy` (semantic|user|work_item)。注意：contract 已定义 `groupBy`，但当前 server 实现仍按 semantic 聚合，未真正切换 user/work_item。
+参数：`from`/`to`/`groupBy`（当前仅支持 `semantic`；contract 已收紧 enum 与实现对齐，未来扩展 user/work_item 分组时再放开）。
 
 **Gap**：
 | 旧展示模块 | 新 API | 状态 |

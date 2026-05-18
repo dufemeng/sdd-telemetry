@@ -315,7 +315,7 @@ prompt / response 明文和结构化 response。与元数据拆开，便于 30 �
 | `command_name` | VARCHAR(191) | NULL | 命令名 |
 | `service_version` | VARCHAR(64) | NULL, INDEX | service version |
 | `observed_version` | VARCHAR(64) | NULL, INDEX | 从日志清洗出的 skill version |
-| `matched_by` | VARCHAR(64) | NOT NULL | `alias_exact` / `heuristic` |
+| `matched_by` | VARCHAR(64) | NOT NULL | `alias_exact` / `heuristic` / `unmatched`（rawSkillName 在 sdd_skill_aliases 中无匹配，此时 `semantic_id` 与 `alias_id` 均为 NULL） |
 | `rule_version` | VARCHAR(32) | NOT NULL | 清洗规则版本 |
 | `event_sequence` | INT UNSIGNED | NULL | 同一 prompt 下的事件顺序 |
 | `status` | VARCHAR(32) | NOT NULL | `started` / `completed` / `failed` / `unknown` |
