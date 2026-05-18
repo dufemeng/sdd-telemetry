@@ -24,7 +24,7 @@
 | ORM | 使用 `TypeORM`，但限制为 Data Mapper + Repository + Migration |
 | 数据库 | MySQL |
 | 清洗调度 | P0 公司环境降级为 Chair 定时任务扫描 `ingest_outbox`；BullMQ 作为目标态方案挂起 |
-| 前端 | 迁入旧 `apps/web`，但不要求后端兼容旧 API |
+| 前端 | 迁入旧 `web`，但不要求后端兼容旧 API |
 | API | 按新领域模型设计，分为 `ingest / events / sdd / ops` |
 | Contract | `packages/api` 使用 Zod schema 作为 request / response 单一来源 |
 | 清洗模式 | raw 同步入库，清洗异步执行 |
@@ -98,10 +98,9 @@ TypeORM 使用约束：
 
 ```text
 sdd-telemetry/
-  apps/
-    web/                 # React + Vite dashboard
-    server/              # MidwayJS HTTP API
-    worker/              # 本地清洗运行时；公司环境迁为 Chair Schedule
+  web/                   # React + Vite dashboard
+  server/                # MidwayJS HTTP API
+  worker/                # 本地清洗运行时；公司环境迁为 Chair Schedule
   packages/
     api/                 # Zod contract + shared types + API client
     config/              # tsconfig / eslint / prettier
@@ -120,7 +119,7 @@ sdd-telemetry/
 后端模块建议：
 
 ```text
-apps/server/src/
+server/src/
   common/
     errors/
     logger/
@@ -137,7 +136,7 @@ apps/server/src/
     sdd/
     ops/
 
-apps/worker/src/
+worker/src/
   outbox-dispatcher.ts
   cleaning-worker.ts
   retention-worker.ts
@@ -355,10 +354,10 @@ export type CreateSddSemanticRequest = z.infer<
 packages/api
 -> 定义 Zod schema 和 TS type
 
-apps/server
+server
 -> 使用 schema 做运行时校验
 
-apps/web
+web
 -> 使用 infer 出来的类型
 
 tests
@@ -395,9 +394,9 @@ docs/acceptance-plan.md
 
 1. 初始化 `pnpm workspace`。
 2. 配置 `Turborepo`。
-3. 初始化 `apps/server`。
-4. 初始化本地清洗运行时 `apps/worker`。
-5. 迁入 `apps/web`。
+3. 初始化 `server`。
+4. 初始化本地清洗运行时 `worker`。
+5. 迁入 `web`。
 6. 初始化 `packages/api`、`packages/config`。
 7. 接入 ESLint / Prettier / tsconfig。
 8. 接入配置、pino、requestId、统一响应、统一错误。
@@ -502,7 +501,7 @@ pnpm test:api
 
 任务：
 
-1. 迁入旧 `apps/web`。
+1. 迁入旧 `web`。
 2. 保留现有页面和交互。
 3. 删除旧 API 作为事实来源的地位。
 4. 用 `packages/api` contract 改造请求层。

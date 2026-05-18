@@ -14,9 +14,9 @@
 
 ```text
 pnpm workspace + Turborepo
-apps/web      # React + Vite dashboard
-apps/server   # MidwayJS HTTP API
-apps/worker   # BullMQ worker / outbox dispatcher
+web      # React + Vite dashboard
+server   # MidwayJS HTTP API
+worker   # BullMQ worker / outbox dispatcher
 packages/api  # Zod contract + shared types + API client
 packages/config # 共享 tsconfig / eslint / prettier
 ```
@@ -35,6 +35,24 @@ packages/config # 共享 tsconfig / eslint / prettier
 - [数据库模型](./docs/database-model.md)
 - [API Contract](./docs/api-contract.md)
 - [P0 验收计划](./docs/acceptance-plan.md)
+- [Agent 协作规范](./AGENTS.md)
+
+## 文档保鲜机制
+
+当目录结构、workspace 配置、启动脚本、API contract、数据库迁移或 worker/outbox 语义变化时，必须同步检查 `README.md`、`CLAUDE.md`、`AGENTS.md` 和相关 `docs/`。提交前用下面的命令抓旧路径和过期结构描述：
+
+```bash
+rg --hidden "ap""ps/(web|server|worker)|\\.\\/ap""ps/(web|server|worker)|ap""ps/" . -g '!node_modules/**' -g '!.git/**'
+```
+
+基础保鲜验证：
+
+```bash
+pnpm typecheck
+pnpm build
+```
+
+涉及运行链路时，还要跑 MySQL/Redis、迁移、schema verify、worker once 和至少一个 HTTP health 请求。
 
 ## 本地开发
 

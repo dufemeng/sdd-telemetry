@@ -8,5 +8,5 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../../packages/api" }]
+  "references": [{ "path": "../packages/api" }]
 }

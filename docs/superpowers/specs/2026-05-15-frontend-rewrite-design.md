@@ -9,7 +9,7 @@
 
 ### 问题
 
-现有 `apps/web/src/App.tsx`（~988 行）存在以下问题：
+现有 `web/src/App.tsx`（~988 行）存在以下问题：
 
 - **违反 SRP**：所有组件、所有数据查询、所有业务逻辑堆在一个文件里
 - **无效预取**：App 挂载时同时发出 14 个 API 请求，无论用户访问哪个视图
@@ -76,7 +76,7 @@
 ## 4. 目录结构
 
 ```
-apps/web/
+web/
 ├── index.html
 ├── vite.config.ts
 ├── tailwind.config.ts        ← design token 主题配置

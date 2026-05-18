@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rewrite `apps/web` from a monolithic 988-line `App.tsx` into a properly structured React application with React Router v7, Tailwind CSS v4, feature-based pages, and clean architectural layering.
+**Goal:** Rewrite `web` from a monolithic 988-line `App.tsx` into a properly structured React application with React Router v7, Tailwind CSS v4, feature-based pages, and clean architectural layering.
 
 **Architecture:** Five-layer clean architecture — Router → Page (Container) → [UI Components + Data Hooks] → API Client. Each layer has a single responsibility; data flows only downward. 13 pages each live in their own directory under `pages/` with co-located data hooks.
 
@@ -16,7 +16,7 @@
 
 ### New files
 ```
-apps/web/src/
+web/src/
   lib/
     format.ts              ← formatter utilities (formatInteger, formatBytes, etc.)
     format.test.ts
@@ -71,18 +71,18 @@ apps/web/src/
 
 ### Modified files
 ```
-apps/web/package.json      ← add react-router-dom, @tailwindcss/vite, @testing-library/react
-apps/web/vite.config.ts    ← add @tailwindcss/vite plugin
-apps/web/src/main.tsx      ← swap <App> for <RouterProvider>, add Suspense
-apps/web/index.html        ← add Google Fonts link (Inter + JetBrains Mono)
+web/package.json      ← add react-router-dom, @tailwindcss/vite, @testing-library/react
+web/vite.config.ts    ← add @tailwindcss/vite plugin
+web/src/main.tsx      ← swap <App> for <RouterProvider>, add Suspense
+web/index.html        ← add Google Fonts link (Inter + JetBrains Mono)
 ```
 
 ### Deleted files
 ```
-apps/web/src/App.tsx       ← replaced by router + pages
-apps/web/src/styles.css    ← replaced by tokens.css (Tailwind)
-apps/web/src/api.ts        ← replaced by api/client.ts
-apps/web/src/api/client.ts ← old client, replaced
+web/src/App.tsx       ← replaced by router + pages
+web/src/styles.css    ← replaced by tokens.css (Tailwind)
+web/src/api.ts        ← replaced by api/client.ts
+web/src/api/client.ts ← old client, replaced
 ```
 
 ---
@@ -94,12 +94,12 @@ apps/web/src/api/client.ts ← old client, replaced
 ### Task 1: Install dependencies
 
 **Files:**
-- Modify: `apps/web/package.json`
+- Modify: `web/package.json`
 
 - [ ] **Step 1: Install runtime and dev dependencies**
 
 ```bash
-cd apps/web
+cd web
 pnpm add react-router-dom
 pnpm add -D tailwindcss @tailwindcss/vite @testing-library/react @testing-library/user-event
 ```
@@ -115,7 +115,7 @@ Expected: all four packages listed with versions.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/package.json apps/web/pnpm-lock.yaml pnpm-lock.yaml
+git add web/package.json web/pnpm-lock.yaml pnpm-lock.yaml
 git commit -m "chore(web): add react-router-dom, tailwindcss v4, testing-library"
 ```
 
@@ -124,9 +124,9 @@ git commit -m "chore(web): add react-router-dom, tailwindcss v4, testing-library
 ### Task 2: Tailwind CSS v4 setup + design tokens
 
 **Files:**
-- Create: `apps/web/src/styles/tokens.css`
-- Modify: `apps/web/vite.config.ts`
-- Modify: `apps/web/index.html`
+- Create: `web/src/styles/tokens.css`
+- Modify: `web/vite.config.ts`
+- Modify: `web/index.html`
 
 - [ ] **Step 1: Update vite.config.ts**
 
@@ -207,7 +207,7 @@ Inside `<head>`, add before closing tag:
 
 - [ ] **Step 4: Smoke-test Tailwind is working**
 
-In `apps/web/src/main.tsx`, temporarily add `import './styles/tokens.css'` and run:
+In `web/src/main.tsx`, temporarily add `import './styles/tokens.css'` and run:
 
 ```bash
 pnpm --filter @sdd-telemetry/web dev
@@ -218,7 +218,7 @@ Open http://localhost:5173. Background should be `#0a0a0a`. Stop the server.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/vite.config.ts apps/web/src/styles/tokens.css apps/web/index.html
+git add web/vite.config.ts web/src/styles/tokens.css web/index.html
 git commit -m "feat(web): add tailwindcss v4 with design token theme"
 ```
 
@@ -227,12 +227,12 @@ git commit -m "feat(web): add tailwindcss v4 with design token theme"
 ### Task 3: Formatter utilities (TDD)
 
 **Files:**
-- Create: `apps/web/src/lib/format.ts`
-- Create: `apps/web/src/lib/format.test.ts`
+- Create: `web/src/lib/format.ts`
+- Create: `web/src/lib/format.test.ts`
 
 - [ ] **Step 1: Write failing tests**
 
-Create `apps/web/src/lib/format.test.ts`:
+Create `web/src/lib/format.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
@@ -352,7 +352,7 @@ Expected: all 12 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src/lib/
+git add web/src/lib/
 git commit -m "feat(web): add formatter utilities with tests"
 ```
 
@@ -361,12 +361,12 @@ git commit -m "feat(web): add formatter utilities with tests"
 ### Task 4: API client
 
 **Files:**
-- Create: `apps/web/src/api/client.ts`
-- Create: `apps/web/src/api/client.test.ts`
+- Create: `web/src/api/client.ts`
+- Create: `web/src/api/client.test.ts`
 
 - [ ] **Step 1: Write failing test**
 
-Create `apps/web/src/api/client.test.ts`:
+Create `web/src/api/client.test.ts`:
 
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -450,7 +450,7 @@ Expected: all 15 tests pass (12 formatter + 3 client).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src/api/
+git add web/src/api/
 git commit -m "feat(web): add typed API client with error handling"
 ```
 
@@ -463,9 +463,9 @@ git commit -m "feat(web): add typed API client with error handling"
 ### Task 5: AppShell + Sidebar + TopBar
 
 **Files:**
-- Create: `apps/web/src/components/layout/AppShell.tsx`
-- Create: `apps/web/src/components/layout/Sidebar.tsx`
-- Create: `apps/web/src/components/layout/TopBar.tsx`
+- Create: `web/src/components/layout/AppShell.tsx`
+- Create: `web/src/components/layout/Sidebar.tsx`
+- Create: `web/src/components/layout/TopBar.tsx`
 
 - [ ] **Step 1: Create `AppShell.tsx`**
 
@@ -700,7 +700,7 @@ export function TopBar({ timeRange, onTimeRangeChange, search, onSearchChange }:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/components/layout/
+git add web/src/components/layout/
 git commit -m "feat(web): add AppShell, Sidebar, TopBar layout components"
 ```
 
@@ -713,7 +713,7 @@ git commit -m "feat(web): add AppShell, Sidebar, TopBar layout components"
 ### Task 6: StatusBadge
 
 **Files:**
-- Create: `apps/web/src/components/ui/StatusBadge.tsx`
+- Create: `web/src/components/ui/StatusBadge.tsx`
 
 - [ ] **Step 1: Create `StatusBadge.tsx`**
 
@@ -785,7 +785,7 @@ export function StatusBadge({ status, variant }: StatusBadgeProps) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add apps/web/src/components/ui/StatusBadge.tsx
+git add web/src/components/ui/StatusBadge.tsx
 git commit -m "feat(web): add StatusBadge component"
 ```
 
@@ -794,7 +794,7 @@ git commit -m "feat(web): add StatusBadge component"
 ### Task 7: StatCard
 
 **Files:**
-- Create: `apps/web/src/components/ui/StatCard.tsx`
+- Create: `web/src/components/ui/StatCard.tsx`
 
 - [ ] **Step 1: Create `StatCard.tsx`**
 
@@ -839,7 +839,7 @@ export function StatCard({ icon, label, value, hint, loading }: StatCardProps) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add apps/web/src/components/ui/StatCard.tsx
+git add web/src/components/ui/StatCard.tsx
 git commit -m "feat(web): add StatCard component"
 ```
 
@@ -848,8 +848,8 @@ git commit -m "feat(web): add StatCard component"
 ### Task 8: Panel + EmptyState
 
 **Files:**
-- Create: `apps/web/src/components/ui/Panel.tsx`
-- Create: `apps/web/src/components/ui/EmptyState.tsx`
+- Create: `web/src/components/ui/Panel.tsx`
+- Create: `web/src/components/ui/EmptyState.tsx`
 
 - [ ] **Step 1: Create `Panel.tsx`**
 
@@ -894,7 +894,7 @@ export function EmptyState({ text }: EmptyStateProps) {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/components/ui/Panel.tsx apps/web/src/components/ui/EmptyState.tsx
+git add web/src/components/ui/Panel.tsx web/src/components/ui/EmptyState.tsx
 git commit -m "feat(web): add Panel and EmptyState components"
 ```
 
@@ -903,7 +903,7 @@ git commit -m "feat(web): add Panel and EmptyState components"
 ### Task 9: DataTable
 
 **Files:**
-- Create: `apps/web/src/components/ui/DataTable.tsx`
+- Create: `web/src/components/ui/DataTable.tsx`
 
 - [ ] **Step 1: Create `DataTable.tsx`**
 
@@ -968,7 +968,7 @@ export function DataTable({ headers, rows, emptyText = '暂无数据' }: DataTab
 - [ ] **Step 2: Commit**
 
 ```bash
-git add apps/web/src/components/ui/DataTable.tsx
+git add web/src/components/ui/DataTable.tsx
 git commit -m "feat(web): add DataTable component"
 ```
 
@@ -977,7 +977,7 @@ git commit -m "feat(web): add DataTable component"
 ### Task 10: BarList
 
 **Files:**
-- Create: `apps/web/src/components/ui/BarList.tsx`
+- Create: `web/src/components/ui/BarList.tsx`
 
 - [ ] **Step 1: Create `BarList.tsx`**
 
@@ -1045,7 +1045,7 @@ export function BarList({ items, emptyText = '暂无数据' }: BarListProps) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add apps/web/src/components/ui/BarList.tsx
+git add web/src/components/ui/BarList.tsx
 git commit -m "feat(web): add BarList component"
 ```
 
@@ -1054,8 +1054,8 @@ git commit -m "feat(web): add BarList component"
 ### Task 11: Router skeleton + main.tsx update
 
 **Files:**
-- Create: `apps/web/src/router.tsx`
-- Modify: `apps/web/src/main.tsx`
+- Create: `web/src/router.tsx`
+- Modify: `web/src/main.tsx`
 
 - [ ] **Step 1: Create `router.tsx` with placeholder pages**
 
@@ -1147,9 +1147,9 @@ Note: `useState` import removed — not needed at this level.
 Each placeholder is one line. Create all 13 files now so `router.tsx` compiles:
 
 ```bash
-mkdir -p apps/web/src/pages/{overview,ingest,batches,events,quality}
-mkdir -p apps/web/src/pages/sdd/{funnel,summary,interactions,users,work-items,semantics}
-mkdir -p apps/web/src/pages/ops/{queue,database}
+mkdir -p web/src/pages/{overview,ingest,batches,events,quality}
+mkdir -p web/src/pages/sdd/{funnel,summary,interactions,users,work-items,semantics}
+mkdir -p web/src/pages/ops/{queue,database}
 ```
 
 For each page file, create a minimal export:
@@ -1187,7 +1187,7 @@ Open http://localhost:5173. Sidebar should be visible. Click nav items — URL s
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/src/router.tsx apps/web/src/main.tsx apps/web/src/pages/
+git add web/src/router.tsx web/src/main.tsx web/src/pages/
 git commit -m "feat(web): add router, main entrypoint, placeholder pages"
 ```
 
@@ -1205,7 +1205,7 @@ git commit -m "feat(web): add router, main entrypoint, placeholder pages"
 ### Task 12: OverviewPage
 
 **Files:**
-- Modify: `apps/web/src/pages/overview/OverviewPage.tsx`
+- Modify: `web/src/pages/overview/OverviewPage.tsx`
 
 OverviewPage composes data from multiple hooks already defined in other tasks. Implement it last among pages (or after Task 13-24 complete). For now it imports from sibling hooks.
 
@@ -1323,7 +1323,7 @@ export default function OverviewPage() {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add apps/web/src/pages/overview/
+git add web/src/pages/overview/
 git commit -m "feat(web): implement OverviewPage"
 ```
 
@@ -1332,8 +1332,8 @@ git commit -m "feat(web): implement OverviewPage"
 ### Task 13: IngestPage
 
 **Files:**
-- Create: `apps/web/src/pages/ingest/useIngestHealth.ts`
-- Modify: `apps/web/src/pages/ingest/IngestPage.tsx`
+- Create: `web/src/pages/ingest/useIngestHealth.ts`
+- Modify: `web/src/pages/ingest/IngestPage.tsx`
 
 - [ ] **Step 1: Create `useIngestHealth.ts`**
 
@@ -1436,7 +1436,7 @@ export default function IngestPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/ingest/
+git add web/src/pages/ingest/
 git commit -m "feat(web): implement IngestPage + useIngestHealth"
 ```
 
@@ -1445,8 +1445,8 @@ git commit -m "feat(web): implement IngestPage + useIngestHealth"
 ### Task 14: BatchesPage
 
 **Files:**
-- Create: `apps/web/src/pages/batches/useBatchList.ts`
-- Modify: `apps/web/src/pages/batches/BatchesPage.tsx`
+- Create: `web/src/pages/batches/useBatchList.ts`
+- Modify: `web/src/pages/batches/BatchesPage.tsx`
 
 - [ ] **Step 1: Create `useBatchList.ts`**
 
@@ -1504,7 +1504,7 @@ export default function BatchesPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/batches/
+git add web/src/pages/batches/
 git commit -m "feat(web): implement BatchesPage + useBatchList"
 ```
 
@@ -1513,9 +1513,9 @@ git commit -m "feat(web): implement BatchesPage + useBatchList"
 ### Task 15: EventsPage
 
 **Files:**
-- Create: `apps/web/src/pages/events/useEventDistribution.ts`
-- Create: `apps/web/src/pages/events/useEventTimeline.ts`
-- Modify: `apps/web/src/pages/events/EventsPage.tsx`
+- Create: `web/src/pages/events/useEventDistribution.ts`
+- Create: `web/src/pages/events/useEventTimeline.ts`
+- Modify: `web/src/pages/events/EventsPage.tsx`
 
 - [ ] **Step 1: Create `useEventDistribution.ts`**
 
@@ -1628,7 +1628,7 @@ export default function EventsPage({ timeRange = '24h' }: EventsPageProps) {
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/pages/events/
+git add web/src/pages/events/
 git commit -m "feat(web): implement EventsPage + hooks"
 ```
 
@@ -1637,8 +1637,8 @@ git commit -m "feat(web): implement EventsPage + hooks"
 ### Task 16: QualityPage
 
 **Files:**
-- Create: `apps/web/src/pages/quality/useFieldCoverage.ts`
-- Modify: `apps/web/src/pages/quality/QualityPage.tsx`
+- Create: `web/src/pages/quality/useFieldCoverage.ts`
+- Modify: `web/src/pages/quality/QualityPage.tsx`
 
 - [ ] **Step 1: Create `useFieldCoverage.ts`**
 
@@ -1701,7 +1701,7 @@ export default function QualityPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/quality/
+git add web/src/pages/quality/
 git commit -m "feat(web): implement QualityPage + useFieldCoverage"
 ```
 
@@ -1710,8 +1710,8 @@ git commit -m "feat(web): implement QualityPage + useFieldCoverage"
 ### Task 17: FunnelPage
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/funnel/useSddFunnel.ts`
-- Modify: `apps/web/src/pages/sdd/funnel/FunnelPage.tsx`
+- Create: `web/src/pages/sdd/funnel/useSddFunnel.ts`
+- Modify: `web/src/pages/sdd/funnel/FunnelPage.tsx`
 
 - [ ] **Step 1: Create `useSddFunnel.ts`**
 
@@ -1792,7 +1792,7 @@ export default function FunnelPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/funnel/
+git add web/src/pages/sdd/funnel/
 git commit -m "feat(web): implement FunnelPage + useSddFunnel"
 ```
 
@@ -1801,8 +1801,8 @@ git commit -m "feat(web): implement FunnelPage + useSddFunnel"
 ### Task 18: SummaryPage
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/summary/useSddUsageSummary.ts`
-- Modify: `apps/web/src/pages/sdd/summary/SummaryPage.tsx`
+- Create: `web/src/pages/sdd/summary/useSddUsageSummary.ts`
+- Modify: `web/src/pages/sdd/summary/SummaryPage.tsx`
 
 - [ ] **Step 1: Create `useSddUsageSummary.ts`**
 
@@ -1857,7 +1857,7 @@ export default function SummaryPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/summary/
+git add web/src/pages/sdd/summary/
 git commit -m "feat(web): implement SummaryPage + useSddUsageSummary"
 ```
 
@@ -1866,8 +1866,8 @@ git commit -m "feat(web): implement SummaryPage + useSddUsageSummary"
 ### Task 19: InteractionsPage
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/interactions/useSddInteractions.ts`
-- Modify: `apps/web/src/pages/sdd/interactions/InteractionsPage.tsx`
+- Create: `web/src/pages/sdd/interactions/useSddInteractions.ts`
+- Modify: `web/src/pages/sdd/interactions/InteractionsPage.tsx`
 
 - [ ] **Step 1: Create `useSddInteractions.ts`**
 
@@ -1936,7 +1936,7 @@ export default function InteractionsPage({ timeRange = '24h', search = '' }: Int
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/interactions/
+git add web/src/pages/sdd/interactions/
 git commit -m "feat(web): implement InteractionsPage + useSddInteractions"
 ```
 
@@ -1945,8 +1945,8 @@ git commit -m "feat(web): implement InteractionsPage + useSddInteractions"
 ### Task 20: UsersPage
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/users/useSddUsers.ts`
-- Modify: `apps/web/src/pages/sdd/users/UsersPage.tsx`
+- Create: `web/src/pages/sdd/users/useSddUsers.ts`
+- Modify: `web/src/pages/sdd/users/UsersPage.tsx`
 
 - [ ] **Step 1: Create `useSddUsers.ts`**
 
@@ -1998,7 +1998,7 @@ export default function UsersPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/users/
+git add web/src/pages/sdd/users/
 git commit -m "feat(web): implement UsersPage + useSddUsers"
 ```
 
@@ -2007,8 +2007,8 @@ git commit -m "feat(web): implement UsersPage + useSddUsers"
 ### Task 21: WorkItemsPage
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/work-items/useSddWorkItems.ts`
-- Modify: `apps/web/src/pages/sdd/work-items/WorkItemsPage.tsx`
+- Create: `web/src/pages/sdd/work-items/useSddWorkItems.ts`
+- Modify: `web/src/pages/sdd/work-items/WorkItemsPage.tsx`
 
 - [ ] **Step 1: Create `useSddWorkItems.ts`**
 
@@ -2060,7 +2060,7 @@ export default function WorkItemsPage() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/work-items/
+git add web/src/pages/sdd/work-items/
 git commit -m "feat(web): implement WorkItemsPage + useSddWorkItems"
 ```
 
@@ -2069,9 +2069,9 @@ git commit -m "feat(web): implement WorkItemsPage + useSddWorkItems"
 ### Task 22: SemanticsPage (includes CREATE form)
 
 **Files:**
-- Create: `apps/web/src/pages/sdd/semantics/useSddSemantics.ts`
-- Create: `apps/web/src/pages/sdd/semantics/CreateSemanticForm.tsx`
-- Modify: `apps/web/src/pages/sdd/semantics/SemanticsPage.tsx`
+- Create: `web/src/pages/sdd/semantics/useSddSemantics.ts`
+- Create: `web/src/pages/sdd/semantics/CreateSemanticForm.tsx`
+- Modify: `web/src/pages/sdd/semantics/SemanticsPage.tsx`
 
 - [ ] **Step 1: Create `useSddSemantics.ts`**
 
@@ -2199,7 +2199,7 @@ export default function SemanticsPage() {
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/pages/sdd/semantics/
+git add web/src/pages/sdd/semantics/
 git commit -m "feat(web): implement SemanticsPage, CreateSemanticForm, useSddSemantics"
 ```
 
@@ -2208,9 +2208,9 @@ git commit -m "feat(web): implement SemanticsPage, CreateSemanticForm, useSddSem
 ### Task 23: QueuePage
 
 **Files:**
-- Create: `apps/web/src/pages/ops/queue/useOpsQueue.ts`
-- Create: `apps/web/src/pages/ops/queue/useOpsJobs.ts`
-- Modify: `apps/web/src/pages/ops/queue/QueuePage.tsx`
+- Create: `web/src/pages/ops/queue/useOpsQueue.ts`
+- Create: `web/src/pages/ops/queue/useOpsJobs.ts`
+- Modify: `web/src/pages/ops/queue/QueuePage.tsx`
 
 - [ ] **Step 1: Create `useOpsQueue.ts`**
 
@@ -2291,7 +2291,7 @@ export default function QueuePage() {
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/pages/ops/queue/
+git add web/src/pages/ops/queue/
 git commit -m "feat(web): implement QueuePage + ops queue hooks"
 ```
 
@@ -2300,9 +2300,9 @@ git commit -m "feat(web): implement QueuePage + ops queue hooks"
 ### Task 24: DatabasePage
 
 **Files:**
-- Create: `apps/web/src/pages/ops/database/useOpsTables.ts`
-- Create: `apps/web/src/pages/ops/database/useTableRows.ts`
-- Modify: `apps/web/src/pages/ops/database/DatabasePage.tsx`
+- Create: `web/src/pages/ops/database/useOpsTables.ts`
+- Create: `web/src/pages/ops/database/useTableRows.ts`
+- Modify: `web/src/pages/ops/database/DatabasePage.tsx`
 
 - [ ] **Step 1: Create `useOpsTables.ts`**
 
@@ -2468,7 +2468,7 @@ export default function DatabasePage() {
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/pages/ops/database/
+git add web/src/pages/ops/database/
 git commit -m "feat(web): implement DatabasePage + ops database hooks"
 ```
 
@@ -2481,11 +2481,11 @@ git commit -m "feat(web): implement DatabasePage + ops database hooks"
 ### Task 25: Wire up TopBar state + delete old files
 
 **Files:**
-- Modify: `apps/web/src/components/layout/AppShell.tsx`
-- Delete: `apps/web/src/App.tsx`
-- Delete: `apps/web/src/styles.css`
-- Delete: `apps/web/src/api.ts`
-- Delete: `apps/web/src/api/client.ts` (old one if it existed before this plan)
+- Modify: `web/src/components/layout/AppShell.tsx`
+- Delete: `web/src/App.tsx`
+- Delete: `web/src/styles.css`
+- Delete: `web/src/api.ts`
+- Delete: `web/src/api/client.ts` (old one if it existed before this plan)
 
 - [ ] **Step 1: Lift TimeRange + search state into AppShell**
 
@@ -2544,7 +2544,7 @@ Pages that need `timeRange`: EventsPage, FunnelPage, SummaryPage, InteractionsPa
 Each uses `useShellContext()` instead of receiving props:
 
 ```tsx
-// Example: apps/web/src/pages/events/EventsPage.tsx (top of file)
+// Example: web/src/pages/events/EventsPage.tsx (top of file)
 import { useShellContext } from '../../components/layout/AppShell';
 
 export default function EventsPage() {
@@ -2560,9 +2560,9 @@ Apply the same pattern to `FunnelPage`, `SummaryPage`, and `InteractionsPage` (u
 - [ ] **Step 3: Delete old files**
 
 ```bash
-rm apps/web/src/App.tsx
-rm apps/web/src/styles.css
-rm apps/web/src/api.ts
+rm web/src/App.tsx
+rm web/src/styles.css
+rm web/src/api.ts
 ```
 
 - [ ] **Step 4: Run typecheck**

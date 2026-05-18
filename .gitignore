@@ -7,6 +7,5 @@ coverage
 *.log
 *.tsbuildinfo
 .DS_Store
-apps/web/dist
 .superpowers/
 .agents

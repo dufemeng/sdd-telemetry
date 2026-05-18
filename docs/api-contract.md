@@ -580,12 +580,12 @@ GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","o
 
 ## 8. 前端适配策略
 
-旧 `apps/web/src/api.ts` 不再是事实标准。
+旧 `web/src/api.ts` 不再是事实标准。
 
 迁移步骤：
 
 1. 保留旧页面和组件。
-2. 新建 `apps/web/src/api/client.ts`。
+2. 新建 `web/src/api/client.ts`。
 3. 用 `packages/api` contract 定义请求和响应。
 4. 在前端请求层写 ViewModel adapter，把新 API response 转成页面当前容易消费的结构。
 5. 后续再拆 feature 和清理旧类型。

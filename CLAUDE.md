@@ -10,8 +10,8 @@
 在动手写或改任何代码之前，先回答这四个问题。任何一项的答案都可能让你不写这段代码、或者改变写法。
 
 1. **复用分析**：将要写的代码是否已经实现？能不能直接 import？
-   - 例：写 fetch 包装前先看 `apps/web/src/api/client.ts` 是否已有 `requestData<T>`
-   - 例：写时间格式化前先看 `apps/web/src/lib/format.ts`
+   - 例：写 fetch 包装前先看 `web/src/api/client.ts` 是否已有 `requestData<T>`
+   - 例：写时间格式化前先看 `web/src/lib/format.ts`
 2. **抽象分析**：将要写的代码在项目里是否出现过类似形态？要不要先抽成一个 util/hook/组件，再让多处复用？
    - 例：3 个 hook 都写了 `Number(timeRange.replace('h', ''))`，第 4 次出现时就该抽出 `timeRangeToHours` 函数
    - 警惕过早抽象：只出现 1 次时不要抽
@@ -45,6 +45,18 @@
 - 强制重启用 `pnpm restart`（等价于 `pnpm stop && pnpm start`，pnpm 生命周期命令）；单服务用 `restart:web` / `restart:server` / `restart:worker`
 - watch 模式下改 `src/` 自动生效；改 `.env` / `vite.config.ts` / `tsconfig.json` / 装依赖 / 进程崩 需手动重启
 - 不要用 `node dist/`（start 脚本等价于 dev，不是编译产物）
+
+## 文档保鲜机制
+
+- 目录结构、workspace glob、包名、启动脚本变化时，同步更新 `README.md`、`CLAUDE.md`、`AGENTS.md` 和相关 `docs/`。
+- API contract、统一响应、数据库迁移、worker/outbox 语义变化时，同步更新 `docs/api-contract.md`、`docs/implementation-plan.md` 或对应专题文档。
+- 提交前检查旧路径残留：
+
+```bash
+rg --hidden "ap""ps/(web|server|worker)|\\.\\/ap""ps/(web|server|worker)|ap""ps/" . -g '!node_modules/**' -g '!.git/**'
+```
+
+- 基础验证固定跑 `pnpm typecheck` 和 `pnpm build`；影响运行链路时补跑 `docker compose up -d mysql redis`、`pnpm db:migrate`、`pnpm db:seed`、`pnpm db:verify`、`pnpm --filter @sdd-telemetry/worker once` 和至少一个 HTTP health 请求。
 
 ## 后端验证
 
