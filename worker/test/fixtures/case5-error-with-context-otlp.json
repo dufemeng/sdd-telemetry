@@ -1,0 +1,64 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "sdd.install_id", "value": { "stringValue": "case5-test-install" } },
+          { "key": "user.name", "value": { "stringValue": "case5-test-user" } },
+          { "key": "service.name", "value": { "stringValue": "case5-test" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1715700000000000000",
+              "body": { "stringValue": "case5 user prompt" },
+              "attributes": [
+                { "key": "event.name", "value": { "stringValue": "user_prompt" } },
+                { "key": "session_id", "value": { "stringValue": "case5-test-session" } },
+                { "key": "prompt_id", "value": { "stringValue": "case5-test-prompt" } }
+              ]
+            },
+            {
+              "timeUnixNano": "1715700001000000000",
+              "body": { "stringValue": "case5 skill activated" },
+              "attributes": [
+                { "key": "event.name", "value": { "stringValue": "skill_activated" } },
+                { "key": "session_id", "value": { "stringValue": "case5-test-session" } },
+                { "key": "prompt_id", "value": { "stringValue": "case5-test-prompt" } },
+                { "key": "skill.name", "value": { "stringValue": "bk-fe-design" } }
+              ]
+            },
+            {
+              "timeUnixNano": "1715700002000000000",
+              "body": { "stringValue": "case5 wrote design.md" },
+              "attributes": [
+                { "key": "event.name", "value": { "stringValue": "tool_result" } },
+                { "key": "session_id", "value": { "stringValue": "case5-test-session" } },
+                { "key": "prompt_id", "value": { "stringValue": "case5-test-prompt" } },
+                { "key": "tool_result.success", "value": { "stringValue": "true" } },
+                { "key": "sdd.artifact_is_write", "value": { "stringValue": "true" } },
+                { "key": "sdd.artifact_path", "value": { "stringValue": "/tmp/sdd-telemetry-case5-test/requirements/test-domain/2026-05-18-case5-relink/design.md" } }
+              ]
+            },
+            {
+              "timeUnixNano": "1715700003000000000",
+              "body": { "stringValue": "Something went wrong in case5 test" },
+              "severityText": "ERROR",
+              "severityNumber": 17,
+              "attributes": [
+                { "key": "event.name", "value": { "stringValue": "error" } },
+                { "key": "session_id", "value": { "stringValue": "case5-test-session" } },
+                { "key": "prompt_id", "value": { "stringValue": "case5-test-prompt" } },
+                { "key": "error.type", "value": { "stringValue": "TestError" } },
+                { "key": "error.message", "value": { "stringValue": "Something went wrong in case5 test" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

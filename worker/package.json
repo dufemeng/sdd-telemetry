@@ -10,7 +10,8 @@
     "start": "node dist/main.js",
     "once": "WORKER_ONCE=true node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "test:integration": "vitest run test/integration",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

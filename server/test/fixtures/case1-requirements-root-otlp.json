@@ -1,0 +1,28 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "sdd.install_id", "value": { "stringValue": "case1-test-install" } },
+          { "key": "user.name", "value": { "stringValue": "case1-test-user" } },
+          { "key": "service.name", "value": { "stringValue": "case1-test" } },
+          { "key": "sdd.requirements_root_path", "value": { "stringValue": "/tmp/sdd-telemetry-case1-test/requirements" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1715700000000000000",
+              "body": { "stringValue": "case1 test event" },
+              "attributes": [
+                { "key": "event.name", "value": { "stringValue": "user_prompt" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
