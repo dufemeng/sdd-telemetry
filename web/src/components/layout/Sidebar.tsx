@@ -87,7 +87,7 @@ export function Sidebar() {
                   end={'end' in item ? item.end : false}
                   className={({ isActive }) =>
                     [
-                      'group relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[6px] overflow-hidden',
+                      'group relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[6px]',
                       'text-[13px] text-left transition-all duration-200',
                       isActive
                         ? 'text-[var(--color-primary)]'
@@ -107,7 +107,7 @@ export function Sidebar() {
                           />
                           <motion.span
                             layoutId="sidebar-active-pill"
-                            className="absolute left-0 top-[5px] bottom-[5px] w-1 rounded-r-full bg-[var(--color-primary)]"
+                            className="absolute left-0 top-[9px] z-20 h-4 w-1 rounded-r-full bg-[var(--color-primary)]"
                             transition={ACTIVE_NAV_TRANSITION}
                             aria-hidden="true"
                           />
