@@ -1,9 +1,12 @@
 import { NavLink } from 'react-router-dom';
+import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   Activity, BarChart3, CheckSquare, Database, FileStack, Gauge,
   GitBranch, Layers3, ListFilter, Settings, Table2, TerminalSquare,
   UserRound, Workflow,
 } from 'lucide-react';
+
+const ACTIVE_NAV_TRANSITION: Transition = { type: 'spring', stiffness: 300, damping: 30 };
 
 const NAV_GROUPS = [
   {
@@ -71,42 +74,64 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-[10px]">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mt-[10px]">
-            <div className="px-[18px] pb-[6px] pt-[8px] text-[10px] font-bold tracking-[0.05em] text-[var(--color-muted)] uppercase">
-              {group.label}
-            </div>
-            {group.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={'end' in item ? item.end : false}
-                className={({ isActive }) =>
-                  [
-                    'relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[4px]',
-                    'text-[13px] text-left transition-colors duration-[120ms]',
-                    isActive
-                      ? 'text-[var(--color-primary)] bg-[#2b2b20]'
-                      : 'text-[var(--color-secondary)] hover:text-[#f5f5f5] hover:bg-[#202016]',
-                  ].join(' ')
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <span
-                        className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full"
-                        style={{ background: 'var(--color-primary)' }}
+        <LayoutGroup id="sidebar-nav">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mt-[10px]">
+              <div className="px-[18px] pb-[6px] pt-[8px] text-[10px] font-bold tracking-[0.05em] text-[var(--color-muted)] uppercase">
+                {group.label}
+              </div>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={'end' in item ? item.end : false}
+                  className={({ isActive }) =>
+                    [
+                      'group relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[6px] overflow-hidden',
+                      'text-[13px] text-left transition-all duration-200',
+                      isActive
+                        ? 'text-[var(--color-primary)]'
+                        : 'text-[var(--color-secondary)] hover:text-[#f5f5f5] hover:bg-[#202016]',
+                    ].join(' ')
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <>
+                          <motion.span
+                            layoutId="sidebar-active-bg"
+                            className="absolute inset-0 rounded-[6px] bg-[#2b2b20]"
+                            transition={ACTIVE_NAV_TRANSITION}
+                            aria-hidden="true"
+                          />
+                          <motion.span
+                            layoutId="sidebar-active-pill"
+                            className="absolute left-0 top-[5px] bottom-[5px] w-1 rounded-r-full bg-[var(--color-primary)]"
+                            transition={ACTIVE_NAV_TRANSITION}
+                            aria-hidden="true"
+                          />
+                          <span
+                            className="absolute right-3 z-10 w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse"
+                            aria-hidden="true"
+                          />
+                        </>
+                      )}
+                      <item.icon
+                        size={18}
+                        className={[
+                          'relative z-10 flex-none transition-transform duration-200',
+                          isActive ? 'scale-110' : 'group-hover:scale-[1.04]',
+                        ].join(' ')}
                       />
-                    )}
-                    <item.icon size={18} />
-                    <span>{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
-        ))}
+                      <span className="relative z-10 truncate">{item.label}</span>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </LayoutGroup>
       </nav>
     </aside>
   );
