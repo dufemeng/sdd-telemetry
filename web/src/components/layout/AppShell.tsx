@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Sidebar } from './Sidebar';
 import { TopBar, type TimeRange } from './TopBar';
 import type { ShellContext } from './useShellContext';
@@ -7,6 +8,8 @@ import type { ShellContext } from './useShellContext';
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const [search,    setSearch]    = useState('');
+  const { pathname } = useLocation();
+  const prefersReducedMotion = useReducedMotion();
 
   return (
     <div
@@ -26,10 +29,23 @@ export function AppShell() {
         onSearchChange={setSearch}
       />
       <main
-        className="overflow-auto p-[18px]"
+        className="overflow-hidden"
         style={{ background: 'var(--color-base)', gridColumn: 2, gridRow: 2 }}
       >
-        <Outlet context={{ timeRange, search } satisfies ShellContext} />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={pathname}
+            className="h-full overflow-auto p-[18px]"
+            {...(prefersReducedMotion ? {} : {
+              initial:    { opacity: 0, x: 10, filter: 'blur(10px)' },
+              animate:    { opacity: 1, x: 0,  filter: 'blur(0px)' },
+              exit:       { opacity: 0, x: -10, filter: 'blur(10px)' },
+              transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+            })}
+          >
+            <Outlet context={{ timeRange, search } satisfies ShellContext} />
+          </motion.div>
+        </AnimatePresence>
       </main>
     </div>
   );
