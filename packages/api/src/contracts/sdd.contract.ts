@@ -7,6 +7,7 @@ export const SddSemanticSchema = z.object({
   semanticCode: z.string(),
   displayName: z.string(),
   description: z.string().nullable(),
+  artifactFilenamePatterns: z.array(z.string()).nullable(),
   aliases: z.array(
     z.object({
       id: IdSchema,
@@ -19,6 +20,7 @@ export const CreateSddSemanticRequestSchema = z.object({
   semanticCode: z.string().min(1).max(64),
   displayName: z.string().min(1).max(191),
   description: z.string().max(1000).optional(),
+  artifactFilenamePatterns: z.array(z.string().min(1).max(191)).optional(),
   aliases: z.array(z.string().min(1).max(191)).min(1),
 });
 
@@ -142,6 +144,8 @@ export const SddUserItemSchema = z.object({
   userName: z.string().nullable(),
   machineId: z.string().nullable(),
   machineName: z.string().nullable(),
+  requirementsRootPath: z.string().nullable(),
+  wikiRootPath: z.string().nullable(),
   lastSeenAt: ISODateTimeSchema.nullable(),
   skillUsageCount: z.number(),
   interactionCount: z.number(),

@@ -3,15 +3,16 @@ import { DataSource } from 'typeorm';
 import { appEntities } from './entities';
 import { CreateP0Schema1778769900000 } from './migrations/1778769900000-create-p0-schema';
 import { RenameAuditColumns1778769950000 } from './migrations/1778769950000-rename-audit-columns';
+import { AddWorkItemDetectionFields1778769960000 } from './migrations/1778769960000-add-work-item-detection-fields';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
     type: 'mysql',
     host: process.env.MYSQL_HOST ?? '127.0.0.1',
     port: Number(process.env.MYSQL_PORT ?? 3306),
-    username: process.env.MYSQL_USER ?? 'sdd_monitor',
-    password: process.env.MYSQL_PASSWORD ?? 'sdd_monitor',
-    database: process.env.MYSQL_DATABASE ?? 'sdd_monitor',
+    username: process.env.MYSQL_USER ?? 'sdd-telemetry',
+    password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
+    database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
     timezone: 'Z',
     synchronize: false,
     logging: false,
@@ -19,6 +20,10 @@ export function createAppDataSource(): DataSource {
       connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT ?? 5),
     },
     entities: appEntities,
-    migrations: [CreateP0Schema1778769900000, RenameAuditColumns1778769950000],
+    migrations: [
+      CreateP0Schema1778769900000,
+      RenameAuditColumns1778769950000,
+      AddWorkItemDetectionFields1778769960000,
+    ],
   });
 }

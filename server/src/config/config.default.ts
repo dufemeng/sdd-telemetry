@@ -33,9 +33,9 @@ export default {
   mysql: {
     host: process.env.MYSQL_HOST ?? '127.0.0.1',
     port: Number(process.env.MYSQL_PORT ?? 3306),
-    username: process.env.MYSQL_USER ?? 'sdd_monitor',
-    password: process.env.MYSQL_PASSWORD ?? 'sdd_monitor',
-    database: process.env.MYSQL_DATABASE ?? 'sdd_monitor',
+    username: process.env.MYSQL_USER ?? 'sdd-telemetry',
+    password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
+    database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
   },
   redis: {
     host: process.env.REDIS_HOST ?? '127.0.0.1',

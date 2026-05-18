@@ -3,10 +3,10 @@ services:
     image: mysql:8.4
     container_name: sdd-telemetry-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: sdd_monitor_root
-      MYSQL_DATABASE: sdd_monitor
-      MYSQL_USER: sdd_monitor
-      MYSQL_PASSWORD: sdd_monitor
+      MYSQL_ROOT_PASSWORD: sdd-telemetry-root
+      MYSQL_DATABASE: sdd-telemetry
+      MYSQL_USER: sdd-telemetry
+      MYSQL_PASSWORD: sdd-telemetry
       TZ: UTC
     ports:
       - "3306:3306"
@@ -18,7 +18,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-usdd_monitor", "-psdd_monitor"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-usdd-telemetry", "-psdd-telemetry"]
       interval: 10s
       timeout: 5s
       retries: 10

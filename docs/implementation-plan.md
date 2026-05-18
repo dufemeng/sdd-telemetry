@@ -464,7 +464,7 @@ POST fixture
 4. 生成 `sdd_interactions`、`sdd_interaction_texts`。
 5. 根据 alias 生成 `sdd_skill_usages`。
 6. 提取 strong error 到 `sdd_errors`。
-7. 推断 work item / artifact P0-lite。
+7. 从 `tool_result.tool_input` 的写文件信号推断 work item / artifact P0-lite，并按同 session 最近 skill 归因。
 8. 更新 batch status。
 9. 实现 Chair Schedule adapter；本地开发可保留 CLI `run-once` 作为调试入口。
 
@@ -475,6 +475,7 @@ fixture raw -> parsed
 otel_log_events 有数据
 sdd_interactions 有数据
 sdd_skill_usages 有数据
+sdd_work_items 能从 @requirements 下的 `YYYY-MM-DD-<slug>` 路径生成
 sdd_errors 可识别强错误
 跨 batch prompt/response 可配对
 重试不会重复写派生数据

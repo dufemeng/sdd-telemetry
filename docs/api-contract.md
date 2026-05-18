@@ -254,6 +254,7 @@ export const SddSemanticSchema = z.object({
   semanticCode: z.string(),
   displayName: z.string(),
   description: z.string().nullable(),
+  artifactFilenamePatterns: z.array(z.string()).nullable(),
   aliases: z.array(
     z.object({
       id: z.string(),
@@ -274,13 +275,14 @@ export const CreateSddSemanticRequestSchema = z.object({
   semanticCode: z.string().min(1).max(64),
   displayName: z.string().min(1).max(191),
   description: z.string().max(1000).optional(),
+  artifactFilenamePatterns: z.array(z.string().min(1).max(191)).optional(),
   aliases: z.array(z.string().min(1).max(191)).min(1),
 });
 ```
 
 ### 6.3 PUT /api/sdd/semantics/:semanticId
 
-更新展示名、描述和 alias 集合。
+更新展示名、描述、artifact 文件名模式和 alias 集合。未传 `artifactFilenamePatterns` 时保留原配置。
 
 ### 6.4 DELETE /api/sdd/semantics/:semanticId
 
@@ -447,6 +449,8 @@ schema_parse_failed
 ### 6.10 GET /api/sdd/users
 
 用户 / 机器维度。
+
+Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
 
 ### 6.11 GET /api/sdd/versions
 

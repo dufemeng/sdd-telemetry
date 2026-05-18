@@ -9,9 +9,9 @@ export function createMysqlPool(): Pool {
   return mysql.createPool({
     host: process.env.MYSQL_HOST ?? '127.0.0.1',
     port: Number(process.env.MYSQL_PORT ?? 3306),
-    user: process.env.MYSQL_USER ?? 'sdd_monitor',
-    password: process.env.MYSQL_PASSWORD ?? 'sdd_monitor',
-    database: process.env.MYSQL_DATABASE ?? 'sdd_monitor',
+    user: process.env.MYSQL_USER ?? 'sdd-telemetry',
+    password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
+    database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
     waitForConnections: true,
     connectionLimit: Number(process.env.MYSQL_POOL_SIZE ?? 5),
     timezone: 'Z',

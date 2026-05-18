@@ -2,6 +2,7 @@ import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql
 import type { Logger } from 'pino';
 import { withTransaction } from '../infrastructure/mysql/client';
 import {
+  extractArtifactFromToolResult,
   extractOtelLogEvents,
   parseJsonObject,
   readString,
@@ -46,7 +47,7 @@ interface EventRow extends RowDataPacket {
   id: string;
   event_id: string;
   batch_id: string;
-  user_id: string | null;
+  user_id: string | number | null;
   session_id: string | null;
   prompt_id: string | null;
   event_name: string;
@@ -65,6 +66,18 @@ interface AliasRow extends RowDataPacket {
   skill_name: string;
 }
 
+interface UserRequirementsRootRow extends RowDataPacket {
+  id: string;
+  requirements_root_path: string | null;
+}
+
+interface SemanticPatternRow extends RowDataPacket {
+  semantic_id: string;
+  semantic_code: string;
+  artifact_filename_patterns: unknown;
+  skill_name: string | null;
+}
+
 interface IdRow extends RowDataPacket {
   id: string;
 }
@@ -72,6 +85,21 @@ interface IdRow extends RowDataPacket {
 interface InteractionRef {
   id: string;
   key: string;
+}
+
+interface SkillSemanticMatcher {
+  semanticId: string;
+  semanticCode: string;
+  artifactFilenamePatterns: string[];
+  skillNames: Set<string>;
+}
+
+interface SkillCandidate {
+  event: EventRow;
+  eventIndex: number;
+  rawSkillName: string;
+  semantic: SkillSemanticMatcher | null;
+  isActivatedEvent: boolean;
 }
 
 export class TerminalCleaningError extends Error {
@@ -593,21 +621,48 @@ async function upsertErrors(
 }
 
 async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): Promise<number> {
+  const artifactEvents = events
+    .map(event => ({
+      event,
+      artifact: extractWriteArtifactSignal(event),
+    }))
+    .filter((item): item is { event: EventRow; artifact: { filePath: string; isWrite: true } } =>
+      item.artifact !== null,
+    );
+
+  if (artifactEvents.length === 0) {
+    return 0;
+  }
+
+  const userRequirementsRoots = await loadUserRequirementsRoots(connection, events);
+  const semantics = await loadSkillSemanticMatchers(connection);
+  const skillByAlias = indexSkillSemanticsByAlias(semantics);
+  const eventIndexById = new Map(events.map((event, index) => [event.event_id, index]));
+  const skillCandidatesBySession = indexSkillCandidates(events, eventIndexById, skillByAlias);
   let count = 0;
 
-  for (const event of events) {
-    const artifactPath = pickRowString(event, [
-      'artifact.path',
-      'file.path',
-      'output_path',
-      'requirements.path',
-      'sdd.requirements_path',
-      'sdd.artifact_path',
-    ]);
-    const artifact = artifactPath ? inferArtifact(artifactPath) : null;
+  for (const { event, artifact: signal } of artifactEvents) {
+    const requirementsRootPath = event.user_id ? userRequirementsRoots.get(String(event.user_id)) : null;
+    if (!requirementsRootPath || !isPathInsideRoot(signal.filePath, requirementsRootPath)) {
+      continue;
+    }
+
+    const artifact = inferArtifact(signal.filePath, requirementsRootPath);
     if (!artifact) {
       continue;
     }
+
+    const attribution = attributeSkillForArtifact({
+      event,
+      artifact,
+      semantics,
+      skillCandidatesBySession,
+      eventIndex: eventIndexById.get(event.event_id) ?? 0,
+    });
+    const artifactType =
+      attribution.filenameSemantic?.semanticCode ??
+      attribution.skillCandidate?.semantic?.semanticCode ??
+      artifact.artifactType;
 
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_work_items
@@ -661,7 +716,7 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
       [
         artifact.artifactKey,
         workItemId,
-        artifact.artifactType,
+        artifactType,
         artifact.artifactRelativePath,
         artifact.artifactFullPath,
         artifact.systemModule,
@@ -670,10 +725,261 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
         asDate(event.event_time),
       ],
     );
+
+    if (attribution.skillCandidate?.semantic && event.session_id) {
+      await linkSkillUsageToWorkItem(connection, {
+        workItemId,
+        sessionId: event.session_id,
+        rawSkillName: attribution.skillCandidate.rawSkillName,
+        artifactEventTime: asDate(event.event_time),
+      });
+    }
+
     count += 1;
   }
 
   return count;
+}
+
+function extractWriteArtifactSignal(event: EventRow): { filePath: string; isWrite: true } | null {
+  const attributes = parseJsonObject(event.attributes_json);
+  const isWrite =
+    readBoolean(attributes['sdd.artifact_is_write']) ||
+    readBoolean(attributes['sdd.artifact.is_write']);
+  const persistedPath =
+    readString(attributes['sdd.artifact_path']) ??
+    readString(attributes['sdd.artifact.path']) ??
+    readString(attributes['artifact.path']);
+
+  if (isWrite && persistedPath) {
+    return {
+      filePath: persistedPath,
+      isWrite: true,
+    };
+  }
+
+  return extractArtifactFromToolResult({
+    eventName: event.event_name,
+    attributes,
+  });
+}
+
+async function loadUserRequirementsRoots(
+  connection: PoolConnection,
+  events: EventRow[],
+): Promise<Map<string, string>> {
+  const userIds = unique(
+    events
+      .map(event => event.user_id)
+      .filter((userId): userId is string | number => userId !== null && userId !== undefined)
+      .map(String)
+      .filter(value => value.length > 0),
+  );
+  if (userIds.length === 0) {
+    return new Map();
+  }
+
+  const [rows] = await connection.query<UserRequirementsRootRow[]>(
+    `SELECT id, requirements_root_path
+     FROM sdd_users
+     WHERE id IN (${userIds.map(() => '?').join(',')})`,
+    userIds,
+  );
+  const roots = new Map<string, string>();
+
+  for (const row of rows) {
+    if (row.requirements_root_path) {
+      roots.set(String(row.id), row.requirements_root_path);
+    }
+  }
+
+  return roots;
+}
+
+async function loadSkillSemanticMatchers(
+  connection: PoolConnection,
+): Promise<SkillSemanticMatcher[]> {
+  const [rows] = await connection.query<SemanticPatternRow[]>(
+    `SELECT s.id AS semantic_id, s.semantic_code, s.artifact_filename_patterns, a.skill_name
+     FROM sdd_skill_semantics s
+     LEFT JOIN sdd_skill_aliases a ON a.semantic_id = s.id
+     ORDER BY s.id ASC, a.skill_name ASC`,
+  );
+  const byId = new Map<string, SkillSemanticMatcher>();
+
+  for (const row of rows) {
+    const semanticId = String(row.semantic_id);
+    const semantic =
+      byId.get(semanticId) ??
+      ({
+        semanticId,
+        semanticCode: row.semantic_code,
+        artifactFilenamePatterns:
+          parsePatternArray(row.artifact_filename_patterns) ??
+          defaultArtifactFilenamePatterns(row.semantic_code),
+        skillNames: new Set<string>(),
+      } satisfies SkillSemanticMatcher);
+
+    if (row.skill_name) {
+      semantic.skillNames.add(row.skill_name);
+    }
+
+    byId.set(semanticId, semantic);
+  }
+
+  return Array.from(byId.values());
+}
+
+function indexSkillSemanticsByAlias(
+  semantics: SkillSemanticMatcher[],
+): Map<string, SkillSemanticMatcher> {
+  const byAlias = new Map<string, SkillSemanticMatcher>();
+
+  for (const semantic of semantics) {
+    for (const skillName of semantic.skillNames) {
+      byAlias.set(skillName, semantic);
+    }
+  }
+
+  return byAlias;
+}
+
+function indexSkillCandidates(
+  events: EventRow[],
+  eventIndexById: Map<string, number>,
+  skillByAlias: Map<string, SkillSemanticMatcher>,
+): Map<string, SkillCandidate[]> {
+  const candidatesBySession = new Map<string, SkillCandidate[]>();
+
+  for (const event of events) {
+    if (!event.session_id) {
+      continue;
+    }
+
+    const rawSkillName = pickRowString(event, [
+      'skill_name',
+      'skill.name',
+      'sdd.skill_name',
+      'command_name',
+      'command.name',
+      'tool.name',
+    ]);
+    if (!rawSkillName) {
+      continue;
+    }
+
+    const candidates = candidatesBySession.get(event.session_id) ?? [];
+    candidates.push({
+      event,
+      eventIndex: eventIndexById.get(event.event_id) ?? 0,
+      rawSkillName,
+      semantic: skillByAlias.get(rawSkillName) ?? null,
+      isActivatedEvent: normalizeEventName(event.event_name) === 'skill_activated',
+    });
+    candidatesBySession.set(event.session_id, candidates);
+  }
+
+  for (const candidates of candidatesBySession.values()) {
+    candidates.sort((left, right) => left.eventIndex - right.eventIndex);
+  }
+
+  return candidatesBySession;
+}
+
+function attributeSkillForArtifact(input: {
+  event: EventRow;
+  artifact: NonNullable<ReturnType<typeof inferArtifact>>;
+  semantics: SkillSemanticMatcher[];
+  skillCandidatesBySession: Map<string, SkillCandidate[]>;
+  eventIndex: number;
+}): {
+  filenameSemantic: SkillSemanticMatcher | null;
+  skillCandidate: SkillCandidate | null;
+} {
+  const filenameSemantic = findSemanticByFileName(
+    input.artifact.fileName,
+    input.semantics,
+  );
+  const sessionCandidates = input.event.session_id
+    ? input.skillCandidatesBySession.get(input.event.session_id) ?? []
+    : [];
+  const previousCandidates = sessionCandidates.filter(
+    candidate => candidate.eventIndex <= input.eventIndex,
+  );
+
+  if (previousCandidates.length === 0) {
+    return {
+      filenameSemantic,
+      skillCandidate: null,
+    };
+  }
+
+  const activatedCandidates = previousCandidates.filter(candidate => candidate.isActivatedEvent);
+  const candidates = activatedCandidates.length > 0 ? activatedCandidates : previousCandidates;
+
+  if (filenameSemantic) {
+    const semanticMatchedCandidate = findNearestCandidate(
+      candidates.filter(candidate => candidate.semantic?.semanticId === filenameSemantic.semanticId),
+    );
+    if (semanticMatchedCandidate) {
+      return {
+        filenameSemantic,
+        skillCandidate: semanticMatchedCandidate,
+      };
+    }
+  }
+
+  return {
+    filenameSemantic,
+    skillCandidate:
+      findNearestCandidate(candidates.filter(candidate => candidate.semantic !== null)) ??
+      findNearestCandidate(candidates),
+  };
+}
+
+function findNearestCandidate(candidates: SkillCandidate[]): SkillCandidate | null {
+  return candidates.at(-1) ?? null;
+}
+
+function findSemanticByFileName(
+  fileName: string,
+  semantics: SkillSemanticMatcher[],
+): SkillSemanticMatcher | null {
+  for (const semantic of semantics) {
+    if (semantic.artifactFilenamePatterns.some(pattern => globMatch(fileName, pattern))) {
+      return semantic;
+    }
+  }
+
+  return null;
+}
+
+async function linkSkillUsageToWorkItem(
+  connection: PoolConnection,
+  input: {
+    workItemId: string;
+    sessionId: string;
+    rawSkillName: string;
+    artifactEventTime: Date | null;
+  },
+): Promise<void> {
+  await connection.query<ResultSetHeader>(
+    `UPDATE sdd_skill_usages
+     SET work_item_id = ?,
+         gmt_modified = CURRENT_TIMESTAMP(3)
+     WHERE session_id = ?
+       AND raw_skill_name = ?
+       AND (work_item_id IS NULL OR work_item_id = ?)
+       AND (? IS NULL OR event_time IS NULL OR event_time <= ?)`,
+    [
+      input.workItemId,
+      input.sessionId,
+      input.rawSkillName,
+      input.workItemId,
+      input.artifactEventTime,
+      input.artifactEventTime,
+    ],
+  );
 }
 
 async function markBatchParsed(
@@ -800,7 +1106,70 @@ function isStrongErrorEvent(event: EventRow): boolean {
   return hasException;
 }
 
-function inferArtifact(artifactFullPath: string): {
+function isPathInsideRoot(filePath: string, rootPath: string): boolean {
+  const normalizedFilePath = normalizePath(filePath);
+  const normalizedRootPath = trimTrailingSlash(normalizePath(rootPath));
+
+  return (
+    normalizedFilePath === normalizedRootPath ||
+    normalizedFilePath.startsWith(`${normalizedRootPath}/`)
+  );
+}
+
+function normalizePath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/');
+}
+
+function trimTrailingSlash(pathValue: string): string {
+  return pathValue.replace(/\/+$/g, '');
+}
+
+function parsePatternArray(value: unknown): string[] | null {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function defaultArtifactFilenamePatterns(semanticCode: string): string[] {
+  switch (semanticCode) {
+    case 'proposal':
+      return ['proposal.md', 'proposal-*.md'];
+    case 'design':
+      return ['design.md', 'design-*.md'];
+    case 'task':
+      return ['tasks.md', 'tasks-*.md', 'task.md', 'task-*.md'];
+    case 'codereview':
+      return ['codereview.md', 'codereview-*.md', 'code-review.md', 'code-review-*.md', 'review.md', 'review-*.md'];
+    case 'code':
+      return ['implementation.md', 'implementation-*.md', 'code.md', 'code-*.md'];
+    default:
+      return [];
+  }
+}
+
+function globMatch(value: string, pattern: string): boolean {
+  const escapedPattern = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+
+  return new RegExp(`^${escapedPattern}$`, 'i').test(value);
+}
+
+function inferArtifact(artifactFullPath: string, requirementsRootPath: string): {
   artifactKey: string;
   workItemKey: string;
   repoName: string | null;
@@ -811,31 +1180,35 @@ function inferArtifact(artifactFullPath: string): {
   artifactType: string;
   artifactRelativePath: string;
   artifactFullPath: string;
+  fileName: string;
   systemModule: string | null;
 } | null {
-  const normalized = artifactFullPath.replace(/\\/g, '/');
-  const segments = normalized.split('/').filter(Boolean);
-  const workItemIndex = segments.findIndex(segment => /^\d{4}-\d{2}-\d{2}-.+/.test(segment));
+  const normalized = normalizePath(artifactFullPath);
+  const normalizedRoot = trimTrailingSlash(normalizePath(requirementsRootPath));
+  const relativePath = normalized.slice(normalizedRoot.length).replace(/^\/+/, '');
+  const relativeSegments = relativePath.split('/').filter(Boolean);
+  const workItemIndex = relativeSegments.findIndex(segment => /^\d{4}-\d{2}-\d{2}-.+/.test(segment));
 
   if (workItemIndex <= 0) {
     return null;
   }
 
-  const repoName = workItemIndex >= 2 ? segments[workItemIndex - 2] ?? null : null;
-  const businessDomain = segments[workItemIndex - 1] ?? null;
-  const workItemSlug = segments[workItemIndex] ?? '';
+  const rootSegments = normalizedRoot.split('/').filter(Boolean);
+  const repoName = rootSegments.at(-1) ?? null;
+  const businessDomain = relativeSegments[workItemIndex - 1] ?? null;
+  const workItemSlug = relativeSegments[workItemIndex] ?? '';
   if (!workItemSlug) {
     return null;
   }
-  const relativeSegments = segments.slice(workItemIndex - 1);
-  const artifactRelativeSegments = segments.slice(workItemIndex);
-  const fileName = segments.at(-1) ?? '';
+  const workItemRelativeSegments = relativeSegments.slice(workItemIndex - 1);
+  const artifactRelativeSegments = relativeSegments.slice(workItemIndex);
+  const fileName = artifactRelativeSegments.at(-1) ?? '';
   const moduleCandidate = artifactRelativeSegments.length >= 3 ? artifactRelativeSegments[1] : null;
-  const relativeDir = relativeSegments.slice(0, 2).join('/');
+  const relativeDir = workItemRelativeSegments.slice(0, 2).join('/');
 
   return {
-    artifactKey: sha256(`artifact:${normalized}`),
-    workItemKey: sha256(`work-item:${repoName ?? ''}:${relativeDir}`),
+    artifactKey: sha256(`artifact:${relativeDir}:${artifactRelativeSegments.join('/')}`),
+    workItemKey: sha256(`work-item:${businessDomain ?? ''}:${workItemSlug}`),
     repoName,
     businessDomain,
     workItemSlug,
@@ -844,6 +1217,7 @@ function inferArtifact(artifactFullPath: string): {
     artifactType: artifactTypeFromFileName(fileName),
     artifactRelativePath: artifactRelativeSegments.join('/'),
     artifactFullPath: normalized,
+    fileName,
     systemModule: moduleCandidate && !moduleCandidate.endsWith('.md') ? moduleCandidate : null,
   };
 }
@@ -856,7 +1230,7 @@ function artifactTypeFromFileName(fileName: string): string {
   if (lower.startsWith('design')) {
     return 'design';
   }
-  if (lower === 'tasks.md') {
+  if (lower === 'tasks.md' || lower.startsWith('tasks-') || lower.startsWith('task')) {
     return 'task';
   }
   if (lower.includes('review')) {
@@ -924,6 +1298,10 @@ function unique(values: string[]): string[] {
 
 function isNonEmptyString(value: string | null): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+function normalizeEventName(eventName: string): string {
+  return eventName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 function normalizeKey(key: string): string {

@@ -34,6 +34,7 @@ interface SemanticRow {
   semantic_code: string;
   display_name: string;
   description: string | null;
+  artifact_filename_patterns: unknown;
   alias_id: string | number | null;
   skill_name: string | null;
 }
@@ -127,6 +128,8 @@ interface UserRow {
   user_name: string | null;
   machine_id: string | null;
   machine_name: string | null;
+  requirements_root_path: string | null;
+  wiki_root_path: string | null;
   last_seen_at: Date | string | null;
   skill_usage_count: string | number;
   interaction_count: string | number;
@@ -172,6 +175,7 @@ export class SddQueryService {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
       `SELECT s.id, s.semantic_code, s.display_name, s.description,
+              s.artifact_filename_patterns,
               a.id AS alias_id, a.skill_name
        FROM sdd_skill_semantics s
        LEFT JOIN sdd_skill_aliases a ON a.semantic_id = s.id
@@ -188,6 +192,7 @@ export class SddQueryService {
           semanticCode: row.semantic_code,
           displayName: row.display_name,
           description: row.description,
+          artifactFilenamePatterns: parseStringArray(row.artifact_filename_patterns),
           aliases: [],
         } satisfies SddSemantic);
 
@@ -209,13 +214,22 @@ export class SddQueryService {
     await dataSource.transaction(async manager => {
       await manager.query(
         `INSERT INTO sdd_skill_semantics
-          (semantic_code, display_name, description, gmt_create, gmt_modified)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+          (semantic_code, display_name, description, artifact_filename_patterns,
+           gmt_create, gmt_modified)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
          ON DUPLICATE KEY UPDATE
            display_name = VALUES(display_name),
            description = VALUES(description),
+           artifact_filename_patterns = VALUES(artifact_filename_patterns),
            gmt_modified = CURRENT_TIMESTAMP(3)`,
-        [input.semanticCode, input.displayName, input.description ?? null],
+        [
+          input.semanticCode,
+          input.displayName,
+          input.description ?? null,
+          input.artifactFilenamePatterns === undefined
+            ? null
+            : JSON.stringify(input.artifactFilenamePatterns),
+        ],
       );
       const rows = (await manager.query(
         `SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`,
@@ -252,9 +266,19 @@ export class SddQueryService {
     await dataSource.transaction(async manager => {
       await manager.query(
         `UPDATE sdd_skill_semantics
-         SET display_name = ?, description = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+         SET display_name = ?,
+             description = ?,
+             artifact_filename_patterns = COALESCE(?, artifact_filename_patterns),
+             gmt_modified = CURRENT_TIMESTAMP(3)
          WHERE id = ?`,
-        [input.displayName, input.description ?? null, id],
+        [
+          input.displayName,
+          input.description ?? null,
+          input.artifactFilenamePatterns === undefined
+            ? null
+            : JSON.stringify(input.artifactFilenamePatterns),
+          id,
+        ],
       );
       await manager.query(
         `DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`,
@@ -562,14 +586,14 @@ export class SddQueryService {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
       `SELECT u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
-              u.last_seen_at,
+              u.requirements_root_path, u.wiki_root_path, u.last_seen_at,
               COUNT(DISTINCT su.id) AS skill_usage_count,
               COUNT(DISTINCT i.id) AS interaction_count
        FROM sdd_users u
        LEFT JOIN sdd_skill_usages su ON su.user_id = u.id
        LEFT JOIN sdd_interactions i ON i.user_id = u.id
        GROUP BY u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
-                u.last_seen_at
+                u.requirements_root_path, u.wiki_root_path, u.last_seen_at
        ORDER BY u.last_seen_at DESC, u.id DESC
        LIMIT 200`,
     )) as UserRow[];
@@ -581,6 +605,8 @@ export class SddQueryService {
       userName: row.user_name,
       machineId: row.machine_id,
       machineName: row.machine_name,
+      requirementsRootPath: row.requirements_root_path,
+      wikiRootPath: row.wiki_root_path,
       lastSeenAt: toIsoDate(row.last_seen_at),
       skillUsageCount: toNumber(row.skill_usage_count),
       interactionCount: toNumber(row.interaction_count),
@@ -815,6 +841,25 @@ function createUserKey(input: ReportUserSettingsRequest): string {
   }
 
   return sha256(`settings:${input.requirementsRootPath}`);
+}
+
+function parseStringArray(value: unknown): string[] | null {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function sha256(input: string): string {

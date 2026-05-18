@@ -14,6 +14,7 @@ packages/
 ```
 
 数据库：MySQL 8；队列：Redis；构建：pnpm workspace + Turborepo。
+本地 MySQL 默认库名、用户名、密码均为 `sdd-telemetry`。
 
 ## 本地启动
 

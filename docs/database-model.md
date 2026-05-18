@@ -90,6 +90,7 @@ SDD 语义配置表。语义是页面展示、归类、评测、故障排查的�
 | `semantic_code` | VARCHAR(64) | NOT NULL, UNIQUE | 稳定语义编码，如 `proposal`、`design`、`task` |
 | `display_name` | VARCHAR(191) | NOT NULL | 展示名，如“技术提案” |
 | `description` | VARCHAR(1000) | NULL | 页面小字描述 |
+| `artifact_filename_patterns` | JSON | NULL | 该语义产出的过程文档文件名 glob，如 `["design.md","design-*.md"]` |
 | `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
 | `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
 
@@ -336,7 +337,7 @@ sha256(
 
 ### 6.2 sdd_work_items
 
-需求维度 P0-lite。通过用户上报的 `requirements_root_path` 和日志里的完整路径推断。
+需求维度 P0-lite。通过用户上报的 `requirements_root_path` 和 `tool_result.tool_input` 里的写文件路径推断。只有带 `content` / `new_string` 的写入信号会生成 work item，读取文件不会生成。
 
 | 字段 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -355,7 +356,7 @@ sha256(
 `work_item_key` 生成建议：
 
 ```text
-sha256(requirements_repo_name + ":" + business_domain + ":" + work_item_slug)
+sha256(business_domain + ":" + work_item_slug)
 ```
 
 ### 6.3 sdd_work_item_artifacts

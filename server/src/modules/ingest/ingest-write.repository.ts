@@ -87,8 +87,9 @@ export class IngestWriteRepository {
     await manager.query(
       `INSERT INTO sdd_users
         (user_key, install_id, user_name, machine_id, machine_name, os_name, os_version,
-         client_name, client_version, first_seen_at, last_seen_at, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3),
+         client_name, client_version, requirements_root_path, wiki_root_path,
+         first_seen_at, last_seen_at, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3),
          CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          install_id = COALESCE(VALUES(install_id), install_id),
@@ -99,6 +100,8 @@ export class IngestWriteRepository {
          os_version = COALESCE(VALUES(os_version), os_version),
          client_name = COALESCE(VALUES(client_name), client_name),
          client_version = COALESCE(VALUES(client_version), client_version),
+         requirements_root_path = COALESCE(VALUES(requirements_root_path), requirements_root_path),
+         wiki_root_path = COALESCE(VALUES(wiki_root_path), wiki_root_path),
          last_seen_at = CURRENT_TIMESTAMP(3),
          gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
@@ -111,6 +114,8 @@ export class IngestWriteRepository {
         hints.osVersion,
         hints.clientName,
         hints.clientVersion,
+        hints.requirementsRootPath,
+        hints.wikiRootPath,
       ],
     );
 

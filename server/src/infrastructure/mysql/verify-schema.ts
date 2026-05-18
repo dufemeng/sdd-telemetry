@@ -32,6 +32,11 @@ const expectedUniqueIndexes = [
   'uk_sdd_errors_error_key',
 ];
 
+const expectedColumns: Record<string, string[]> = {
+  sdd_users: ['requirements_root_path'],
+  sdd_skill_semantics: ['artifact_filename_patterns'],
+};
+
 async function main(): Promise<void> {
   const dataSource = createAppDataSource();
   await dataSource.initialize();
@@ -60,6 +65,22 @@ async function main(): Promise<void> {
 
     if (missingIndexes.length > 0) {
       throw new Error(`missing unique indexes: ${missingIndexes.join(', ')}`);
+    }
+
+    for (const [tableName, columnNames] of Object.entries(expectedColumns)) {
+      const columns = (await dataSource.query(
+        `SELECT column_name AS columnName
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = ?`,
+        [tableName],
+      )) as Array<{ columnName: string }>;
+      const actualColumns = new Set(columns.map(row => row.columnName));
+      const missingColumns = columnNames.filter(columnName => !actualColumns.has(columnName));
+
+      if (missingColumns.length > 0) {
+        throw new Error(`missing columns in ${tableName}: ${missingColumns.join(', ')}`);
+      }
     }
   } finally {
     await dataSource.destroy();

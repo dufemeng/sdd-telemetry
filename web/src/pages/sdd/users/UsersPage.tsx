@@ -16,12 +16,22 @@ export default function UsersPage() {
     <Panel title="用户维度" icon={<UserRound size={18} />}>
       <div className="grid gap-3">
         <DataTable
-          headers={['用户', 'installId', 'machineId', 'machineName', '交互数', '技能调用', '最近活跃']}
+          headers={[
+            '用户',
+            'installId',
+            'machineId',
+            'requirementsRoot',
+            'wikiRoot',
+            '交互数',
+            '技能调用',
+            '最近活跃',
+          ]}
           rows={pageItems.map((u) => [
             u.userName ?? u.userKey,
             u.installId ?? '—',
             u.machineId ?? '—',
-            u.machineName ?? '—',
+            u.requirementsRootPath ?? '—',
+            u.wikiRootPath ?? '—',
             formatInteger(u.interactionCount),
             formatInteger(u.skillUsageCount),
             formatTime(u.lastSeenAt),

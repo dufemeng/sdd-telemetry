@@ -29,6 +29,16 @@ export interface ExtractedLogEvent {
   isStrongError: boolean;
 }
 
+export interface ExtractedArtifactSignal {
+  filePath: string;
+  isWrite: true;
+}
+
+export interface ArtifactExtractionEvent {
+  eventName: string;
+  attributes: Record<string, unknown>;
+}
+
 export function extractOtelLogEvents(payload: unknown, batchId: string): ExtractedLogEvent[] {
   if (!isRecord(payload)) {
     return [];
@@ -59,7 +69,9 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
         const attributes = readAttributesFromArray(logRecord.attributes);
         const bodyJson = readAnyValue(logRecord.body);
         const bodyText = readBodyText(bodyJson);
-        const eventName = pickString(attributes, ['event_name', 'event.name', 'name']) ?? 'unknown';
+        const eventName =
+          pickString(attributes, ['event_name', 'event.name', 'event.type', 'type', 'name']) ??
+          'unknown';
         const eventTime = readUnixNanoDate(logRecord.timeUnixNano);
         const observedAt = readUnixNanoDate(logRecord.observedTimeUnixNano);
         const promptText = pickPromptText(attributes, bodyJson, bodyText, eventName);
@@ -88,7 +100,8 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
           'command.name',
           'tool.name',
         ]);
-        const artifactPath = pickString(attributes, [
+        const toolResultArtifact = extractArtifactFromToolResult({ eventName, attributes });
+        const artifactPath = toolResultArtifact?.filePath ?? pickString(attributes, [
           'artifact.path',
           'file.path',
           'output_path',
@@ -96,6 +109,13 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
           'sdd.requirements_path',
           'sdd.artifact_path',
         ]);
+        const persistedAttributes = toolResultArtifact
+          ? {
+              ...attributes,
+              'sdd.artifact_path': toolResultArtifact.filePath,
+              'sdd.artifact_is_write': 'true',
+            }
+          : attributes;
         const sessionId = pickString(attributes, [
           'session_id',
           'session.id',
@@ -127,7 +147,7 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
           severityNumber,
           eventTime,
           observedAt,
-          attributes,
+          attributes: persistedAttributes,
           resource,
           bodyJson,
           bodyText,
@@ -182,6 +202,34 @@ export function parseJsonObject(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+export function extractArtifactFromToolResult(
+  event: ArtifactExtractionEvent,
+): ExtractedArtifactSignal | null {
+  if (normalizeEventName(event.eventName) !== 'tool_result') {
+    return null;
+  }
+
+  const success =
+    readString(event.attributes['tool_result.success']) ??
+    readString(event.attributes['success']) ??
+    readString(event.attributes['tool.success']);
+
+  if (success !== 'true') {
+    return null;
+  }
+
+  const toolInput = parseJsonObject(event.attributes.tool_input);
+  const filePath = readString(toolInput.file_path) ?? readString(toolInput.path);
+  if (!filePath || !isPathLike(filePath) || !hasWritableContentField(toolInput)) {
+    return null;
+  }
+
+  return {
+    filePath,
+    isWrite: true,
+  };
 }
 
 function collectScopeLogs(resourceLog: Record<string, unknown>): unknown[] {
@@ -390,6 +438,22 @@ function isStrongError(
 
 function isErrorEventName(eventName: string): boolean {
   return /(^|[_.:-])(error|exception|fatal)([_.:-]|$)/i.test(eventName);
+}
+
+function normalizeEventName(eventName: string): string {
+  return eventName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function isPathLike(value: string): boolean {
+  return value.includes('/') || value.includes('\\') || value.startsWith('.') || value.startsWith('~');
+}
+
+function hasWritableContentField(input: Record<string, unknown>): boolean {
+  return hasOwn(input, 'content') || hasOwn(input, 'new_string');
+}
+
+function hasOwn(input: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
 }
 
 function normalizeKey(key: string): string {

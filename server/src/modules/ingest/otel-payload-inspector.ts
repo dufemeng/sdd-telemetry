@@ -9,6 +9,8 @@ export interface OtlpUserHints {
   osVersion: string | null;
   clientName: string | null;
   clientVersion: string | null;
+  requirementsRootPath: string | null;
+  wikiRootPath: string | null;
 }
 
 export interface OtlpPayloadSummary {
@@ -50,6 +52,18 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
       osVersion: pickAttribute(attributes, ['os.version', 'os.description']),
       clientName: pickAttribute(attributes, ['service.name', 'telemetry.sdk.name']),
       clientVersion: pickAttribute(attributes, ['service.version', 'telemetry.sdk.version']),
+      requirementsRootPath: pickAttribute(attributes, [
+        'requirements_root_path',
+        'requirements.root_path',
+        'sdd.requirements_root_path',
+        'sdd.requirements.path',
+      ]),
+      wikiRootPath: pickAttribute(attributes, [
+        'wiki_root_path',
+        'wiki.root_path',
+        'sdd.wiki_root_path',
+        'sdd.wiki.path',
+      ]),
     },
   };
 }
