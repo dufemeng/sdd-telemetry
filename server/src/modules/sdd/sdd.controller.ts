@@ -7,6 +7,7 @@ import {
   SddErrorItemSchema,
   SddFunnelQuerySchema,
   SddFunnelSchema,
+  SddInteractionDetailSchema,
   SddInteractionItemSchema,
   SddListQuerySchema,
   SddSemanticSchema,
@@ -19,6 +20,7 @@ import {
   SddWorkItemSchema,
   type SddErrorItem,
   type SddFunnel,
+  type SddInteractionDetail,
   type SddInteractionItem,
   type SddSemantic,
   type SddUsageSummaryResponse,
@@ -94,6 +96,17 @@ export class SddController {
     const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
     const data: SddInteractionItem[] = await this.sddQueryService.listInteractions(query);
     return ok(parseWithSchema(SddInteractionItemSchema.array(), data));
+  }
+
+  @Get('/interactions/:interactionId')
+  async interactionDetail() {
+    const interactionId = this.ctx.params.interactionId as string;
+    const data: SddInteractionDetail | null = await this.sddQueryService.getInteractionDetail(interactionId);
+    if (!data) {
+      throw new Error(`interaction not found: ${interactionId}`);
+    }
+
+    return ok(parseWithSchema(SddInteractionDetailSchema, data));
   }
 
   @Get('/errors')

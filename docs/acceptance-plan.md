@@ -180,7 +180,7 @@ GET /api/events/field-values
 GET /api/events/timeline
 ```
 
-**SDD（14）**
+**SDD（15）**
 
 ```text
 GET    /api/sdd/semantics
@@ -191,6 +191,7 @@ GET    /api/sdd/funnel
 GET    /api/sdd/usage-summary
 GET    /api/sdd/usages
 GET    /api/sdd/interactions
+GET    /api/sdd/interactions/:interactionId
 GET    /api/sdd/errors
 GET    /api/sdd/users
 GET    /api/sdd/versions

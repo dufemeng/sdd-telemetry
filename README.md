@@ -60,6 +60,55 @@ Claude Code 插件
                     └─ Dashboard 查询派生表展示
 ```
 
+## SDD 工作流背景
+
+本平台服务于以下完整的 SDD（Skill-Driven Development）链路：
+
+### 完整链路（公司电脑）
+
+```
+init 命令
+  └─ clone 团队共用 git 仓库到本地：
+       @wiki  = bk-fe-knowledge-trade   （知识库，全团队共用）
+       @requirements = bk-fe-requirements-trade （需求过程文档库，全团队共用）
+  └─ 写入 settings.json：
+       { "pathAliases": { "@wiki": "/path/to/...", "@requirements": "/path/to/..." } }
+
+bk-fe:xxx skills
+  └─ 从 @wiki 召回项目/系统知识
+  └─ 产出过程文档（proposal.md / design.md / tasks.md）写入 @requirements
+```
+
+### @requirements 目录结构（需求维度）
+
+```
+bk-fe-requirements-trade/
+├── cashier/                              # 业务域
+│   └── 2026-04-10-unfreeze-component/   # 需求（work item），以日期+slug命名
+│       ├── proposal.md
+│       └── bk-cashier-sign-sdk/         # 系统模块
+│           ├── design.md
+│           └── tasks.md
+└── mybank-home/                          # 另一个业务域
+    └── 2026-01-08-子女帮父母理财二期/
+        └── proposal.md
+```
+
+sdd_work_items 对应上面的**需求目录**（日期-slug），sdd_work_item_artifacts 对应其中的**过程文档**。
+
+### work item 写入机制
+
+当 bk-fe skill 调用 Write/Edit 工具把文档写入 @requirements 时，Claude Code 通过 OTel 上报 `tool_result` 事件，`tool_input` 字段包含完整 `file_path`。cleaning-worker 解析这个路径，如果路径中含有 `YYYY-MM-DD-<slug>` 格式的目录段，则推断出 work item 和 artifact，写入 sdd_work_items / sdd_work_item_artifacts。
+
+### 两台电脑的现状
+
+| 电脑 | 有什么 | 没有什么 |
+|---|---|---|
+| 公司电脑 | 完整的 bk-fe-sdd + @wiki + @requirements 联动 | sdd-telemetry 监控平台 |
+| 当前电脑 | sdd-telemetry 监控平台 + bk-fe:xxx skills | @wiki / @requirements 联动 |
+
+目标：在当前电脑完成 sdd-telemetry，然后部署到公司电脑使用。
+
 ## 文档
 
 - [API Contract](./docs/api-contract.md)

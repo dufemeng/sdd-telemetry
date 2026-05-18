@@ -395,7 +395,7 @@ limit / cursor
 
 ### 6.8 GET /api/sdd/interactions
 
-prompt / response 交互列表。
+prompt / response 交互列表。列表只返回 `promptPreview` / `responsePreview`，用于表格快速浏览。
 
 Query 支持：
 
@@ -409,7 +409,21 @@ from / to
 limit / cursor
 ```
 
-### 6.9 GET /api/sdd/errors
+### 6.9 GET /api/sdd/interactions/:interactionId
+
+单条交互详情，用于 Row Inspector 抽屉查看整行数据和完整 prompt / response。
+
+Response：
+
+```ts
+export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
+  promptText: z.string().nullable(),
+  responseText: z.string().nullable(),
+  responseJson: z.string().nullable(),
+});
+```
+
+### 6.10 GET /api/sdd/errors
 
 异常 / 错误视图。
 
@@ -444,27 +458,27 @@ schema_parse_failed
 
 今日 MVP 不展示异常 / 错误 Tab，但保留 API 和数据表，后续再设计降噪视图。
 
-### 6.10 GET /api/sdd/users
+### 6.11 GET /api/sdd/users
 
 用户 / 机器维度。
 
 Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
 
-### 6.11 GET /api/sdd/versions
+### 6.12 GET /api/sdd/versions
 
 版本分析。
 
 今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
 
-### 6.12 GET /api/sdd/work-items
+### 6.13 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.13 GET /api/sdd/work-items/:workItemId
+### 6.14 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
-### 6.14 POST /api/sdd/user-settings
+### 6.15 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 

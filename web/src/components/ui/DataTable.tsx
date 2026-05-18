@@ -1,13 +1,29 @@
 import React from 'react';
 import { EmptyState } from './EmptyState';
 
-interface DataTableProps {
-  headers: string[];
-  rows: React.ReactNode[][];
-  emptyText?: string;
+export interface DataTableRow {
+  key: React.Key;
+  cells: React.ReactNode[];
+  ariaLabel?: string;
 }
 
-export function DataTable({ headers, rows, emptyText = '暂无数据' }: DataTableProps) {
+interface DataTableProps {
+  headers: string[];
+  rows: Array<React.ReactNode[] | DataTableRow>;
+  emptyText?: string;
+  onRowClick?: (rowIndex: number) => void;
+  onRowSelect?: (rowKey: React.Key, rowIndex: number) => void;
+  selectedRowKey?: React.Key | null;
+}
+
+export function DataTable({
+  headers,
+  rows,
+  emptyText = '暂无数据',
+  onRowClick,
+  onRowSelect,
+  selectedRowKey = null,
+}: DataTableProps) {
   return (
     <div
       className="max-w-full overflow-auto rounded-[4px]"
@@ -28,28 +44,53 @@ export function DataTable({ headers, rows, emptyText = '暂无数据' }: DataTab
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, ri) => (
-            // Use first cell as key when it's a stable string ID; otherwise fall back to index
-            // (rows are server-fetched and displayed read-only, so index keys are acceptable here)
-            <tr key={typeof row[0] === 'string' ? row[0] : ri} className="group">
-              {row.map((cell, ci) => (
-                <td
-                  key={ci}
-                  className={[
-                    'px-[10px] py-2 text-[12px] leading-4 align-top max-w-[320px] break-words',
-                    'group-hover:bg-[#171717] transition-colors',
-                    ci === 0 || ci === 1 ? 'text-[var(--color-text)]' : 'text-[var(--color-secondary)]',
-                  ].join(' ')}
-                  style={{ borderBottom: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)' }}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row, ri) => {
+            const isObjectRow = isDataTableRow(row);
+            const cells = isObjectRow ? row.cells : row;
+            const rowKey = isObjectRow ? row.key : typeof cells[0] === 'string' ? cells[0] : ri;
+            const isSelected = selectedRowKey === rowKey;
+            const isInteractive = Boolean(onRowClick || onRowSelect);
+
+            return (
+              <tr
+                key={rowKey}
+                className="group"
+                aria-label={isObjectRow ? row.ariaLabel : undefined}
+                aria-selected={isSelected || undefined}
+                onClick={
+                  isInteractive
+                    ? () => {
+                        onRowClick?.(ri);
+                        onRowSelect?.(rowKey, ri);
+                      }
+                    : undefined
+                }
+                style={isInteractive ? { cursor: 'pointer' } : undefined}
+              >
+                {cells.map((cell, ci) => (
+                  <td
+                    key={ci}
+                    className={[
+                      'px-[10px] py-2 text-[12px] leading-4 align-top max-w-[320px] break-words',
+                      'group-hover:bg-[#171717] transition-colors',
+                      isSelected ? 'bg-[#222]' : '',
+                      ci === 0 || ci === 1 ? 'text-[var(--color-text)]' : 'text-[var(--color-secondary)]',
+                    ].join(' ')}
+                    style={{ borderBottom: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)' }}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {rows.length === 0 && <EmptyState text={emptyText} />}
     </div>
   );
+}
+
+function isDataTableRow(row: React.ReactNode[] | DataTableRow): row is DataTableRow {
+  return !Array.isArray(row);
 }

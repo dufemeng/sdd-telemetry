@@ -14,6 +14,7 @@ import {
   SddFunnelSchema,
   SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
+  SddInteractionDetailSchema,
   SddInteractionItemSchema,
   SddErrorItemSchema,
   SddUserItemSchema,
@@ -278,6 +279,16 @@ describe('API Contract Tests', () => {
       const { status, body } = await api('GET', '/api/sdd/interactions');
       expect(status).toBe(200);
       validateContract('SddInteractionItem[]', body, SddInteractionItemSchema.array());
+    });
+
+    it('GET /api/sdd/interactions/:id — returns SddInteractionDetail', async () => {
+      const listResponse = await api('GET', '/api/sdd/interactions');
+      const list = validateContract('SddInteractionItem[]', listResponse.body, SddInteractionItemSchema.array());
+      const first = list[0];
+      if (!first) return;
+      const { status, body } = await api('GET', `/api/sdd/interactions/${first.id}`);
+      expect(status).toBe(200);
+      validateContract('SddInteractionDetail', body, SddInteractionDetailSchema);
     });
 
     it('GET /api/sdd/errors — returns SddErrorItem[]', async () => {

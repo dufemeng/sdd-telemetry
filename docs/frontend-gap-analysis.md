@@ -40,7 +40,7 @@
 | 异常错误 | 今日 MVP 不做这个 Tab，挂后续 TODO | 后端 `sdd_errors` 保留，但前端不进入今日验收 |
 | 弱文本错误 | 走最短路径，不做弱文本匹配 | 避免噪音和错误归因复杂度 |
 | Skill 概览 | 已补 `GET /api/sdd/usage-summary` | 不改数据库，基于 `sdd_skill_usages` 聚合 |
-| prompt/response | 列表页使用 preview；全文后续走详情接口 | 当前数据库已有全文表，当前 API 只暴露 preview |
+| prompt/response | 列表页使用 preview；Row Inspector 走详情接口查看全文 | `GET /api/sdd/interactions/:interactionId` 返回全文 |
 | 版本分析 | 今日 MVP 移除 Tab | 当前只能做全局版本分布，缺 skill 维度和错误率，价值不足 |
 | 数据库浏览 | 要完整功能，已补 ops API | 不改核心业务库表，增强 ops API 的 schema detail 和 filter 查询能力 |
 | 语义配置 / Work Item | 按建议保留 | 语义配置做入口；Work Item 做 SDD 分析二级页面 |
@@ -375,11 +375,11 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 | endedAt / startedAt | completed_at / started_at | ❓ |
 | displayName | sdd_users.user_name | ❓ |
 | observedSkillVersion | sdd_skill_usages.observed_version | ❓ |
-| promptText / responseText | 当前 API 只返回 `promptPreview` / `responsePreview` | ⚠️ 全文需后续详情接口 |
+| promptText / responseText | 列表 API 返回 `promptPreview` / `responsePreview`；详情 API 返回全文 | ✅ Row Inspector 使用详情接口 |
 | pairingMethod:confidence | pairing_method + evidence_json | ❓ |
 | eventCount / apiResponseCount | 需关联 otel_log_events 聚合 | ❓ |
 
-**结论**：preview 是当前已实现能力，来源于 `sdd_interaction_texts.prompt_text/response_text` 截断后的 `promptPreview/responsePreview`。全文不是当前 API 能力，后续建议新增 interaction detail 接口。
+**结论**：列表页继续使用 preview；点击行后由 Row Inspector 调用 `GET /api/sdd/interactions/:interactionId` 展示 `promptText` / `responseText` 全文。
 
 ---
 
@@ -451,8 +451,7 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 6. **`GET /api/ingest/health` 增加 `rawRetention` 字段**（oldestExpiresAt / retentionDays）
 7. **`GET /api/ingest/health` 增加 `recentFailures[]`**（或前端用 batches 接口替代）
 8. **`GET /api/ingest/health` 增加多窗口支持**（windows[] 或支持多次调用不同 windowHours）
-9. **Interaction detail 接口** — 用于查看完整 prompt/response，列表页继续使用 preview
-10. **版本分析后续恢复** — 若需要，新增 `GET /api/sdd/version-summary?groupBy=semantic`
+9. **版本分析后续恢复** — 若需要，新增 `GET /api/sdd/version-summary?groupBy=semantic`
 
 ### P2 — 可以前端自行处理的
 
@@ -470,7 +469,7 @@ user_key, install_id, user_name, machine_id, machine_name, os_name, os_version, 
 | D2 | **异常错误**：旧版有后端聚合的签名分组和维度统计，新 API 是扁平列表。前端聚合还是后端补？ | 已定：今日 MVP 不做，后续由后端补聚合接口 |
 | D3 | **弱文本匹配**：新 API 只保留强错误，弱文本命中是否需要保留？ | 已定：最短路径，不做弱文本 |
 | D4 | **Skill 概览**：前端是否需要聚合概览页？ | 已定：需要，新增 `GET /api/sdd/usage-summary` |
-| D5 | **prompt/response**：列表页展示 preview 还是全文？ | 已定：当前列表用 preview，全文后续详情接口 |
+| D5 | **prompt/response**：列表页展示 preview 还是全文？ | 已定：列表用 preview；Row Inspector 调详情接口展示全文 |
 | D6 | **版本分析**：当前能力不足时是否保留 Tab？ | 已定：今日 MVP 移除 |
 | D7 | **数据库浏览**：简单表格还是完整调试台？ | 已定：完整调试台，增强 ops API，不改核心业务表 |
 | D8 | **语义配置 / Work Item**：是否进入新前端信息架构？ | 已定：语义配置做入口，Work Item 作为 SDD 分析二级页面 |

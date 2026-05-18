@@ -123,6 +123,12 @@ export const SddInteractionItemSchema = z.object({
   responsePreview: z.string().nullable(),
 });
 
+export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
+  promptText: z.string().nullable(),
+  responseText: z.string().nullable(),
+  responseJson: z.string().nullable(),
+});
+
 export const SddErrorItemSchema = z.object({
   id: IdSchema,
   errorType: z.string(),
@@ -205,6 +211,7 @@ export type SddUsageSummaryItem = z.infer<typeof SddUsageSummaryItemSchema>;
 export type SddUsageSummaryResponse = z.infer<typeof SddUsageSummaryResponseSchema>;
 export type SddUsageItem = z.infer<typeof SddUsageItemSchema>;
 export type SddInteractionItem = z.infer<typeof SddInteractionItemSchema>;
+export type SddInteractionDetail = z.infer<typeof SddInteractionDetailSchema>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;
 export type SddUserItem = z.infer<typeof SddUserItemSchema>;
 export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;

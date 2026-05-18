@@ -7,6 +7,7 @@ import type {
   SddErrorItem,
   SddFunnel,
   SddFunnelQuery,
+  SddInteractionDetail,
   SddInteractionItem,
   SddListQuery,
   SddSemantic,
@@ -105,6 +106,10 @@ interface InteractionRow {
   duration_ms: string | number | null;
   prompt_text: string | null;
   response_text: string | null;
+}
+
+interface InteractionDetailRow extends InteractionRow {
+  response_json: string | null;
 }
 
 interface ErrorRow {
@@ -512,21 +517,33 @@ export class SddQueryService {
       [...params, query.limit],
     )) as InteractionRow[];
 
-    return rows.map(row => ({
-      id: toStringId(row.id),
-      interactionKey: row.interaction_key,
-      status: row.status,
-      userId: row.user_id === null ? null : toStringId(row.user_id),
-      sessionId: row.session_id,
-      promptId: row.prompt_id,
-      commandName: row.command_name,
-      model: row.model,
-      startedAt: toIsoDate(row.started_at),
-      completedAt: toIsoDate(row.completed_at),
-      durationMs: row.duration_ms === null ? null : toNumber(row.duration_ms),
-      promptPreview: truncateText(row.prompt_text),
-      responsePreview: truncateText(row.response_text),
-    }));
+    return rows.map(toInteractionItem);
+  }
+
+  async getInteractionDetail(interactionId: string): Promise<SddInteractionDetail | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT i.id, i.interaction_key, i.status, i.user_id, i.session_id, i.prompt_id,
+              i.command_name, i.model, i.started_at, i.completed_at, i.duration_ms,
+              t.prompt_text, t.response_text, t.response_json
+       FROM sdd_interactions i
+       LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [interactionId],
+    )) as InteractionDetailRow[];
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      ...toInteractionItem(row),
+      promptText: row.prompt_text,
+      responseText: row.response_text,
+      responseJson: row.response_json,
+    };
   }
 
   async listErrors(query: SddListQuery): Promise<SddErrorItem[]> {
@@ -829,6 +846,24 @@ export class SddQueryService {
       lastSeenAt: toIsoDate(row.last_seen_at),
     };
   }
+}
+
+function toInteractionItem(row: InteractionRow): SddInteractionItem {
+  return {
+    id: toStringId(row.id),
+    interactionKey: row.interaction_key,
+    status: row.status,
+    userId: row.user_id === null ? null : toStringId(row.user_id),
+    sessionId: row.session_id,
+    promptId: row.prompt_id,
+    commandName: row.command_name,
+    model: row.model,
+    startedAt: toIsoDate(row.started_at),
+    completedAt: toIsoDate(row.completed_at),
+    durationMs: row.duration_ms === null ? null : toNumber(row.duration_ms),
+    promptPreview: truncateText(row.prompt_text),
+    responsePreview: truncateText(row.response_text),
+  };
 }
 
 function createUserKey(input: ReportUserSettingsRequest): string {
