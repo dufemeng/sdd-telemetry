@@ -7,13 +7,13 @@ SDD（Skill-Driven Development）工作流的全链路观测平台。收集 Clau
 ```
 web/        React 19 + Vite + Tailwind CSS v4 + TanStack Query + React Router v7
 server/     MidwayJS 4 HTTP API（端口 4318）
-worker/     本地异步清洗 worker（BullMQ + outbox 模式）
+worker/     本地异步清洗 worker（定时扫描 outbox + cleanBatch，对齐 Chair @ScheduleMethod 目标态）
 packages/
   api/      Zod contract + 共享类型（前后端唯一类型来源）
   config/   共享 tsconfig / eslint / prettier
 ```
 
-数据库：MySQL 8；队列：Redis；构建：pnpm workspace + Turborepo。
+数据库：MySQL 8；构建：pnpm workspace + Turborepo。
 本地 MySQL 默认库名、用户名、密码均为 `sdd-telemetry`。
 
 ## 本地启动
@@ -25,7 +25,7 @@ packages/
 pnpm install
 
 # 2. 基础设施
-docker compose up -d mysql redis
+docker compose up -d mysql
 
 # 3. 数据库初始化（仅首次）
 pnpm db:migrate

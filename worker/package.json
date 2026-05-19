@@ -16,8 +16,6 @@
   },
   "dependencies": {
     "@sdd-telemetry/api": "workspace:*",
-    "bullmq": "^5.76.8",
-    "ioredis": "^5.10.1",
     "mysql2": "^3.22.3",
     "pino": "^10.1.0",
     "zod": "^4.4.3"
