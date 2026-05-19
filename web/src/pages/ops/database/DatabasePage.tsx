@@ -112,34 +112,39 @@ export default function DatabasePage() {
   const hasNext = Boolean(rows.data?.nextCursor);
 
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}>
+    <div
+      className="grid h-full min-h-0 gap-3 overflow-hidden"
+      style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}
+    >
       <Panel
         title="表列表"
         icon={<Database size={18} />}
-        className="self-start max-h-[calc(100vh-130px)] overflow-auto"
+        className="flex h-full min-h-0 flex-col overflow-hidden"
       >
-        <div className="grid gap-1">
-          {tables.map((t) => (
-            <button
-              key={t.tableName}
-              onClick={() => switchTable(t.tableName)}
-              className={[
-                'flex justify-between items-center w-full min-h-8 px-2 rounded-[4px] text-[12px] border-0 cursor-pointer text-left transition-colors',
-                t.tableName === activeName
-                  ? 'text-[var(--color-primary)] bg-[#202016]'
-                  : 'text-[var(--color-secondary)] bg-transparent hover:text-[var(--color-primary)] hover:bg-[#202016]',
-              ].join(' ')}
-            >
-              <span className="truncate">{t.tableName}</span>
-              <em className="not-italic text-[var(--color-muted)]">{formatInteger(t.estimatedRows)}</em>
-            </button>
-          ))}
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="grid gap-1">
+            {tables.map((t) => (
+              <button
+                key={t.tableName}
+                onClick={() => switchTable(t.tableName)}
+                className={[
+                  'flex justify-between items-center w-full min-h-8 px-2 rounded-[4px] text-[12px] border-0 cursor-pointer text-left transition-colors',
+                  t.tableName === activeName
+                    ? 'text-[var(--color-primary)] bg-[#202016]'
+                    : 'text-[var(--color-secondary)] bg-transparent hover:text-[var(--color-primary)] hover:bg-[#202016]',
+                ].join(' ')}
+              >
+                <span className="truncate">{t.tableName}</span>
+                <em className="not-italic text-[var(--color-muted)]">{formatInteger(t.estimatedRows)}</em>
+              </button>
+            ))}
+          </div>
         </div>
       </Panel>
 
-      <div className="grid gap-3 self-start">
+      <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
         <div
-          className="flex items-end gap-0"
+          className="flex shrink-0 items-end gap-0"
           style={{ borderBottom: '1px solid var(--color-border)' }}
         >
           <TabButton
@@ -157,7 +162,7 @@ export default function DatabasePage() {
         </div>
 
         {activeTab === 'data' && (
-          <div className="grid gap-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
             <Panel title={activeTable?.tableName ?? '—'} icon={<ListFilter size={18} />}>
               <FilterStrip columns={columns} groups={groups} onGroupsChange={updateGroups} />
             </Panel>
@@ -169,8 +174,9 @@ export default function DatabasePage() {
               const data = rows.data?.rows ?? [];
               if (cols.length === 0) return <EmptyState text="暂无数据" />;
               return (
-                <div className="grid gap-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   <DataTable
+                    className="min-h-0 flex-1"
                     headers={cols.map((c) => c.columnName)}
                     rows={data.map((row, ri) => ({
                       key: ri,
@@ -202,6 +208,7 @@ export default function DatabasePage() {
 
         {activeTab === 'schema' && (
           <DataTable
+            className="min-h-0 flex-1"
             headers={['columnName', 'dataType', 'nullable', 'key', 'defaultValue', 'extra', 'estimatedMaxSize', 'sizeBasis']}
             rows={columns.map((c) => [
               c.columnName,

@@ -10,6 +10,7 @@ export interface DataTableRow {
 interface DataTableProps {
   headers: string[];
   rows: Array<React.ReactNode[] | DataTableRow>;
+  className?: string;
   emptyText?: string;
   onRowClick?: (rowIndex: number) => void;
   onRowSelect?: (rowKey: React.Key, rowIndex: number) => void;
@@ -19,6 +20,7 @@ interface DataTableProps {
 export function DataTable({
   headers,
   rows,
+  className = '',
   emptyText = '暂无数据',
   onRowClick,
   onRowSelect,
@@ -26,7 +28,7 @@ export function DataTable({
 }: DataTableProps) {
   return (
     <div
-      className="max-w-full overflow-auto rounded-[4px]"
+      className={`max-w-full overflow-auto rounded-[4px] ${className}`}
       style={{ border: '1px solid var(--color-border)' }}
     >
       <table className="w-full" style={{ borderCollapse: 'collapse' }}>
