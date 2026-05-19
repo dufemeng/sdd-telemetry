@@ -10,6 +10,7 @@ import { EventsQueryRepository } from './modules/events/events-query.repository'
 import { EventsQueryService } from './modules/events/events-query.service';
 import { OpsQueryRepository } from './modules/ops/ops-query.repository';
 import { OpsQueryService } from './modules/ops/ops-query.service';
+import { SddQueryRepository } from './modules/sdd/sdd-query.repository';
 import { SddQueryService } from './modules/sdd/sdd-query.service';
 import { SddWriteRepository } from './modules/sdd/sdd-write.repository';
 
@@ -25,6 +26,7 @@ void Bootstrap.configure({
     EventsQueryService,
     OpsQueryRepository,
     OpsQueryService,
+    SddQueryRepository,
     SddQueryService,
     SddWriteRepository,
   ],

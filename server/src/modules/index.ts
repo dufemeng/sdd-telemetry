@@ -11,5 +11,6 @@ import './ops/ops.controller';
 import './ops/ops-query.repository';
 import './ops/ops-query.service';
 import './sdd/sdd.controller';
+import './sdd/sdd-query.repository';
 import './sdd/sdd-query.service';
 import './sdd/sdd-write.repository';
