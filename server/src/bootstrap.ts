@@ -11,6 +11,7 @@ import { EventsQueryService } from './modules/events/events-query.service';
 import { OpsQueryRepository } from './modules/ops/ops-query.repository';
 import { OpsQueryService } from './modules/ops/ops-query.service';
 import { SddQueryService } from './modules/sdd/sdd-query.service';
+import { SddWriteRepository } from './modules/sdd/sdd-write.repository';
 
 void Bootstrap.configure({
   preloadModules: [
@@ -25,5 +26,6 @@ void Bootstrap.configure({
     OpsQueryRepository,
     OpsQueryService,
     SddQueryService,
+    SddWriteRepository,
   ],
 }).run();

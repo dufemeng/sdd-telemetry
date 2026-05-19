@@ -38,6 +38,7 @@ import {
   truncateText,
   whereSql,
 } from '../query-utils';
+import { SddWriteRepository } from './sdd-write.repository';
 
 interface SemanticRow {
   id: string | number;
@@ -245,10 +246,6 @@ interface ArtifactRow {
   last_seen_at: Date | string | null;
 }
 
-interface IdRow {
-  id: string | number;
-}
-
 interface ResolvedTimeWindow {
   from: string;
   to: string;
@@ -260,6 +257,9 @@ const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview']
 export class SddQueryService {
   @Inject('mysqlDataSourceManager')
   mysqlDataSourceManager!: MysqlDataSourceManager;
+
+  @Inject('sddWriteRepository')
+  sddWriteRepository!: SddWriteRepository;
 
   async listSemantics(): Promise<SddSemantic[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
@@ -307,44 +307,17 @@ export class SddQueryService {
         throw new Error('missing transaction manager');
       }
       const manager = context.manager;
-      await manager.query(
-        `INSERT INTO sdd_skill_semantics
-          (semantic_code, display_name, description, artifact_filename_patterns,
-           gmt_create, gmt_modified)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
-         ON DUPLICATE KEY UPDATE
-           display_name = VALUES(display_name),
-           description = VALUES(description),
-           artifact_filename_patterns = VALUES(artifact_filename_patterns),
-           gmt_modified = CURRENT_TIMESTAMP(3)`,
-        [
-          input.semanticCode,
-          input.displayName,
-          input.description ?? null,
-          input.artifactFilenamePatterns === undefined
-            ? null
-            : JSON.stringify(input.artifactFilenamePatterns),
-        ],
+      await this.sddWriteRepository.upsertSemantic(manager, input);
+      const semanticId = await this.sddWriteRepository.findSemanticIdByCode(
+        manager,
+        input.semanticCode,
       );
-      const rows = (await manager.query(
-        `SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`,
-        [input.semanticCode],
-      )) as IdRow[];
-      const semanticId = rows[0]?.id;
       if (!semanticId) {
         throw new Error(`failed to create semantic: ${input.semanticCode}`);
       }
 
       for (const skillName of input.aliases) {
-        await manager.query(
-          `INSERT INTO sdd_skill_aliases
-            (semantic_id, skill_name, gmt_create, gmt_modified)
-           VALUES (?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
-           ON DUPLICATE KEY UPDATE
-             semantic_id = VALUES(semantic_id),
-             gmt_modified = CURRENT_TIMESTAMP(3)`,
-          [semanticId, skillName],
-        );
+        await this.sddWriteRepository.upsertSemanticAlias(manager, semanticId, skillName);
       }
     });
 
@@ -366,30 +339,10 @@ export class SddQueryService {
         throw new Error('missing transaction manager');
       }
       const manager = context.manager;
-      await manager.query(
-        `UPDATE sdd_skill_semantics
-         SET display_name = ?,
-             description = ?,
-             artifact_filename_patterns = COALESCE(?, artifact_filename_patterns),
-             gmt_modified = CURRENT_TIMESTAMP(3)
-         WHERE id = ?`,
-        [
-          input.displayName,
-          input.description ?? null,
-          input.artifactFilenamePatterns === undefined
-            ? null
-            : JSON.stringify(input.artifactFilenamePatterns),
-          id,
-        ],
-      );
-      await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
+      await this.sddWriteRepository.updateSemantic(manager, id, input);
+      await this.sddWriteRepository.deleteSemanticAliases(manager, id);
       for (const skillName of input.aliases) {
-        await manager.query(
-          `INSERT INTO sdd_skill_aliases
-            (semantic_id, skill_name, gmt_create, gmt_modified)
-           VALUES (?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
-          [id, skillName],
-        );
+        await this.sddWriteRepository.insertSemanticAlias(manager, id, skillName);
       }
     });
 
@@ -410,8 +363,8 @@ export class SddQueryService {
         throw new Error('missing transaction manager');
       }
       const manager = context.manager;
-      await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
-      await manager.query(`DELETE FROM sdd_skill_semantics WHERE id = ?`, [id]);
+      await this.sddWriteRepository.deleteSemanticAliases(manager, id);
+      await this.sddWriteRepository.deleteSemantic(manager, id);
     });
   }
 
