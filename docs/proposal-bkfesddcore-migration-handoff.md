@@ -10,11 +10,10 @@
 公司电脑可以开始迁移，但开始前必须同步到以下基线：
 
 - 代码仓库：`/Users/loomisli/Desktop/lm/sdd-telemetry`
-- 迁移基线 commit：`25e2d98 refactor(worker): 抽出 cleaning 与 outbox repository`
-- 需求文档仓库：`/Users/loomisli/Desktop/lm/bk-fe-requirements-trade`
-- 迁移准备文档 commit：`ae7016d feat: 新增需求文档`
+- 迁移代码基线 commit：`25e2d98 refactor(worker): 抽出 cleaning 与 outbox repository`
+- 迁移准备材料目录：`docs/bkfesddcore-migration-prep/`
 
-注意：当前本地 `main` 已包含迁移准备代码；如果公司电脑通过远端仓库同步，需要先确保远端包含 `8e96a19` 到 `25e2d98` 这一组提交。
+注意：当前仓库已收拢交接文档和迁移准备材料；如果公司电脑通过远端仓库同步，需要先确保远端包含 `8e96a19` 到交接材料收拢提交这一组提交。
 
 ## 已完成的事情
 
@@ -23,21 +22,21 @@
 产物目录：
 
 ```text
-/Users/loomisli/Desktop/lm/bk-fe-requirements-trade/sdd-telemetry/2026-05-19-bkfesddcore-migration-prep/
+docs/bkfesddcore-migration-prep/
 ```
 
 关键产物：
 
 | 文件 | 用途 |
 | --- | --- |
-| `review.md` | 对公司电脑原始 4 项任务做可行性评审，补出事务、FaaS、锁、调度等迁移盲点 |
-| `sql-registry.md` | SQL 注册清单，覆盖业务 `.query()` 调用、建议命名、动态参数、涉及表、事务、Zod schema |
-| `cleaning-steps.md` | cleaning-worker 清洗链路步骤拆分，标注输入/输出、涉及表、纯函数/IO 边界 |
-| `transaction-registry.md` | 事务边界清单，给 dal v2 transaction adapter 使用 |
-| `schedule-mapping.md` | 本地 worker/outbox 到 Chair Schedule/FaaS 的映射说明 |
-| `endpoint-baseline.json` | 27 个 GET 查询端点、46 个 GET scenarios、4 个写端点的 request/response baseline |
-| `generate-endpoint-baseline.py` | 端点 baseline 生成脚本 |
-| `implementation-plan-pr5d-pr5e.md` | 后续 repository 改造执行计划 |
+| `docs/bkfesddcore-migration-prep/review.md` | 对公司电脑原始 4 项任务做可行性评审，补出事务、FaaS、锁、调度等迁移盲点 |
+| `docs/bkfesddcore-migration-prep/sql-registry.md` | SQL 注册清单，覆盖业务 `.query()` 调用、建议命名、动态参数、涉及表、事务、Zod schema |
+| `docs/bkfesddcore-migration-prep/cleaning-steps.md` | cleaning-worker 清洗链路步骤拆分，标注输入/输出、涉及表、纯函数/IO 边界 |
+| `docs/bkfesddcore-migration-prep/transaction-registry.md` | 事务边界清单，给 dal v2 transaction adapter 使用 |
+| `docs/bkfesddcore-migration-prep/schedule-mapping.md` | 本地 worker/outbox 到 Chair Schedule/FaaS 的映射说明 |
+| `docs/bkfesddcore-migration-prep/endpoint-baseline.json` | 27 个 GET 查询端点、46 个 GET scenarios、4 个写端点的 request/response baseline |
+| `docs/bkfesddcore-migration-prep/generate-endpoint-baseline.py` | 端点 baseline 生成脚本 |
+| `docs/bkfesddcore-migration-prep/implementation-plan-pr5d-pr5e.md` | 后续 repository 改造执行计划 |
 
 说明：`cleaning-steps.md` 是迁移准备早期产物，里面保留了当时对 MySQL `GET_LOCK` 的分析。当前代码已在 `f7ffb5c` 移除 GET_LOCK，迁移时以代码基线 `25e2d98` 为准。
 
@@ -71,7 +70,7 @@
 
 | 验证项 | 结果 |
 | --- | --- |
-| `rg --hidden "apps/(web|server|worker)|\\.\\/apps/(web|server|worker)|apps/" ...` | 无命中 |
+| 旧应用容器目录残留检查（命令见 `AGENTS.md`） | 无命中 |
 | `pnpm typecheck` | 通过 |
 | `pnpm build` | 通过 |
 | PR5d1 semantics `POST / PUT / DELETE` | 全 200 |
@@ -89,8 +88,7 @@
 迁移方需要先拿到：
 
 ```text
-sdd-telemetry@25e2d98
-bk-fe-requirements-trade@ae7016d
+sdd-telemetry 当前仓库最新 main
 ```
 
 ### 建议迁移顺序
