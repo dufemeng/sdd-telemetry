@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Bootstrap } from '@midwayjs/bootstrap';
 import { ApiErrorFilter } from './common/filter/api-error.filter';
 import { MysqlDataSourceManager } from './infrastructure/mysql/data-source-manager';
+import { IngestHealthRepository } from './modules/ingest/ingest-health.repository';
 import { IngestHealthService } from './modules/ingest/ingest-health.service';
 import { IngestReceiveService } from './modules/ingest/ingest-receive.service';
 import { IngestWriteRepository } from './modules/ingest/ingest-write.repository';
@@ -15,6 +16,7 @@ void Bootstrap.configure({
   preloadModules: [
     ApiErrorFilter,
     MysqlDataSourceManager,
+    IngestHealthRepository,
     IngestHealthService,
     IngestReceiveService,
     IngestWriteRepository,
