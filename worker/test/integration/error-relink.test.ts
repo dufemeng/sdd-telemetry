@@ -60,6 +60,10 @@ async function cleanupCase5() {
           'DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
           [batchId],
         );
+        await conn.execute(
+          'DELETE FROM sdd_interaction_tool_calls WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
+          [batchId],
+        );
         await conn.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [batchId]);
         await conn.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [batchId]);
         await conn.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', [

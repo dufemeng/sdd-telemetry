@@ -16,13 +16,13 @@
 
 P0 需要的 fixture 清单和现状：
 
-| fixture | 用途 | 现状 |
-|---|---|---|
-| `basic-otlp.json` | 正常上报、事件拆解、基础统计 | 已存在 |
-| `sdd-cleaning-otlp.json` | skill_activated + tool_result write artifact + interaction，覆盖清洗完整链路 | 已存在 |
-| `skill-usage-otlp.json` | 仅 skill alias 匹配的最小 payload；覆盖 alias 匹配与 unmatched 两种 case | 待新增 |
-| `split-interaction-otlp-a.json` / `split-interaction-otlp-b.json` | prompt / response 跨 batch 配对 | 待新增 |
-| `error-otlp.json` | strong error 入库 + usage_id / work_item_id 反链验证 | 待新增 |
+| fixture                                                           | 用途                                                                         | 现状   |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------ |
+| `basic-otlp.json`                                                 | 正常上报、事件拆解、基础统计                                                 | 已存在 |
+| `sdd-cleaning-otlp.json`                                          | skill_activated + tool_result write artifact + interaction，覆盖清洗完整链路 | 已存在 |
+| `skill-usage-otlp.json`                                           | 仅 skill alias 匹配的最小 payload；覆盖 alias 匹配与 unmatched 两种 case     | 待新增 |
+| `split-interaction-otlp-a.json` / `split-interaction-otlp-b.json` | prompt / response 跨 batch 配对                                              | 待新增 |
+| `error-otlp.json`                                                 | strong error 入库 + usage_id / work_item_id 反链验证                         | 待新增 |
 
 fixture 来源优先级：
 
@@ -57,7 +57,7 @@ pnpm test:api          # 命中现有 server/test/integration/api-contract.test.
 检查项：
 
 1. migration 可从空库执行成功。
-2. P0 表全部存在：`otel_ingest_batches`、`otel_raw_payloads`、`otel_log_events`、`ingest_outbox`、`sdd_users`、`sdd_skill_semantics`、`sdd_skill_aliases`、`sdd_interactions`、`sdd_interaction_texts`、`sdd_skill_usages`、`sdd_errors`、`sdd_work_items`、`sdd_work_item_artifacts`。
+2. P0 表全部存在：`otel_ingest_batches`、`otel_raw_payloads`、`otel_log_events`、`ingest_outbox`、`sdd_users`、`sdd_skill_semantics`、`sdd_skill_aliases`、`sdd_interactions`、`sdd_interaction_texts`、`sdd_interaction_tool_calls`、`sdd_skill_usages`、`sdd_errors`、`sdd_work_items`、`sdd_work_item_artifacts`。
 3. 主键均为 `id`。
 4. 唯一键存在：`payload_hash`、`event_id`、`interaction_key`、`usage_key`、`error_key`、`work_item_key`、`artifact_key`。
 5. 关键索引存在：时间、状态、用户、session、prompt、semantic。
@@ -192,6 +192,7 @@ GET    /api/sdd/usage-summary
 GET    /api/sdd/usages
 GET    /api/sdd/interactions
 GET    /api/sdd/interactions/:interactionId
+GET    /api/sdd/interactions/:interactionId/tool-calls
 GET    /api/sdd/errors
 GET    /api/sdd/users
 GET    /api/sdd/versions
@@ -278,18 +279,18 @@ P0 不做复杂压测，但要证明 100 人团队 MVP 规模不会立刻崩。
 
 本节追踪 2026-05-18 这一轮针对 work item 识别链路缺口的修复（commit `a6cca02`）。每条都要在 §6 对应小节有可证伪断言。
 
-| Case | 问题 | 修复 | 验收位置 |
-|------|------|------|---------|
-| 1 | `sdd_users.requirements_root_path` 靠 seed 硬编码兜底，OTel 上报链路没闭环 | 客户端 `OTEL_RESOURCE_ATTRIBUTES` 加 `sdd.requirements_root_path=...`；删除 `seed.ts` 里的无差别 UPDATE | §6.2 case 1 |
-| 2 | `tool.name`、`user_prompt.command_name` 污染 `sdd_skill_usages`；未匹配 alias 的 usage 被 worker 丢弃 | `upsertSkillUsages` 仅处理 `event_name='skill_activated'`；未匹配 alias 时仍落库，`matched_by='unmatched'` | §6.2 case 2 |
-| 3 | `SddFunnelQuerySchema.groupBy` 暴露 `user` / `work_item` 但实现固定按 `semantic` 分组 | enum 收紧为 `['semantic']`；同步 `docs/frontend-gap-analysis.md` | §3 第 5 项 |
-| 4 | `docs/api-contract.md` 列出 `/usages.rawSkillName`、`/interactions.hasError` 但 contract 和实现都没有 | 文档移除上述未实现字段 | §7 API 列表（保持文档与 contract 一致） |
-| 5 | `sdd_errors.usage_id` / `work_item_id` 始终写 NULL，`workItem.errorCount` 恒为 0 | `upsertErrors` 通过 `(session_id, event_time ≤ error.event_time)` 关联最近 usage 回填两字段；调用顺序调整到 `upsertWorkItems` 之后 | §6.2 case 5 |
+| Case | 问题                                                                                                  | 修复                                                                                                                               | 验收位置                                |
+| ---- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 1    | `sdd_users.requirements_root_path` 靠 seed 硬编码兜底，OTel 上报链路没闭环                            | 客户端 `OTEL_RESOURCE_ATTRIBUTES` 加 `sdd.requirements_root_path=...`；删除 `seed.ts` 里的无差别 UPDATE                            | §6.2 case 1                             |
+| 2    | `tool.name`、`user_prompt.command_name` 污染 `sdd_skill_usages`；未匹配 alias 的 usage 被 worker 丢弃 | `upsertSkillUsages` 仅处理 `event_name='skill_activated'`；未匹配 alias 时仍落库，`matched_by='unmatched'`                         | §6.2 case 2                             |
+| 3    | `SddFunnelQuerySchema.groupBy` 暴露 `user` / `work_item` 但实现固定按 `semantic` 分组                 | enum 收紧为 `['semantic']`；同步 `docs/frontend-gap-analysis.md`                                                                   | §3 第 5 项                              |
+| 4    | `docs/api-contract.md` 列出 `/usages.rawSkillName`、`/interactions.hasError` 但 contract 和实现都没有 | 文档移除上述未实现字段                                                                                                             | §7 API 列表（保持文档与 contract 一致） |
+| 5    | `sdd_errors.usage_id` / `work_item_id` 始终写 NULL，`workItem.errorCount` 恒为 0                      | `upsertErrors` 通过 `(session_id, event_time ≤ error.event_time)` 关联最近 usage 回填两字段；调用顺序调整到 `upsertWorkItems` 之后 | §6.2 case 5                             |
 
 待修复（不在本次 commit 范围）：
 
-| Case | 状态 |
-|------|------|
-| 6 | reprocess 端点缺失（contract 已定义，server 未实现），P1 |
-| 7 | ops job detail（`GET /api/ops/jobs/:jobId`）缺失，P1 |
-| 8 | 测试覆盖薄（worker 是 `--passWithNoTests`），P0：本次准备按 §6.2 + §6.3 + §6.4 各挑一条写 worker 集成测试 |
+| Case | 状态                                                                                                      |
+| ---- | --------------------------------------------------------------------------------------------------------- |
+| 6    | reprocess 端点缺失（contract 已定义，server 未实现），P1                                                  |
+| 7    | ops job detail（`GET /api/ops/jobs/:jobId`）缺失，P1                                                      |
+| 8    | 测试覆盖薄（worker 是 `--passWithNoTests`），P0：本次准备按 §6.2 + §6.3 + §6.4 各挑一条写 worker 集成测试 |

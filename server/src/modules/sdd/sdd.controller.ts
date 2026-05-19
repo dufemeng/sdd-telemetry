@@ -9,6 +9,7 @@ import {
   SddFunnelSchema,
   SddInteractionDetailSchema,
   SddInteractionItemSchema,
+  SddInteractionToolCallListResponseSchema,
   SddListQuerySchema,
   SddOverviewQuerySchema,
   SddOverviewSchema,
@@ -24,6 +25,7 @@ import {
   type SddFunnel,
   type SddInteractionDetail,
   type SddInteractionItem,
+  type SddInteractionToolCallListResponse,
   type SddOverview,
   type SddSemantic,
   type SddUsageSummaryResponse,
@@ -111,12 +113,21 @@ export class SddController {
   @Get('/interactions/:interactionId')
   async interactionDetail() {
     const interactionId = this.ctx.params.interactionId as string;
-    const data: SddInteractionDetail | null = await this.sddQueryService.getInteractionDetail(interactionId);
+    const data: SddInteractionDetail | null =
+      await this.sddQueryService.getInteractionDetail(interactionId);
     if (!data) {
       throw new Error(`interaction not found: ${interactionId}`);
     }
 
     return ok(parseWithSchema(SddInteractionDetailSchema, data));
+  }
+
+  @Get('/interactions/:interactionId/tool-calls')
+  async interactionToolCalls() {
+    const interactionId = this.ctx.params.interactionId as string;
+    const data: SddInteractionToolCallListResponse =
+      await this.sddQueryService.listInteractionToolCalls(interactionId);
+    return ok(parseWithSchema(SddInteractionToolCallListResponseSchema, data));
   }
 
   @Get('/errors')

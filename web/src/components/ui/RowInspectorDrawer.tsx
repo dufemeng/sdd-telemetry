@@ -45,6 +45,7 @@ interface RowInspectorDrawerProps {
   loading?: boolean;
   error?: React.ReactNode;
   size?: RowInspectorSize;
+  children?: React.ReactNode;
 }
 
 const DRAWER_WIDTH: Record<RowInspectorSize, string> = {
@@ -72,6 +73,7 @@ export function RowInspectorDrawer({
   loading = false,
   error,
   size = 'lg',
+  children,
 }: RowInspectorDrawerProps) {
   const rawText = formatRawData(rawData ?? row);
 
@@ -147,6 +149,7 @@ export function RowInspectorDrawer({
                   {textBlocks.map((block) => (
                     <TextBlock key={block.title} block={block} />
                   ))}
+                  {children}
                   {rawText ? <RawDataBlock rawText={rawText} /> : null}
                 </>
               ) : null}
@@ -181,7 +184,10 @@ function DrawerHeader({
   return (
     <div
       className="flex items-center justify-between gap-3 p-4 shrink-0"
-      style={{ background: 'var(--color-panel)', borderBottom: '1px solid var(--color-border)' }}
+      style={{
+        background: 'var(--color-panel)',
+        borderBottom: '1px solid var(--color-border)',
+      }}
     >
       <div className="flex min-w-0 items-center gap-3">
         {icon ? <div className="text-[var(--color-primary)]">{icon}</div> : null}
@@ -191,7 +197,10 @@ function DrawerHeader({
             {badge}
           </div>
           {subtitle ? (
-            <div className="mt-1 truncate text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+            <div
+              className="mt-1 truncate text-[11px] text-[var(--color-muted)]"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
               {subtitle}
             </div>
           ) : null}
@@ -219,7 +228,10 @@ function DrawerFooter({ actions }: { actions: readonly RowInspectorAction[] }) {
   return (
     <div
       className="flex justify-end gap-2 p-4 shrink-0"
-      style={{ background: 'var(--color-panel)', borderTop: '1px solid var(--color-border)' }}
+      style={{
+        background: 'var(--color-panel)',
+        borderTop: '1px solid var(--color-border)',
+      }}
     >
       {actions.map((action) => (
         <ActionButton key={action.label} action={action} showLabel />
@@ -231,17 +243,36 @@ function DrawerFooter({ actions }: { actions: readonly RowInspectorAction[] }) {
 function InspectorSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h4 className="text-[11px] font-bold uppercase tracking-[0.05em] text-[var(--color-muted)]">{title}</h4>
+      <h4 className="text-[11px] font-bold uppercase tracking-[0.05em] text-[var(--color-muted)]">
+        {title}
+      </h4>
       {children}
     </section>
   );
 }
 
-function FieldGrid({ fields, variant }: { fields: readonly RowInspectorField[]; variant: 'overview' | 'list' }) {
+function FieldGrid({
+  fields,
+  variant,
+}: {
+  fields: readonly RowInspectorField[];
+  variant: 'overview' | 'list';
+}) {
   return (
     <div
-      className={variant === 'overview' ? 'grid grid-cols-4 gap-2 rounded-[4px] p-3' : 'grid grid-cols-2 gap-x-4 gap-y-3'}
-      style={variant === 'overview' ? { background: 'var(--color-base)', border: '1px solid var(--color-border)' } : undefined}
+      className={
+        variant === 'overview'
+          ? 'grid grid-cols-4 gap-2 rounded-[4px] p-3'
+          : 'grid grid-cols-2 gap-x-4 gap-y-3'
+      }
+      style={
+        variant === 'overview'
+          ? {
+              background: 'var(--color-base)',
+              border: '1px solid var(--color-border)',
+            }
+          : undefined
+      }
     >
       {fields.map((field) => (
         <FieldItem key={field.label} field={field} compact={variant === 'overview'} />
@@ -286,7 +317,10 @@ function TextBlock({ block }: { block: RowInspectorTextBlock }) {
   const content = block.content || block.emptyText || '—';
 
   return (
-    <section className="space-y-2" style={{ contentVisibility: 'auto', containIntrinsicSize: '0 240px' }}>
+    <section
+      className="space-y-2"
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 240px' }}
+    >
       <div className="flex items-center justify-between gap-3">
         <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-semibold text-[#f5f5f5]">
           {block.icon ? <span className="text-[var(--color-muted)]">{block.icon}</span> : null}
@@ -305,7 +339,11 @@ function TextBlock({ block }: { block: RowInspectorTextBlock }) {
       </div>
       <pre
         className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-[4px] p-3 text-[12px] leading-5 text-[var(--color-secondary)]"
-        style={{ background: 'var(--color-base)', border: '1px solid var(--color-border)', fontFamily: 'var(--font-mono)' }}
+        style={{
+          background: 'var(--color-base)',
+          border: '1px solid var(--color-border)',
+          fontFamily: 'var(--font-mono)',
+        }}
       >
         {content}
       </pre>
@@ -317,7 +355,10 @@ function RawDataBlock({ rawText }: { rawText: string }) {
   return (
     <details
       className="group rounded-[4px]"
-      style={{ background: 'var(--color-base)', border: '1px solid var(--color-border)' }}
+      style={{
+        background: 'var(--color-base)',
+        border: '1px solid var(--color-border)',
+      }}
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[11px] font-bold uppercase text-[var(--color-muted)]">
         Raw Data
@@ -333,18 +374,38 @@ function RawDataBlock({ rawText }: { rawText: string }) {
   );
 }
 
-function DrawerMessage({ text, tone = 'neutral' }: { text: React.ReactNode; tone?: 'neutral' | 'bad' }) {
+function DrawerMessage({
+  text,
+  tone = 'neutral',
+}: {
+  text: React.ReactNode;
+  tone?: 'neutral' | 'bad';
+}) {
   return (
     <div
-      className={['rounded-[4px] p-3 text-[12px]', tone === 'bad' ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]'].join(' ')}
-      style={{ background: 'var(--color-base)', border: '1px solid var(--color-border)' }}
+      className={[
+        'rounded-[4px] p-3 text-[12px]',
+        tone === 'bad' ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]',
+      ].join(' ')}
+      style={{
+        background: 'var(--color-base)',
+        border: '1px solid var(--color-border)',
+      }}
     >
       {text}
     </div>
   );
 }
 
-function IconButton({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+function IconButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -357,7 +418,13 @@ function IconButton({ title, onClick, children }: { title: string; onClick: () =
   );
 }
 
-function ActionButton({ action, showLabel = false }: { action: RowInspectorAction; showLabel?: boolean }) {
+function ActionButton({
+  action,
+  showLabel = false,
+}: {
+  action: RowInspectorAction;
+  showLabel?: boolean;
+}) {
   const variant = action.variant ?? 'ghost';
   const className = [
     'inline-flex h-8 items-center gap-2 rounded-[4px] px-2.5 text-[12px] font-medium transition-colors',

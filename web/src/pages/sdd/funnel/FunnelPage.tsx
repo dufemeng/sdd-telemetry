@@ -15,27 +15,57 @@ export default function FunnelPage() {
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-4 gap-3">
-        <StatCard icon={<Workflow    size={18} />} label="交互总数"    value={formatInteger(data?.totalInteractions)}    hint="sdd_interactions" />
-        <StatCard icon={<Layers3     size={18} />} label="技能调用数"  value={formatInteger(data?.totalSkillUsages)}     hint="sdd_skill_usages" />
-        <StatCard icon={<CheckSquare size={18} />} label="配对成功率"  value={formatPercent(cq?.pairingSuccessRate)}     hint="paired / triggered" />
-        <StatCard icon={<GitBranch   size={18} />} label="覆盖语义数"  value={formatInteger(data?.stages.length)}        hint="semantic stages" />
+        <StatCard
+          icon={<Workflow size={18} />}
+          label="交互总数"
+          value={formatInteger(data?.totalInteractions)}
+          hint="sdd_interactions"
+        />
+        <StatCard
+          icon={<Layers3 size={18} />}
+          label="技能调用数"
+          value={formatInteger(data?.totalSkillUsages)}
+          hint="sdd_skill_usages"
+        />
+        <StatCard
+          icon={<CheckSquare size={18} />}
+          label="配对成功率"
+          value={formatPercent(cq?.pairingSuccessRate)}
+          hint="无 api_error / 全部"
+        />
+        <StatCard
+          icon={<GitBranch size={18} />}
+          label="覆盖语义数"
+          value={formatInteger(data?.stages.length)}
+          hint="semantic stages"
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Panel title="调用质量漏斗" icon={<Workflow size={18} />}>
           <div className="grid gap-2">
-            {([
-              ['已触发',   formatInteger(cq?.triggeredCount)],
-              ['有提示词', formatInteger(cq?.withPromptCount)],
-              ['有回答',   formatInteger(cq?.withResponseCount)],
-              ['已配对',   formatInteger(cq?.pairedCount)],
-            ] as [string, string][]).map(([label, value]) => (
+            {(
+              [
+                ['已触发', formatInteger(cq?.triggeredCount)],
+                ['有提示词', formatInteger(cq?.withPromptCount)],
+                ['有回答', formatInteger(cq?.withResponseCount)],
+                ['已配对', formatInteger(cq?.pairedCount)],
+              ] as [string, string][]
+            ).map(([label, value]) => (
               <div
                 key={label}
                 className="flex items-center justify-between min-h-9 px-[10px] rounded-[4px]"
-                style={{ border: '1px solid var(--color-border)', background: '#171717' }}
+                style={{
+                  border: '1px solid var(--color-border)',
+                  background: '#171717',
+                }}
               >
                 <span className="text-[12px] text-[var(--color-muted)]">{label}</span>
-                <strong className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>{value}</strong>
+                <strong
+                  className="text-[13px] text-[#f5f5f5]"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {value}
+                </strong>
               </div>
             ))}
           </div>
@@ -44,7 +74,7 @@ export default function FunnelPage() {
           <BarList
             items={(data?.stages ?? []).map((s) => ({
               label: s.displayName,
-              sub:   `${s.semanticCode} / ${s.userCount} users`,
+              sub: `${s.semanticCode} / ${s.userCount} users`,
               value: s.usageCount,
               ratio: s.conversionRate ?? 0,
             }))}

@@ -24,7 +24,9 @@ export const CreateSddSemanticRequestSchema = z.object({
   aliases: z.array(z.string().min(1).max(191)).min(1),
 });
 
-export const UpdateSddSemanticRequestSchema = CreateSddSemanticRequestSchema.omit({ semanticCode: true });
+export const UpdateSddSemanticRequestSchema = CreateSddSemanticRequestSchema.omit({
+  semanticCode: true,
+});
 
 export const SddFunnelQuerySchema = TimeRangeQuerySchema.extend({
   groupBy: z.enum(['semantic']).default('semantic'),
@@ -130,12 +132,45 @@ export const SddInteractionItemSchema = z.object({
   durationMs: z.number().nullable(),
   promptPreview: z.string().nullable(),
   responsePreview: z.string().nullable(),
+  costUsd: z.number().nullable().optional(),
+  inputTokens: z.number().nullable().optional(),
+  outputTokens: z.number().nullable().optional(),
+  cacheReadTokens: z.number().nullable().optional(),
+  cacheCreationTokens: z.number().nullable().optional(),
+  llmCallCount: z.number().optional(),
+  toolCallCount: z.number().optional(),
+  skillName: z.string().nullable().optional(),
+  agentName: z.string().nullable().optional(),
+  pluginName: z.string().nullable().optional(),
+  querySource: z.string().nullable().optional(),
+  effort: z.string().nullable().optional(),
+  speed: z.string().nullable().optional(),
 });
 
 export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
   promptText: z.string().nullable(),
   responseText: z.string().nullable(),
   responseJson: z.string().nullable(),
+});
+
+export const SddInteractionToolCallSchema = z.object({
+  id: IdSchema,
+  toolUseId: z.string(),
+  toolName: z.string(),
+  sequence: z.number(),
+  decision: z.string().nullable(),
+  decisionSource: z.string().nullable(),
+  success: z.boolean().nullable(),
+  durationMs: z.number().nullable(),
+  inputSizeBytes: z.number().nullable(),
+  resultSizeBytes: z.number().nullable(),
+  errorType: z.string().nullable(),
+  toolInputPreview: z.string().nullable(),
+  mcpServerScope: z.string().nullable(),
+});
+
+export const SddInteractionToolCallListResponseSchema = z.object({
+  items: z.array(SddInteractionToolCallSchema),
 });
 
 export const SddErrorItemSchema = z.object({
@@ -223,6 +258,10 @@ export type SddUsageSummaryResponse = z.infer<typeof SddUsageSummaryResponseSche
 export type SddUsageItem = z.infer<typeof SddUsageItemSchema>;
 export type SddInteractionItem = z.infer<typeof SddInteractionItemSchema>;
 export type SddInteractionDetail = z.infer<typeof SddInteractionDetailSchema>;
+export type SddInteractionToolCall = z.infer<typeof SddInteractionToolCallSchema>;
+export type SddInteractionToolCallListResponse = z.infer<
+  typeof SddInteractionToolCallListResponseSchema
+>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;
 export type SddUserItem = z.infer<typeof SddUserItemSchema>;
 export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;

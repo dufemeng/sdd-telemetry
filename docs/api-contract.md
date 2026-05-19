@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-05-18  
+更新时间：2026-05-19  
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -227,7 +227,7 @@ export const FieldCoverageSchema = z.object({
       presentCount: z.number(),
       coverageRate: z.number(),
       examples: z.array(z.string()).max(5),
-    })
+    }),
   ),
 });
 ```
@@ -259,7 +259,7 @@ export const SddSemanticSchema = z.object({
     z.object({
       id: z.string(),
       skillName: z.string(),
-    })
+    }),
   ),
 });
 ```
@@ -355,7 +355,7 @@ export const SddFunnelSchema = z.object({
       userCount: z.number(),
       workItemCount: z.number(),
       conversionRate: z.number().nullable(),
-    })
+    }),
   ),
 });
 ```
@@ -365,6 +365,7 @@ export const SddFunnelSchema = z.object({
 1. P0 的 funnel 不假设固定流程顺序，只统计语义之间的出现、缺失和组合关系。
 2. `callQuality` 用于今日 MVP 的调用质量漏斗：触发 Skill、有 prompt、有 response、prompt/response 成功配对。
 3. `triggeredCount` 等于当前时间范围内的 `sdd_skill_usages` 数量；prompt/response 相关计数来自 `sdd_interactions` + `sdd_interaction_texts`。
+4. `pairingSuccessRate` 当前口径为 `1 - failedInteractions / totalInteractions`，其中 failed interaction 由清洗出的 `status='failed'` 判定。
 
 ### 6.7 GET /api/sdd/usage-summary
 
@@ -399,11 +400,11 @@ export const SddUsageSummaryResponseSchema = z.object({
         z.object({
           version: z.string(),
           count: z.number(),
-        })
+        }),
       ),
       firstSeenAt: z.string().nullable(),
       lastSeenAt: z.string().nullable(),
-    })
+    }),
   ),
 });
 ```
@@ -425,7 +426,7 @@ limit / cursor
 
 ### 6.9 GET /api/sdd/interactions
 
-prompt / response 交互列表。列表只返回 `promptPreview` / `responsePreview`，用于表格快速浏览。
+prompt / response 交互列表。列表只返回 `promptPreview` / `responsePreview`，用于表格快速浏览；成本、token 和调用次数来自 `api_request` 默认事件聚合。
 
 Query 支持：
 
@@ -437,6 +438,24 @@ userId
 workItemId
 from / to
 limit / cursor
+```
+
+Response item 在基础字段外包含：
+
+```ts
+costUsd: z.number().nullable().optional(),
+inputTokens: z.number().nullable().optional(),
+outputTokens: z.number().nullable().optional(),
+cacheReadTokens: z.number().nullable().optional(),
+cacheCreationTokens: z.number().nullable().optional(),
+llmCallCount: z.number().optional(),
+toolCallCount: z.number().optional(),
+skillName: z.string().nullable().optional(),
+agentName: z.string().nullable().optional(),
+pluginName: z.string().nullable().optional(),
+querySource: z.string().nullable().optional(),
+effort: z.string().nullable().optional(),
+speed: z.string().nullable().optional(),
 ```
 
 ### 6.10 GET /api/sdd/interactions/:interactionId
@@ -453,7 +472,35 @@ export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
 });
 ```
 
-### 6.11 GET /api/sdd/errors
+### 6.11 GET /api/sdd/interactions/:interactionId/tool-calls
+
+单条 interaction 的工具调用时间线，按 `sequence ASC` 排序。
+
+Response：
+
+```ts
+export const SddInteractionToolCallListResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      toolUseId: z.string(),
+      toolName: z.string(),
+      sequence: z.number(),
+      decision: z.string().nullable(),
+      decisionSource: z.string().nullable(),
+      success: z.boolean().nullable(),
+      durationMs: z.number().nullable(),
+      inputSizeBytes: z.number().nullable(),
+      resultSizeBytes: z.number().nullable(),
+      errorType: z.string().nullable(),
+      toolInputPreview: z.string().nullable(),
+      mcpServerScope: z.string().nullable(),
+    }),
+  ),
+});
+```
+
+### 6.12 GET /api/sdd/errors
 
 异常 / 错误视图。
 
@@ -488,27 +535,27 @@ schema_parse_failed
 
 今日 MVP 不展示异常 / 错误 Tab，但保留 API 和数据表，后续再设计降噪视图。
 
-### 6.12 GET /api/sdd/users
+### 6.13 GET /api/sdd/users
 
 用户 / 机器维度。
 
 Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
 
-### 6.13 GET /api/sdd/versions
+### 6.14 GET /api/sdd/versions
 
 版本分析。
 
 今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
 
-### 6.14 GET /api/sdd/work-items
+### 6.15 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.15 GET /api/sdd/work-items/:workItemId
+### 6.16 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
-### 6.16 POST /api/sdd/user-settings
+### 6.17 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 
@@ -558,11 +605,11 @@ export const OpsTableSchema = z.object({
 
 字段说明：
 
-| 字段 | 语义 |
-|---|---|
-| `dataType` | MySQL `COLUMN_TYPE`，例如 `varchar(191)`、`bigint unsigned`、`longtext` |
-| `estimatedMaxSize` | 当前字段理论最大占用字节估算，不是当前已使用 size |
-| `sizeBasis` | size 估算依据，例如 `CHARACTER_MAXIMUM_LENGTH * utf8mb4 4 bytes` 或 `MySQL type maximum` |
+| 字段               | 语义                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `dataType`         | MySQL `COLUMN_TYPE`，例如 `varchar(191)`、`bigint unsigned`、`longtext`                  |
+| `estimatedMaxSize` | 当前字段理论最大占用字节估算，不是当前已使用 size                                        |
+| `sizeBasis`        | size 估算依据，例如 `CHARACTER_MAXIMUM_LENGTH * utf8mb4 4 bytes` 或 `MySQL type maximum` |
 
 ### 7.2 GET /api/ops/tables/:tableName/rows
 
@@ -593,7 +640,7 @@ export const OpsTableRowsQuerySchema = z.object({
         'is_not_null',
       ]),
       value: z.union([z.string(), z.array(z.string())]).optional(),
-    })
+    }),
   ),
 });
 ```

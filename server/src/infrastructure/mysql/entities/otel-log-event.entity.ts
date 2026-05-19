@@ -1,5 +1,10 @@
 import { Column, Entity, Index } from 'typeorm';
-import { NullableDateColumn, TimestampedEntity, nullableJsonColumn, nullableLongTextColumn } from './common';
+import {
+  NullableDateColumn,
+  TimestampedEntity,
+  nullableJsonColumn,
+  nullableLongTextColumn,
+} from './common';
 
 @Entity({ name: 'otel_log_events' })
 @Index('uk_otel_log_events_event_id', ['eventId'], { unique: true })
@@ -36,16 +41,36 @@ export class OtelLogEventEntity extends TimestampedEntity {
   @Column({ name: 'event_name', type: 'varchar', length: 191 })
   eventName!: string;
 
-  @Column({ name: 'display_name', type: 'varchar', length: 191, nullable: true })
+  @Column({
+    name: 'display_name',
+    type: 'varchar',
+    length: 191,
+    nullable: true,
+  })
   displayName!: string | null;
 
-  @Column({ name: 'service_name', type: 'varchar', length: 191, nullable: true })
+  @Column({
+    name: 'service_name',
+    type: 'varchar',
+    length: 191,
+    nullable: true,
+  })
   serviceName!: string | null;
 
-  @Column({ name: 'service_version', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'service_version',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   serviceVersion!: string | null;
 
-  @Column({ name: 'severity_text', type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'severity_text',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   severityText!: string | null;
 
   @Column({ name: 'severity_number', type: 'int', nullable: true })
@@ -53,6 +78,14 @@ export class OtelLogEventEntity extends TimestampedEntity {
 
   @NullableDateColumn('event_time')
   eventTime!: Date | null;
+
+  @Column({
+    name: 'event_sequence',
+    type: 'int',
+    unsigned: true,
+    nullable: true,
+  })
+  eventSequence!: number | null;
 
   @NullableDateColumn('observed_at')
   observedAt!: Date | null;

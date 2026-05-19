@@ -4,6 +4,7 @@ export * from './otel-log-event.entity';
 export * from './otel-raw-payload.entity';
 export * from './sdd-error.entity';
 export * from './sdd-interaction-text.entity';
+export * from './sdd-interaction-tool-call.entity';
 export * from './sdd-interaction.entity';
 export * from './sdd-skill-alias.entity';
 export * from './sdd-skill-semantic.entity';
@@ -18,6 +19,7 @@ import { OtelLogEventEntity } from './otel-log-event.entity';
 import { OtelRawPayloadEntity } from './otel-raw-payload.entity';
 import { SddErrorEntity } from './sdd-error.entity';
 import { SddInteractionTextEntity } from './sdd-interaction-text.entity';
+import { SddInteractionToolCallEntity } from './sdd-interaction-tool-call.entity';
 import { SddInteractionEntity } from './sdd-interaction.entity';
 import { SddSkillAliasEntity } from './sdd-skill-alias.entity';
 import { SddSkillSemanticEntity } from './sdd-skill-semantic.entity';
@@ -36,6 +38,7 @@ export const appEntities = [
   OtelLogEventEntity,
   SddInteractionEntity,
   SddInteractionTextEntity,
+  SddInteractionToolCallEntity,
   SddSkillUsageEntity,
   SddWorkItemEntity,
   SddWorkItemArtifactEntity,

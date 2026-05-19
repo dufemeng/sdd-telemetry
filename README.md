@@ -54,11 +54,25 @@ pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
 
 ```
 Claude Code 插件
-  └─ POST /api/ingest/batch
+  └─ POST /api/ingest/otlp-logs
         └─ 写 otel_raw_payloads + ingest_outbox（事务）
               └─ worker 轮询 outbox → 清洗 → 写 sdd_* 派生表
                     └─ Dashboard 查询派生表展示
 ```
+
+## Claude Code OTel 推荐配置
+
+```bash
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://127.0.0.1:4318/api/ingest/otlp-logs
+export OTEL_LOG_USER_PROMPTS=1
+export OTEL_LOG_TOOL_DETAILS=1
+export OTEL_LOG_RAW_API_BODIES=1
+```
+
+说明：`api_request` 默认提供 model / cost / tokens；`OTEL_LOG_RAW_API_BODIES=1` 才会提供完整 LLM response 文本，属于敏感配置，只在明确同意采集 prompt、tool details 和 raw API bodies 的环境开启。
 
 ## SDD 工作流背景
 
@@ -102,10 +116,10 @@ sdd_work_items 对应上面的**需求目录**（日期-slug），sdd_work_item_
 
 ### 两台电脑的现状
 
-| 电脑 | 有什么 | 没有什么 |
-|---|---|---|
-| 公司电脑 | 完整的 bk-fe-sdd + @wiki + @requirements 联动 | sdd-telemetry 监控平台 |
-| 当前电脑 | sdd-telemetry 监控平台 + bk-fe:xxx skills | @wiki / @requirements 联动 |
+| 电脑     | 有什么                                        | 没有什么                   |
+| -------- | --------------------------------------------- | -------------------------- |
+| 公司电脑 | 完整的 bk-fe-sdd + @wiki + @requirements 联动 | sdd-telemetry 监控平台     |
+| 当前电脑 | sdd-telemetry 监控平台 + bk-fe:xxx skills     | @wiki / @requirements 联动 |
 
 目标：在当前电脑完成 sdd-telemetry，然后部署到公司电脑使用。
 

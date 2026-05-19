@@ -9,6 +9,7 @@ import type {
   SddFunnelQuery,
   SddInteractionDetail,
   SddInteractionItem,
+  SddInteractionToolCallListResponse,
   SddListQuery,
   SddOverview,
   SddOverviewQuery,
@@ -23,7 +24,14 @@ import type {
   SddWorkItemDetail,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText, whereSql } from '../query-utils';
+import {
+  addTimeRangeWhere,
+  toIsoDate,
+  toNumber,
+  toStringId,
+  truncateText,
+  whereSql,
+} from '../query-utils';
 
 interface SemanticRow {
   id: string | number;
@@ -52,6 +60,7 @@ interface FunnelQualityRow {
   with_prompt_count: string | number | null;
   with_response_count: string | number | null;
   paired_count: string | number | null;
+  failed_count: string | number | null;
 }
 
 interface CountRow {
@@ -104,12 +113,41 @@ interface InteractionRow {
   started_at: Date | string | null;
   completed_at: Date | string | null;
   duration_ms: string | number | null;
+  cost_usd: string | number | null;
+  input_tokens: string | number | null;
+  output_tokens: string | number | null;
+  cache_read_tokens: string | number | null;
+  cache_creation_tokens: string | number | null;
+  llm_call_count: string | number;
+  tool_call_count: string | number;
+  skill_name: string | null;
+  agent_name: string | null;
+  plugin_name: string | null;
+  query_source: string | null;
+  effort: string | null;
+  speed: string | null;
   prompt_text: string | null;
   response_text: string | null;
 }
 
 interface InteractionDetailRow extends InteractionRow {
   response_json: string | null;
+}
+
+interface InteractionToolCallRow {
+  id: string | number;
+  tool_use_id: string;
+  tool_name: string;
+  sequence: string | number;
+  decision: string | null;
+  decision_source: string | null;
+  success: string | number | boolean | null;
+  duration_ms: string | number | null;
+  input_size_bytes: string | number | null;
+  result_size_bytes: string | number | null;
+  error_type: string | null;
+  tool_input_preview: string | null;
+  mcp_server_scope: string | null;
 }
 
 interface ErrorRow {
@@ -233,10 +271,15 @@ export class SddQueryService {
           input.semanticCode,
           input.displayName,
           input.description ?? null,
-          input.artifactFilenamePatterns === undefined ? null : JSON.stringify(input.artifactFilenamePatterns),
+          input.artifactFilenamePatterns === undefined
+            ? null
+            : JSON.stringify(input.artifactFilenamePatterns),
         ],
       );
-      const rows = (await manager.query(`SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`, [input.semanticCode])) as IdRow[];
+      const rows = (await manager.query(
+        `SELECT id FROM sdd_skill_semantics WHERE semantic_code = ? LIMIT 1`,
+        [input.semanticCode],
+      )) as IdRow[];
       const semanticId = rows[0]?.id;
       if (!semanticId) {
         throw new Error(`failed to create semantic: ${input.semanticCode}`);
@@ -255,7 +298,9 @@ export class SddQueryService {
       }
     });
 
-    const semantic = (await this.listSemantics()).find((item) => item.semanticCode === input.semanticCode);
+    const semantic = (await this.listSemantics()).find(
+      (item) => item.semanticCode === input.semanticCode,
+    );
     if (!semantic) {
       throw new Error(`semantic not found after create: ${input.semanticCode}`);
     }
@@ -276,7 +321,9 @@ export class SddQueryService {
         [
           input.displayName,
           input.description ?? null,
-          input.artifactFilenamePatterns === undefined ? null : JSON.stringify(input.artifactFilenamePatterns),
+          input.artifactFilenamePatterns === undefined
+            ? null
+            : JSON.stringify(input.artifactFilenamePatterns),
           id,
         ],
       );
@@ -318,9 +365,16 @@ export class SddQueryService {
     const workItemParams: unknown[] = [];
     addTimeRangeWhere(workItemWhere, workItemParams, 'wi.last_seen_at', query);
 
-    const artifactWhere = [`a.artifact_type IN (${SDD_OVERVIEW_DOCUMENT_TYPES.map(() => '?').join(',')})`];
+    const artifactWhere = [
+      `a.artifact_type IN (${SDD_OVERVIEW_DOCUMENT_TYPES.map(() => '?').join(',')})`,
+    ];
     const artifactParams: unknown[] = [...SDD_OVERVIEW_DOCUMENT_TYPES];
-    addTimeRangeWhere(artifactWhere, artifactParams, 'COALESCE(a.first_seen_at, a.last_seen_at)', query);
+    addTimeRangeWhere(
+      artifactWhere,
+      artifactParams,
+      'COALESCE(a.first_seen_at, a.last_seen_at)',
+      query,
+    );
 
     const [usageRows, workItemRows, artifactRows] = await Promise.all([
       dataSource.query(
@@ -364,18 +418,22 @@ export class SddQueryService {
     addTimeRangeWhere(interactionWhere, interactionParams, 'i.started_at', query);
 
     const [interactionRows, qualityRows, usageRows] = await Promise.all([
-      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_interactions i ${whereSql(interactionWhere)}`, interactionParams) as Promise<CountRow[]>,
+      dataSource.query(
+        `SELECT COUNT(*) AS count_value FROM sdd_interactions i ${whereSql(interactionWhere)}`,
+        interactionParams,
+      ) as Promise<CountRow[]>,
       dataSource.query(
         `SELECT
-           SUM(t.prompt_text IS NOT NULL AND t.prompt_text <> '') AS with_prompt_count,
-           SUM(t.response_text IS NOT NULL AND t.response_text <> '') AS with_response_count,
-           SUM(
-             t.prompt_text IS NOT NULL AND t.prompt_text <> ''
-             AND t.response_text IS NOT NULL AND t.response_text <> ''
-           ) AS paired_count
-         FROM sdd_interactions i
-         LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
-         ${whereSql(interactionWhere)}`,
+	           SUM(t.prompt_text IS NOT NULL AND t.prompt_text <> '') AS with_prompt_count,
+	           SUM(t.response_text IS NOT NULL AND t.response_text <> '') AS with_response_count,
+	           SUM(
+	             t.prompt_text IS NOT NULL AND t.prompt_text <> ''
+	             AND t.response_text IS NOT NULL AND t.response_text <> ''
+	           ) AS paired_count,
+	           SUM(i.status = 'failed') AS failed_count
+	         FROM sdd_interactions i
+	         LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+	         ${whereSql(interactionWhere)}`,
         interactionParams,
       ) as Promise<FunnelQualityRow[]>,
       dataSource.query(
@@ -396,6 +454,7 @@ export class SddQueryService {
     const withPromptCount = toNumber(qualityRows[0]?.with_prompt_count);
     const withResponseCount = toNumber(qualityRows[0]?.with_response_count);
     const pairedCount = toNumber(qualityRows[0]?.paired_count);
+    const failedCount = toNumber(qualityRows[0]?.failed_count);
 
     return {
       totalInteractions,
@@ -407,7 +466,7 @@ export class SddQueryService {
         pairedCount,
         promptCoverageRate: totalInteractions > 0 ? withPromptCount / totalInteractions : null,
         responseCoverageRate: totalInteractions > 0 ? withResponseCount / totalInteractions : null,
-        pairingSuccessRate: totalInteractions > 0 ? pairedCount / totalInteractions : null,
+        pairingSuccessRate: totalInteractions > 0 ? 1 - failedCount / totalInteractions : null,
       },
       stages: usageRows.map((row) => {
         const usageCount = toNumber(row.usage_count);
@@ -543,10 +602,13 @@ export class SddQueryService {
 
     const rows = (await dataSource.query(
       `SELECT i.id, i.interaction_key, i.status, i.user_id, i.session_id, i.prompt_id,
-              i.command_name, i.model, i.started_at, i.completed_at, i.duration_ms,
-              t.prompt_text, t.response_text
-       FROM sdd_interactions i
-       LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+	              i.command_name, i.model, i.started_at, i.completed_at, i.duration_ms,
+	              i.cost_usd, i.input_tokens, i.output_tokens, i.cache_read_tokens,
+	              i.cache_creation_tokens, i.llm_call_count, i.tool_call_count,
+	              i.skill_name, i.agent_name, i.plugin_name, i.query_source, i.effort, i.speed,
+	              t.prompt_text, t.response_text
+	       FROM sdd_interactions i
+	       LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
        ${whereSql(clauses)}
        ORDER BY i.id DESC
        LIMIT ?`,
@@ -560,9 +622,12 @@ export class SddQueryService {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
       `SELECT i.id, i.interaction_key, i.status, i.user_id, i.session_id, i.prompt_id,
-              i.command_name, i.model, i.started_at, i.completed_at, i.duration_ms,
-              t.prompt_text, t.response_text, t.response_json
-       FROM sdd_interactions i
+	              i.command_name, i.model, i.started_at, i.completed_at, i.duration_ms,
+	              i.cost_usd, i.input_tokens, i.output_tokens, i.cache_read_tokens,
+	              i.cache_creation_tokens, i.llm_call_count, i.tool_call_count,
+	              i.skill_name, i.agent_name, i.plugin_name, i.query_source, i.effort, i.speed,
+	              t.prompt_text, t.response_text, t.response_json
+	       FROM sdd_interactions i
        LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
        WHERE i.id = ?
        LIMIT 1`,
@@ -579,6 +644,39 @@ export class SddQueryService {
       promptText: row.prompt_text,
       responseText: row.response_text,
       responseJson: row.response_json,
+    };
+  }
+
+  async listInteractionToolCalls(
+    interactionId: string,
+  ): Promise<SddInteractionToolCallListResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT id, tool_use_id, tool_name, sequence, decision, decision_source,
+              success, duration_ms, input_size_bytes, result_size_bytes,
+              error_type, tool_input_preview, mcp_server_scope
+       FROM sdd_interaction_tool_calls
+       WHERE interaction_id = ?
+       ORDER BY sequence ASC, id ASC`,
+      [interactionId],
+    )) as InteractionToolCallRow[];
+
+    return {
+      items: rows.map((row) => ({
+        id: toStringId(row.id),
+        toolUseId: row.tool_use_id,
+        toolName: row.tool_name,
+        sequence: toNumber(row.sequence),
+        decision: row.decision,
+        decisionSource: row.decision_source,
+        success: toNullableBoolean(row.success),
+        durationMs: toNullableNumber(row.duration_ms),
+        inputSizeBytes: toNullableNumber(row.input_size_bytes),
+        resultSizeBytes: toNullableNumber(row.result_size_bytes),
+        errorType: row.error_type,
+        toolInputPreview: row.tool_input_preview,
+        mcpServerScope: row.mcp_server_scope,
+      })),
     };
   }
 
@@ -728,8 +826,13 @@ export class SddQueryService {
          ORDER BY id ASC`,
         [workItemId],
       ) as Promise<ArtifactRow[]>,
-      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_skill_usages WHERE work_item_id = ?`, [workItemId]) as Promise<CountRow[]>,
-      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_errors WHERE work_item_id = ?`, [workItemId]) as Promise<CountRow[]>,
+      dataSource.query(
+        `SELECT COUNT(*) AS count_value FROM sdd_skill_usages WHERE work_item_id = ?`,
+        [workItemId],
+      ) as Promise<CountRow[]>,
+      dataSource.query(`SELECT COUNT(*) AS count_value FROM sdd_errors WHERE work_item_id = ?`, [
+        workItemId,
+      ]) as Promise<CountRow[]>,
     ]);
     const workItem = workRows[0];
 
@@ -793,7 +896,10 @@ export class SddQueryService {
     return user;
   }
 
-  private buildUsageWhere(query: SddListQuery, alias: string): { where: string; params: unknown[] } {
+  private buildUsageWhere(
+    query: SddListQuery,
+    alias: string,
+  ): { where: string; params: unknown[] } {
     const clauses: string[] = [];
     const params: unknown[] = [];
     addTimeRangeWhere(clauses, params, `${alias}.event_time`, query);
@@ -834,7 +940,12 @@ export class SddQueryService {
     };
   }
 
-  private addCommonFilters(clauses: string[], params: unknown[], query: SddListQuery, alias: string): void {
+  private addCommonFilters(
+    clauses: string[],
+    params: unknown[],
+    query: SddListQuery,
+    alias: string,
+  ): void {
     if (query.userId) {
       clauses.push(`${alias}.user_id = ?`);
       params.push(query.userId);
@@ -891,7 +1002,32 @@ function toInteractionItem(row: InteractionRow): SddInteractionItem {
     durationMs: row.duration_ms === null ? null : toNumber(row.duration_ms),
     promptPreview: truncateText(row.prompt_text),
     responsePreview: truncateText(row.response_text),
+    costUsd: toNullableNumber(row.cost_usd),
+    inputTokens: toNullableNumber(row.input_tokens),
+    outputTokens: toNullableNumber(row.output_tokens),
+    cacheReadTokens: toNullableNumber(row.cache_read_tokens),
+    cacheCreationTokens: toNullableNumber(row.cache_creation_tokens),
+    llmCallCount: toNumber(row.llm_call_count),
+    toolCallCount: toNumber(row.tool_call_count),
+    skillName: row.skill_name,
+    agentName: row.agent_name,
+    pluginName: row.plugin_name,
+    querySource: row.query_source,
+    effort: row.effort,
+    speed: row.speed,
   };
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return value === true || value === 1 || value === '1' || value === 'true';
 }
 
 function createUserKey(input: ReportUserSettingsRequest): string {
@@ -917,7 +1053,9 @@ function parseStringArray(value: unknown): string[] | null {
 
   try {
     const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : null;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : null;
   } catch {
     return null;
   }

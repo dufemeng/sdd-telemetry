@@ -55,6 +55,7 @@ interface EventRow extends RowDataPacket {
   severity_text: string | null;
   severity_number: number | null;
   event_time: Date | string | null;
+  event_sequence: number | null;
   attributes_json: unknown;
   body_json: unknown;
   body_text: string | null;
@@ -80,6 +81,10 @@ interface SemanticPatternRow extends RowDataPacket {
 
 interface IdRow extends RowDataPacket {
   id: string;
+}
+
+interface LockRow extends RowDataPacket {
+  lock_status: number | null;
 }
 
 interface InteractionRef {
@@ -113,10 +118,15 @@ export async function cleanBatch(
   job: CleanBatchJob,
   dependencies: CleaningWorkerDependencies,
 ): Promise<CleanBatchResult> {
-  const eventRetentionDays = dependencies.eventRetentionDays ?? Number(process.env.EVENT_RETENTION_DAYS ?? 30);
-  const textRetentionDays = dependencies.textRetentionDays ?? Number(process.env.TEXT_RETENTION_DAYS ?? 30);
-  const maxPayloadBytes = dependencies.maxPayloadBytes ?? Number(process.env.CLEAN_BATCH_MAX_PAYLOAD_BYTES ?? 5 * 1024 * 1024);
-  const maxEventCount = dependencies.maxEventCount ?? Number(process.env.CLEAN_BATCH_MAX_EVENTS ?? 500);
+  const eventRetentionDays =
+    dependencies.eventRetentionDays ?? Number(process.env.EVENT_RETENTION_DAYS ?? 30);
+  const textRetentionDays =
+    dependencies.textRetentionDays ?? Number(process.env.TEXT_RETENTION_DAYS ?? 30);
+  const maxPayloadBytes =
+    dependencies.maxPayloadBytes ??
+    Number(process.env.CLEAN_BATCH_MAX_PAYLOAD_BYTES ?? 5 * 1024 * 1024);
+  const maxEventCount =
+    dependencies.maxEventCount ?? Number(process.env.CLEAN_BATCH_MAX_EVENTS ?? 500);
   let loadedBatch: LoadedBatch | null = null;
 
   try {
@@ -186,12 +196,17 @@ export async function markBatchFailed(
          last_error = ?,
          gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE id = ?`,
-    [status, status === 'failed_terminal' ? 'terminal cleaning failure' : 'retryable cleaning failure', stringifyError(error), batchId],
+    [
+      status,
+      status === 'failed_terminal' ? 'terminal cleaning failure' : 'retryable cleaning failure',
+      stringifyError(error),
+      batchId,
+    ],
   );
 }
 
 async function markBatchProcessing(pool: Pool, batchId: string): Promise<LoadedBatch | null> {
-  return withTransaction(pool, async connection => {
+  return withTransaction(pool, async (connection) => {
     const [rows] = await connection.query<BatchRow[]>(
       `SELECT b.id, b.user_id, b.status, r.payload_json
        FROM otel_ingest_batches b
@@ -254,19 +269,91 @@ async function persistCleanedData(
     textRetentionDays: number;
   },
 ): Promise<number> {
-  return withTransaction(pool, async connection => {
+  const connection = await pool.getConnection();
+  let acquiredLocks: string[] = [];
+
+  try {
+    await connection.beginTransaction();
+
     for (const event of input.events) {
       await upsertLogEvent(connection, input.batch, event, input.eventRetentionDays);
     }
 
+    acquiredLocks = await acquireCleaningLocks(connection, input.events);
     const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
-    const interactions = await upsertInteractions(connection, scopedEvents, input.textRetentionDays);
+    const interactions = await upsertInteractions(
+      connection,
+      scopedEvents,
+      input.textRetentionDays,
+    );
+    const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
     const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
     const artifacts = await upsertWorkItems(connection, scopedEvents);
     const errors = await upsertErrors(connection, scopedEvents, interactions);
 
-    return interactions.size + usages + errors + artifacts;
-  });
+    const derivedCount = interactions.size + toolCalls + usages + errors + artifacts;
+    await connection.commit();
+    return derivedCount;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    await releaseCleaningLocks(connection, acquiredLocks);
+    connection.release();
+  }
+}
+
+async function acquireCleaningLocks(
+  connection: PoolConnection,
+  events: ExtractedLogEvent[],
+): Promise<string[]> {
+  const lockNames = unique(
+    events
+      .map((event) =>
+        event.promptId
+          ? `prompt:${event.promptId}`
+          : event.sessionId
+            ? `session:${event.sessionId}`
+            : '',
+      )
+      .filter(isNonEmptyString)
+      .map(toCleaningLockName),
+  ).sort();
+  const acquired: string[] = [];
+
+  try {
+    for (const lockName of lockNames) {
+      const [rows] = await connection.query<LockRow[]>('SELECT GET_LOCK(?, 10) AS lock_status', [
+        lockName,
+      ]);
+      if (rows[0]?.lock_status !== 1) {
+        throw new TerminalCleaningError(`timeout acquiring interaction cleaning lock: ${lockName}`);
+      }
+      acquired.push(lockName);
+    }
+  } catch (error) {
+    await releaseCleaningLocks(connection, acquired);
+    throw error;
+  }
+
+  return lockNames;
+}
+
+async function releaseCleaningLocks(
+  connection: PoolConnection,
+  lockNames: string[],
+): Promise<void> {
+  for (const lockName of [...lockNames].reverse()) {
+    try {
+      await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);
+    } catch {
+      // The transaction outcome matters more than a best-effort named-lock release.
+    }
+  }
+}
+
+function toCleaningLockName(rawKey: string): string {
+  return `sdd-clean:${sha256(rawKey).slice(0, 48)}`;
 }
 
 async function upsertLogEvent(
@@ -277,12 +364,12 @@ async function upsertLogEvent(
 ): Promise<void> {
   await connection.query<ResultSetHeader>(
     `INSERT INTO otel_log_events
-      (event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
-       display_name, service_name, service_version, severity_text, severity_number, event_time,
-       observed_at, attributes_json, resource_json, body_json, body_text, expires_at,
-       gmt_create, gmt_modified)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-       DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+	      (event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
+	       display_name, service_name, service_version, severity_text, severity_number, event_time,
+	       event_sequence, observed_at, attributes_json, resource_json, body_json, body_text, expires_at,
+	       gmt_create, gmt_modified)
+	     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+	       DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? DAY), CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
      ON DUPLICATE KEY UPDATE
        batch_id = VALUES(batch_id),
        user_id = VALUES(user_id),
@@ -294,10 +381,11 @@ async function upsertLogEvent(
        display_name = VALUES(display_name),
        service_name = VALUES(service_name),
        service_version = VALUES(service_version),
-       severity_text = VALUES(severity_text),
-       severity_number = VALUES(severity_number),
-       event_time = VALUES(event_time),
-       observed_at = VALUES(observed_at),
+	       severity_text = VALUES(severity_text),
+	       severity_number = VALUES(severity_number),
+	       event_time = VALUES(event_time),
+	       event_sequence = VALUES(event_sequence),
+	       observed_at = VALUES(observed_at),
        attributes_json = VALUES(attributes_json),
        resource_json = VALUES(resource_json),
        body_json = VALUES(body_json),
@@ -319,6 +407,7 @@ async function upsertLogEvent(
       event.severityText,
       event.severityNumber,
       event.eventTime,
+      event.eventSequence,
       event.observedAt,
       jsonParam(event.attributes),
       jsonParam(event.resource),
@@ -334,8 +423,8 @@ async function loadScopedEvents(
   batchId: string,
   events: ExtractedLogEvent[],
 ): Promise<EventRow[]> {
-  const promptIds = unique(events.map(event => event.promptId).filter(isNonEmptyString));
-  const sessionIds = unique(events.map(event => event.sessionId).filter(isNonEmptyString));
+  const promptIds = unique(events.map((event) => event.promptId).filter(isNonEmptyString));
+  const sessionIds = unique(events.map((event) => event.sessionId).filter(isNonEmptyString));
   const clauses = ['batch_id = ?'];
   const params: Array<string | string[]> = [batchId];
 
@@ -351,11 +440,11 @@ async function loadScopedEvents(
 
   const [rows] = await connection.query<EventRow[]>(
     `SELECT id, event_id, batch_id, user_id, session_id, prompt_id, event_name,
-            service_version, severity_text, severity_number, event_time,
-            attributes_json, body_json, body_text
-     FROM otel_log_events
-     WHERE ${clauses.map(clause => `(${clause})`).join(' OR ')}
-     ORDER BY COALESCE(event_time, gmt_create), id`,
+	            service_version, severity_text, severity_number, event_time, event_sequence,
+	            attributes_json, body_json, body_text
+	     FROM otel_log_events
+	     WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
+	     ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
     params,
   );
 
@@ -371,44 +460,105 @@ async function upsertInteractions(
   const refs = new Map<string, InteractionRef>();
 
   for (const [key, groupEvents] of groups.entries()) {
-    const requestEvent = groupEvents.find(isRequestEvent) ?? groupEvents[0];
-    const responseEvent = groupEvents.find(isResponseEvent) ?? null;
-    const userId = requestEvent?.user_id ?? responseEvent?.user_id ?? null;
-    const sessionId = requestEvent?.session_id ?? responseEvent?.session_id ?? null;
-    const promptId = requestEvent?.prompt_id ?? responseEvent?.prompt_id ?? null;
-    const startedAt = asDate(requestEvent?.event_time) ?? asDate(groupEvents[0]?.event_time);
-    const completedAt = responseEvent ? asDate(responseEvent.event_time) : null;
-    const durationMs =
+    const orderedEvents = sortEventsBySequence(groupEvents);
+    const apiRequestEvents = orderedEvents.filter(isApiRequestEvent);
+    const apiErrorEvents = orderedEvents.filter(isApiErrorEvent);
+    const responseEvents = orderedEvents.filter(isApiResponseBodyEvent);
+    const firstEvent = orderedEvents[0];
+    if (!firstEvent) {
+      continue;
+    }
+
+    const terminalEvents = [...apiRequestEvents, ...apiErrorEvents].sort(compareEventsBySequence);
+    const lastTerminalEvent = terminalEvents.at(-1) ?? null;
+    const requestEvent =
+      apiRequestEvents[0] ??
+      orderedEvents.find(isApiRequestBodyEvent) ??
+      orderedEvents.find(isUserPromptEvent) ??
+      firstEvent;
+    const responseEvent = responseEvents[0] ?? null;
+    const completedEvent =
+      [...terminalEvents, ...responseEvents].sort(compareEventsBySequence).at(-1) ?? null;
+    const userId = firstNonNull(orderedEvents.map((event) => event.user_id));
+    const sessionId = firstNonNull(orderedEvents.map((event) => event.session_id));
+    const promptId = firstNonNull(orderedEvents.map((event) => event.prompt_id));
+    const startedAt = asDate(firstEvent.event_time);
+    const completedAt = asDate(completedEvent?.event_time);
+    const tier1Metrics = extractTier1Metrics(apiRequestEvents);
+    const fallbackDurationMs =
       startedAt && completedAt ? Math.max(0, completedAt.getTime() - startedAt.getTime()) : null;
-    const status = responseEvent ? 'completed' : 'partial';
-    const commandName = pickRowString(requestEvent ?? responseEvent, [
-      'command_name',
-      'command.name',
-      'skill_name',
-      'skill.name',
-    ]);
+    const durationMs = tier1Metrics.durationMs ?? fallbackDurationMs;
+    const status = lastTerminalEvent
+      ? isApiErrorEvent(lastTerminalEvent)
+        ? 'failed'
+        : 'completed'
+      : 'partial';
+    const commandName =
+      pickFirstRowString(orderedEvents.filter(isUserPromptEvent), [
+        'command_name',
+        'command.name',
+        'skill_name',
+        'skill.name',
+      ]) ??
+      pickFirstRowString(orderedEvents, [
+        'command_name',
+        'command.name',
+        'skill_name',
+        'skill.name',
+      ]);
+    const commandSource =
+      pickFirstRowString(orderedEvents.filter(isUserPromptEvent), [
+        'command_source',
+        'command.source',
+      ]) ?? pickFirstRowString(orderedEvents, ['command_source', 'command.source']);
+    const responseContent = extractResponseContent(orderedEvents);
+    const promptText = extractPromptTextFromEvents(orderedEvents);
 
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_interactions
         (interaction_key, user_id, session_id, prompt_id, request_event_id, response_event_id,
          status, model, command_name, command_source, pairing_method, started_at, completed_at,
-         duration_ms, source_batch_id, evidence_json, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+         duration_ms, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+         llm_call_count, tool_call_count, skill_name, agent_name, plugin_name, query_source, effort, speed,
+         source_batch_id, evidence_json, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
-         user_id = VALUES(user_id),
-         session_id = VALUES(session_id),
-         prompt_id = VALUES(prompt_id),
-         request_event_id = VALUES(request_event_id),
-         response_event_id = VALUES(response_event_id),
+         user_id = COALESCE(VALUES(user_id), user_id),
+         session_id = COALESCE(VALUES(session_id), session_id),
+         prompt_id = COALESCE(VALUES(prompt_id), prompt_id),
+         request_event_id = COALESCE(VALUES(request_event_id), request_event_id),
+         response_event_id = COALESCE(VALUES(response_event_id), response_event_id),
          status = VALUES(status),
-         model = VALUES(model),
-         command_name = VALUES(command_name),
-         command_source = VALUES(command_source),
+         model = COALESCE(VALUES(model), model),
+         command_name = COALESCE(VALUES(command_name), command_name),
+         command_source = COALESCE(VALUES(command_source), command_source),
          pairing_method = VALUES(pairing_method),
-         started_at = VALUES(started_at),
-         completed_at = VALUES(completed_at),
-         duration_ms = VALUES(duration_ms),
-         source_batch_id = VALUES(source_batch_id),
+         started_at = CASE
+           WHEN started_at IS NULL THEN VALUES(started_at)
+           WHEN VALUES(started_at) IS NULL THEN started_at
+           ELSE LEAST(started_at, VALUES(started_at))
+         END,
+         completed_at = CASE
+           WHEN completed_at IS NULL THEN VALUES(completed_at)
+           WHEN VALUES(completed_at) IS NULL THEN completed_at
+           ELSE GREATEST(completed_at, VALUES(completed_at))
+         END,
+         duration_ms = ${greatestNullableSql('duration_ms')},
+         cost_usd = ${greatestNullableSql('cost_usd')},
+         input_tokens = ${greatestNullableSql('input_tokens')},
+         output_tokens = ${greatestNullableSql('output_tokens')},
+         cache_read_tokens = ${greatestNullableSql('cache_read_tokens')},
+         cache_creation_tokens = ${greatestNullableSql('cache_creation_tokens')},
+         llm_call_count = GREATEST(VALUES(llm_call_count), llm_call_count),
+         tool_call_count = GREATEST(VALUES(tool_call_count), tool_call_count),
+         skill_name = COALESCE(VALUES(skill_name), skill_name),
+         agent_name = COALESCE(VALUES(agent_name), agent_name),
+         plugin_name = COALESCE(VALUES(plugin_name), plugin_name),
+         query_source = COALESCE(VALUES(query_source), query_source),
+         effort = COALESCE(VALUES(effort), effort),
+         speed = COALESCE(VALUES(speed), speed),
+         source_batch_id = COALESCE(VALUES(source_batch_id), source_batch_id),
          evidence_json = VALUES(evidence_json),
          gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
@@ -419,16 +569,29 @@ async function upsertInteractions(
         requestEvent?.event_id ?? null,
         responseEvent?.event_id ?? null,
         status,
-        pickRowString(requestEvent ?? responseEvent, ['model', 'llm.model', 'model_name']),
+        tier1Metrics.model,
         commandName,
-        pickRowString(requestEvent ?? responseEvent, ['command_source', 'command.source']),
+        commandSource,
         promptId ? 'prompt_id' : 'session_window',
         startedAt,
         completedAt,
         durationMs,
-        requestEvent?.batch_id ?? responseEvent?.batch_id ?? null,
+        tier1Metrics.costUsd,
+        tier1Metrics.inputTokens,
+        tier1Metrics.outputTokens,
+        tier1Metrics.cacheReadTokens,
+        tier1Metrics.cacheCreationTokens,
+        tier1Metrics.llmCallCount,
+        countToolCalls(orderedEvents),
+        tier1Metrics.skillName,
+        tier1Metrics.agentName,
+        tier1Metrics.pluginName,
+        tier1Metrics.querySource,
+        tier1Metrics.effort,
+        tier1Metrics.speed,
+        firstEvent.batch_id,
         jsonParam({
-          eventIds: groupEvents.map(event => event.event_id),
+          eventIds: groupEvents.map((event) => event.event_id),
           requestEventId: requestEvent?.event_id ?? null,
           responseEventId: responseEvent?.event_id ?? null,
         }),
@@ -456,15 +619,109 @@ async function upsertInteractions(
          gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         interactionId,
-        extractPromptText(requestEvent),
-        extractResponseText(responseEvent),
-        responseEvent ? jsonParam(responseEvent.body_json) : null,
+        promptText,
+        responseContent.responseText,
+        responseContent.responseJson,
         textRetentionDays,
       ],
     );
   }
 
   return refs;
+}
+
+async function upsertToolCalls(
+  connection: PoolConnection,
+  events: EventRow[],
+  interactions: Map<string, InteractionRef>,
+): Promise<number> {
+  const toolEvents = sortEventsBySequence(events).filter(
+    (event) => isToolDecisionEvent(event) || isToolResultEvent(event),
+  );
+  const groups = new Map<string, EventRow[]>();
+
+  for (const event of toolEvents) {
+    const toolUseId = pickRowString(event, ['tool_use_id', 'tool.use_id', 'toolUseId']);
+    if (!toolUseId) {
+      continue;
+    }
+
+    const group = groups.get(toolUseId) ?? [];
+    group.push(event);
+    groups.set(toolUseId, group);
+  }
+
+  let count = 0;
+  for (const [toolUseId, groupEvents] of groups.entries()) {
+    const orderedEvents = sortEventsBySequence(groupEvents);
+    const decisionEvent = orderedEvents.find(isToolDecisionEvent) ?? null;
+    const resultEvent = [...orderedEvents].reverse().find(isToolResultEvent) ?? null;
+    const firstEvent = orderedEvents[0];
+    if (!firstEvent) {
+      continue;
+    }
+
+    const interaction = interactions.get(interactionKeyForEvent(firstEvent));
+    if (!interaction) {
+      continue;
+    }
+
+    const toolName =
+      pickRowString(decisionEvent, ['tool_name', 'tool.name', 'name']) ??
+      pickRowString(resultEvent, ['tool_name', 'tool.name', 'name']) ??
+      'unknown';
+    const sequence = firstEvent.event_sequence ?? 0;
+
+    await connection.query<ResultSetHeader>(
+      `INSERT INTO sdd_interaction_tool_calls
+        (interaction_id, tool_use_id, tool_name, sequence, decision, decision_source,
+         success, duration_ms, input_size_bytes, result_size_bytes, error_type,
+         tool_input_preview, mcp_server_scope, evidence_json, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       ON DUPLICATE KEY UPDATE
+         interaction_id = VALUES(interaction_id),
+         tool_name = COALESCE(VALUES(tool_name), tool_name),
+         sequence = CASE
+           WHEN sequence = 0 THEN VALUES(sequence)
+           WHEN VALUES(sequence) = 0 THEN sequence
+           ELSE LEAST(VALUES(sequence), sequence)
+         END,
+         decision = COALESCE(VALUES(decision), decision),
+         decision_source = COALESCE(VALUES(decision_source), decision_source),
+         success = COALESCE(VALUES(success), success),
+         duration_ms = COALESCE(VALUES(duration_ms), duration_ms),
+         input_size_bytes = COALESCE(VALUES(input_size_bytes), input_size_bytes),
+         result_size_bytes = COALESCE(VALUES(result_size_bytes), result_size_bytes),
+         error_type = COALESCE(VALUES(error_type), error_type),
+         tool_input_preview = COALESCE(VALUES(tool_input_preview), tool_input_preview),
+         mcp_server_scope = COALESCE(VALUES(mcp_server_scope), mcp_server_scope),
+         evidence_json = JSON_MERGE_PATCH(COALESCE(evidence_json, JSON_OBJECT()), COALESCE(VALUES(evidence_json), JSON_OBJECT())),
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
+      [
+        interaction.id,
+        toolUseId,
+        toolName,
+        sequence,
+        pickRowString(decisionEvent, ['decision']),
+        pickRowString(decisionEvent, ['decision_source', 'decision.source']),
+        pickRowBoolean(resultEvent, ['success', 'tool_result.success', 'tool.success']),
+        pickRowNumber(resultEvent, ['duration_ms', 'duration.ms']),
+        pickRowNumber(resultEvent, ['tool_input_size_bytes', 'input_size_bytes']),
+        pickRowNumber(resultEvent, ['tool_result_size_bytes', 'result_size_bytes']),
+        pickRowString(resultEvent, ['error_type', 'error.type']),
+        extractToolInputPreview(resultEvent ?? decisionEvent),
+        pickRowString(resultEvent ?? decisionEvent, ['mcp_server_scope', 'mcp.server.scope']),
+        jsonParam({
+          eventIds: orderedEvents.map((event) => event.event_id),
+          toolDecisionEventId: decisionEvent?.event_id ?? null,
+          toolResultEventId: resultEvent?.event_id ?? null,
+        }),
+      ],
+    );
+    count += 1;
+  }
+
+  return count;
 }
 
 async function upsertSkillUsages(
@@ -476,7 +733,7 @@ async function upsertSkillUsages(
     `SELECT id AS alias_id, semantic_id, skill_name
      FROM sdd_skill_aliases`,
   );
-  const aliasBySkillName = new Map(aliases.map(alias => [alias.skill_name, alias]));
+  const aliasBySkillName = new Map(aliases.map((alias) => [alias.skill_name, alias]));
   let count = 0;
 
   for (const event of events) {
@@ -484,11 +741,7 @@ async function upsertSkillUsages(
       continue;
     }
 
-    const rawSkillName = pickRowString(event, [
-      'skill_name',
-      'skill.name',
-      'sdd.skill_name',
-    ]);
+    const rawSkillName = pickRowString(event, ['skill_name', 'skill.name', 'sdd.skill_name']);
     if (!rawSkillName) {
       continue;
     }
@@ -628,12 +881,17 @@ async function upsertErrors(
 
 async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): Promise<number> {
   const artifactEvents = events
-    .map(event => ({
+    .map((event) => ({
       event,
       artifact: extractWriteArtifactSignal(event),
     }))
-    .filter((item): item is { event: EventRow; artifact: { filePath: string; isWrite: true } } =>
-      item.artifact !== null,
+    .filter(
+      (
+        item,
+      ): item is {
+        event: EventRow;
+        artifact: { filePath: string; isWrite: true };
+      } => item.artifact !== null,
     );
 
   if (artifactEvents.length === 0) {
@@ -648,7 +906,9 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
   let count = 0;
 
   for (const { event, artifact: signal } of artifactEvents) {
-    const requirementsRootPath = event.user_id ? userRequirementsRoots.get(String(event.user_id)) : null;
+    const requirementsRootPath = event.user_id
+      ? userRequirementsRoots.get(String(event.user_id))
+      : null;
     if (!requirementsRootPath || !isPathInsideRoot(signal.filePath, requirementsRootPath)) {
       continue;
     }
@@ -776,10 +1036,10 @@ async function loadUserRequirementsRoots(
 ): Promise<Map<string, string>> {
   const userIds = unique(
     events
-      .map(event => event.user_id)
+      .map((event) => event.user_id)
       .filter((userId): userId is string | number => userId !== null && userId !== undefined)
       .map(String)
-      .filter(value => value.length > 0),
+      .filter((value) => value.length > 0),
   );
   if (userIds.length === 0) {
     return new Map();
@@ -902,15 +1162,12 @@ function attributeSkillForArtifact(input: {
   filenameSemantic: SkillSemanticMatcher | null;
   skillCandidate: SkillCandidate | null;
 } {
-  const filenameSemantic = findSemanticByFileName(
-    input.artifact.fileName,
-    input.semantics,
-  );
+  const filenameSemantic = findSemanticByFileName(input.artifact.fileName, input.semantics);
   const sessionCandidates = input.event.session_id
-    ? input.skillCandidatesBySession.get(input.event.session_id) ?? []
+    ? (input.skillCandidatesBySession.get(input.event.session_id) ?? [])
     : [];
   const previousCandidates = sessionCandidates.filter(
-    candidate => candidate.eventIndex <= input.eventIndex,
+    (candidate) => candidate.eventIndex <= input.eventIndex,
   );
 
   if (previousCandidates.length === 0) {
@@ -920,12 +1177,14 @@ function attributeSkillForArtifact(input: {
     };
   }
 
-  const activatedCandidates = previousCandidates.filter(candidate => candidate.isActivatedEvent);
+  const activatedCandidates = previousCandidates.filter((candidate) => candidate.isActivatedEvent);
   const candidates = activatedCandidates.length > 0 ? activatedCandidates : previousCandidates;
 
   if (filenameSemantic) {
     const semanticMatchedCandidate = findNearestCandidate(
-      candidates.filter(candidate => candidate.semantic?.semanticId === filenameSemantic.semanticId),
+      candidates.filter(
+        (candidate) => candidate.semantic?.semanticId === filenameSemantic.semanticId,
+      ),
     );
     if (semanticMatchedCandidate) {
       return {
@@ -938,7 +1197,7 @@ function attributeSkillForArtifact(input: {
   return {
     filenameSemantic,
     skillCandidate:
-      findNearestCandidate(candidates.filter(candidate => candidate.semantic !== null)) ??
+      findNearestCandidate(candidates.filter((candidate) => candidate.semantic !== null)) ??
       findNearestCandidate(candidates),
   };
 }
@@ -952,7 +1211,7 @@ function findSemanticByFileName(
   semantics: SkillSemanticMatcher[],
 ): SkillSemanticMatcher | null {
   for (const semantic of semantics) {
-    if (semantic.artifactFilenamePatterns.some(pattern => globMatch(fileName, pattern))) {
+    if (semantic.artifactFilenamePatterns.some((pattern) => globMatch(fileName, pattern))) {
       return semantic;
     }
   }
@@ -1057,6 +1316,203 @@ function groupInteractionEvents(events: EventRow[]): Map<string, EventRow[]> {
   return groups;
 }
 
+function sortEventsBySequence(events: EventRow[]): EventRow[] {
+  return [...events].sort(compareEventsBySequence);
+}
+
+function compareEventsBySequence(left: EventRow, right: EventRow): number {
+  const leftSequence = left.event_sequence ?? Number.MAX_SAFE_INTEGER;
+  const rightSequence = right.event_sequence ?? Number.MAX_SAFE_INTEGER;
+  if (leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+
+  const leftTime = asDate(left.event_time)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const rightTime = asDate(right.event_time)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+
+  return Number(left.id) - Number(right.id);
+}
+
+function extractTier1Metrics(events: EventRow[]): {
+  model: string | null;
+  costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  durationMs: number | null;
+  llmCallCount: number;
+  skillName: string | null;
+  agentName: string | null;
+  pluginName: string | null;
+  querySource: string | null;
+  effort: string | null;
+  speed: string | null;
+} {
+  return {
+    model: pickLastRowString(events, ['model', 'llm.model', 'model_name']),
+    costUsd: sumRowNumbers(events, ['cost_usd']),
+    inputTokens: sumRowNumbers(events, ['input_tokens', 'input.token_count']),
+    outputTokens: sumRowNumbers(events, ['output_tokens', 'output.token_count']),
+    cacheReadTokens: sumRowNumbers(events, ['cache_read_tokens', 'cache_read_input_tokens']),
+    cacheCreationTokens: sumRowNumbers(events, [
+      'cache_creation_tokens',
+      'cache_creation_input_tokens',
+      'cache_write_tokens',
+    ]),
+    durationMs: sumRowNumbers(events, ['duration_ms', 'duration.ms']),
+    llmCallCount: events.length,
+    skillName: pickLastRowString(events, ['skill_name', 'skill.name']),
+    agentName: pickLastRowString(events, ['agent_name', 'agent.name']),
+    pluginName: pickLastRowString(events, ['plugin_name', 'plugin.name']),
+    querySource: pickLastRowString(events, ['query_source', 'query.source']),
+    effort: pickLastRowString(events, ['effort']),
+    speed: pickLastRowString(events, ['speed']),
+  };
+}
+
+function extractPromptTextFromEvents(events: EventRow[]): string | null {
+  for (const event of events.filter(isUserPromptEvent)) {
+    const prompt = pickRowString(event, ['prompt', 'request.prompt', 'input', 'message.content']);
+    if (prompt && !isRedacted(prompt)) {
+      return prompt;
+    }
+  }
+
+  for (const event of events.filter(isApiRequestBodyEvent)) {
+    const attributes = parseJsonObject(event.attributes_json);
+    const fromBody = extractPromptFromApiBodyJson(readString(attributes.body));
+    if (fromBody && !isRedacted(fromBody)) {
+      return fromBody;
+    }
+  }
+
+  return null;
+}
+
+function extractResponseContent(events: EventRow[]): {
+  responseText: string | null;
+  responseJson: string | null;
+} {
+  const responseBodies: unknown[] = [];
+  const responseTextParts: string[] = [];
+  let toolUseIndex = 0;
+
+  for (const event of events.filter(isApiResponseBodyEvent)) {
+    const attributes = parseJsonObject(event.attributes_json);
+    if (readBoolean(attributes.body_truncated)) {
+      responseTextParts.push('[本次响应被截断]');
+      continue;
+    }
+
+    const body = parseApiBody(readString(attributes.body));
+    if (!body) {
+      continue;
+    }
+
+    responseBodies.push(body);
+    const content = body.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    const blockTexts: string[] = [];
+    for (const item of content) {
+      if (typeof item !== 'object' || item === null) {
+        continue;
+      }
+
+      const block = item as Record<string, unknown>;
+      const type = readString(block.type);
+      if (type === 'text') {
+        const text = readString(block.text);
+        if (text) {
+          blockTexts.push(text);
+        }
+        continue;
+      }
+
+      if (type === 'thinking') {
+        blockTexts.push('[思考（脱敏）]');
+        continue;
+      }
+
+      if (type === 'tool_use') {
+        toolUseIndex += 1;
+        const name = readString(block.name) ?? 'unknown';
+        const inputPreview = stringifyPreview(block.input, 80);
+        blockTexts.push(`[工具 #${toolUseIndex}: ${name}(${inputPreview})]`);
+      }
+    }
+
+    if (blockTexts.length > 0) {
+      responseTextParts.push(blockTexts.join('\n\n'));
+    }
+  }
+
+  const responseJson =
+    responseBodies.length === 0
+      ? null
+      : JSON.stringify(responseBodies.length === 1 ? responseBodies[0] : responseBodies);
+
+  return {
+    responseText: responseTextParts.length > 0 ? responseTextParts.join('\n\n---\n\n') : null,
+    responseJson,
+  };
+}
+
+function countToolCalls(events: EventRow[]): number {
+  const toolUseIds = new Set<string>();
+  for (const event of events) {
+    if (!isToolResultEvent(event)) {
+      continue;
+    }
+
+    const toolUseId = pickRowString(event, ['tool_use_id', 'tool.use_id', 'toolUseId']);
+    if (toolUseId) {
+      toolUseIds.add(toolUseId);
+    }
+  }
+
+  return toolUseIds.size;
+}
+
+function isApiRequestEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'api_request');
+}
+
+function isApiRequestBodyEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'api_request_body');
+}
+
+function isApiResponseBodyEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'api_response_body');
+}
+
+function isApiErrorEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'api_error');
+}
+
+function isUserPromptEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'user_prompt');
+}
+
+function isToolDecisionEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'tool_decision');
+}
+
+function isToolResultEvent(event: EventRow): boolean {
+  return isNamedEvent(event, 'tool_result');
+}
+
+function isNamedEvent(event: EventRow, expectedName: string): boolean {
+  const normalized = normalizeEventName(event.event_name);
+  return normalized === expectedName || normalized.endsWith(`_${expectedName}`);
+}
+
 function interactionKeyForEvent(event: EventRow): string {
   if (event.prompt_id) {
     return sha256(`prompt:${event.prompt_id}`);
@@ -1116,7 +1572,11 @@ function extractResponseText(event: EventRow | null): string | null {
 function extractPromptFromApiBodyJson(bodyStr: string | null): string | null {
   if (!bodyStr) return null;
   let body: unknown;
-  try { body = JSON.parse(bodyStr); } catch { return null; }
+  try {
+    body = JSON.parse(bodyStr);
+  } catch {
+    return null;
+  }
   if (typeof body !== 'object' || body === null) return null;
   const messages = (body as Record<string, unknown>).messages;
   if (!Array.isArray(messages)) return null;
@@ -1143,7 +1603,11 @@ function extractPromptFromApiBodyJson(bodyStr: string | null): string | null {
 function extractResponseFromApiBodyJson(bodyStr: string | null): string | null {
   if (!bodyStr) return null;
   let body: unknown;
-  try { body = JSON.parse(bodyStr); } catch { return null; }
+  try {
+    body = JSON.parse(bodyStr);
+  } catch {
+    return null;
+  }
   if (typeof body !== 'object' || body === null) return null;
   const content = (body as Record<string, unknown>).content;
   if (!Array.isArray(content)) return null;
@@ -1158,7 +1622,8 @@ function extractResponseFromApiBodyJson(bodyStr: string | null): string | null {
   for (const item of content) {
     if (typeof item === 'object' && item !== null) {
       const block = item as Record<string, unknown>;
-      if (block.type === 'tool_use' && typeof block.name === 'string') return `[工具: ${block.name}]`;
+      if (block.type === 'tool_use' && typeof block.name === 'string')
+        return `[工具: ${block.name}]`;
     }
   }
   return null;
@@ -1188,6 +1653,189 @@ function pickRowString(event: EventRow | undefined | null, keys: string[]): stri
   }
 
   return null;
+}
+
+function pickFirstRowString(events: EventRow[], keys: string[]): string | null {
+  for (const event of events) {
+    const value = pickRowString(event, keys);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function pickLastRowString(events: EventRow[], keys: string[]): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) {
+      continue;
+    }
+
+    const value = pickRowString(event, keys);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function pickRowNumber(event: EventRow | undefined | null, keys: string[]): number | null {
+  if (!event) {
+    return null;
+  }
+
+  const attributes = parseJsonObject(event.attributes_json);
+  for (const key of keys) {
+    const value = readFiniteNumber(attributes[key]);
+    if (value !== null) {
+      return value;
+    }
+  }
+
+  const normalizedKeys = new Set(keys.map(normalizeKey));
+  for (const [key, value] of Object.entries(attributes)) {
+    if (normalizedKeys.has(normalizeKey(key))) {
+      const numberValue = readFiniteNumber(value);
+      if (numberValue !== null) {
+        return numberValue;
+      }
+    }
+  }
+
+  return null;
+}
+
+function pickRowBoolean(event: EventRow | undefined | null, keys: string[]): boolean | null {
+  if (!event) {
+    return null;
+  }
+
+  const attributes = parseJsonObject(event.attributes_json);
+  for (const key of keys) {
+    if (attributes[key] !== undefined) {
+      return readBoolean(attributes[key]);
+    }
+  }
+
+  const normalizedKeys = new Set(keys.map(normalizeKey));
+  for (const [key, value] of Object.entries(attributes)) {
+    if (normalizedKeys.has(normalizeKey(key))) {
+      return readBoolean(value);
+    }
+  }
+
+  return null;
+}
+
+function sumRowNumbers(events: EventRow[], keys: string[]): number | null {
+  let total = 0;
+  let seen = false;
+
+  for (const event of events) {
+    const value = pickRowNumber(event, keys);
+    if (value === null) {
+      continue;
+    }
+
+    total += value;
+    seen = true;
+  }
+
+  return seen ? total : null;
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function parseApiBody(bodyStr: string | null): Record<string, unknown> | null {
+  if (!bodyStr) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(bodyStr);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractToolInputPreview(event: EventRow | undefined | null): string | null {
+  if (!event) {
+    return null;
+  }
+
+  const attributes = parseJsonObject(event.attributes_json);
+  const value =
+    attributes.tool_input ??
+    attributes.tool_parameters ??
+    attributes['tool.parameters'] ??
+    attributes.input;
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return stringifyPreview(value, 4096);
+}
+
+function stringifyPreview(value: unknown, maxBytes: number): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return truncateUtf8(text, maxBytes);
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, 'utf8') <= maxBytes) {
+    return value;
+  }
+
+  let end = value.length;
+  while (end > 0 && Buffer.byteLength(value.slice(0, end), 'utf8') > maxBytes) {
+    end -= 1;
+  }
+
+  return value.slice(0, end);
+}
+
+function isRedacted(value: string): boolean {
+  return value.trim().toUpperCase() === '<REDACTED>';
+}
+
+function firstNonNull<T>(values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (value !== null && value !== undefined) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function greatestNullableSql(columnName: string): string {
+  return `CASE
+           WHEN VALUES(${columnName}) IS NULL THEN ${columnName}
+           WHEN ${columnName} IS NULL THEN VALUES(${columnName})
+           ELSE GREATEST(VALUES(${columnName}), ${columnName})
+         END`;
 }
 
 function isStrongErrorEvent(event: EventRow): boolean {
@@ -1256,7 +1904,14 @@ function defaultArtifactFilenamePatterns(semanticCode: string): string[] {
     case 'task':
       return ['tasks.md', 'tasks-*.md', 'task.md', 'task-*.md'];
     case 'codereview':
-      return ['codereview.md', 'codereview-*.md', 'code-review.md', 'code-review-*.md', 'review.md', 'review-*.md'];
+      return [
+        'codereview.md',
+        'codereview-*.md',
+        'code-review.md',
+        'code-review-*.md',
+        'review.md',
+        'review-*.md',
+      ];
     case 'code':
       return ['implementation.md', 'implementation-*.md', 'code.md', 'code-*.md'];
     default:
@@ -1273,7 +1928,10 @@ function globMatch(value: string, pattern: string): boolean {
   return new RegExp(`^${escapedPattern}$`, 'i').test(value);
 }
 
-function inferArtifact(artifactFullPath: string, requirementsRootPath: string): {
+function inferArtifact(
+  artifactFullPath: string,
+  requirementsRootPath: string,
+): {
   artifactKey: string;
   workItemKey: string;
   repoName: string | null;
@@ -1291,7 +1949,9 @@ function inferArtifact(artifactFullPath: string, requirementsRootPath: string): 
   const normalizedRoot = trimTrailingSlash(normalizePath(requirementsRootPath));
   const relativePath = normalized.slice(normalizedRoot.length).replace(/^\/+/, '');
   const relativeSegments = relativePath.split('/').filter(Boolean);
-  const workItemIndex = relativeSegments.findIndex(segment => /^\d{4}-\d{2}-\d{2}-.+/.test(segment));
+  const workItemIndex = relativeSegments.findIndex((segment) =>
+    /^\d{4}-\d{2}-\d{2}-.+/.test(segment),
+  );
 
   if (workItemIndex <= 0) {
     return null;
@@ -1405,7 +2065,10 @@ function isNonEmptyString(value: string | null): value is string {
 }
 
 function normalizeEventName(eventName: string): string {
-  return eventName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return eventName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function normalizeKey(key: string): string {

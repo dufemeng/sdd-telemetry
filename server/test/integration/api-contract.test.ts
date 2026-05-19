@@ -17,6 +17,7 @@ import {
   SddUsageItemSchema,
   SddInteractionDetailSchema,
   SddInteractionItemSchema,
+  SddInteractionToolCallListResponseSchema,
   SddErrorItemSchema,
   SddUserItemSchema,
   SddVersionItemSchema,
@@ -53,7 +54,11 @@ async function api(method: string, path: string, body?: unknown) {
   return { status: res.status, body: json };
 }
 
-function validateContract<TSchema extends z.ZodType>(label: string, response: unknown, dataSchema: TSchema): z.infer<TSchema> {
+function validateContract<TSchema extends z.ZodType>(
+  label: string,
+  response: unknown,
+  dataSchema: TSchema,
+): z.infer<TSchema> {
   const result = createApiResponseSchema(dataSchema).safeParse(response);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`);
@@ -83,32 +88,62 @@ async function cleanupContractData() {
        WHERE u.install_id IN (?, ?)`,
       [CONTRACT_SETTINGS_INSTALL_ID, CONTRACT_INGEST_INSTALL_ID],
     )) as [Array<{ id: string }>, unknown];
-    const batchIds = [...batchRows.map((row) => String(row.id)), ...(contractBatchId ? [contractBatchId] : [])];
+    const batchIds = [
+      ...batchRows.map((row) => String(row.id)),
+      ...(contractBatchId ? [contractBatchId] : []),
+    ];
 
     for (const batchId of new Set(batchIds)) {
       await connection.execute('DELETE FROM sdd_errors WHERE batch_id = ?', [batchId]);
-      await connection.execute('DELETE FROM sdd_skill_usages WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [batchId]);
-      await connection.execute('DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)', [
-        batchId,
-      ]);
+      await connection.execute(
+        'DELETE FROM sdd_skill_usages WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
+        [batchId],
+      );
+      await connection.execute(
+        'DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
+        [batchId],
+      );
+      await connection.execute(
+        'DELETE FROM sdd_interaction_tool_calls WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
+        [batchId],
+      );
       await connection.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [batchId]);
       await connection.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [batchId]);
-      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', ['clean_batch', batchId]);
+      await connection.execute(
+        'DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?',
+        ['clean_batch', batchId],
+      );
       await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [batchId]);
       await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [batchId]);
     }
 
     if (contractBatchId) {
-      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', ['clean_batch', contractBatchId]);
-      await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [contractBatchId]);
+      await connection.execute(
+        'DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?',
+        ['clean_batch', contractBatchId],
+      );
+      await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [
+        contractBatchId,
+      ]);
       await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [contractBatchId]);
     }
 
-    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name = ?', [CONTRACT_SKILL_ALIAS]);
-    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name LIKE ?', ['ct-skill-%']);
-    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code = ?', [CONTRACT_SEMANTIC_CODE]);
-    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code LIKE ?', ['contract-test-%']);
-    await connection.execute('DELETE FROM sdd_users WHERE install_id IN (?, ?)', [CONTRACT_SETTINGS_INSTALL_ID, CONTRACT_INGEST_INSTALL_ID]);
+    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name = ?', [
+      CONTRACT_SKILL_ALIAS,
+    ]);
+    await connection.execute('DELETE FROM sdd_skill_aliases WHERE skill_name LIKE ?', [
+      'ct-skill-%',
+    ]);
+    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code = ?', [
+      CONTRACT_SEMANTIC_CODE,
+    ]);
+    await connection.execute('DELETE FROM sdd_skill_semantics WHERE semantic_code LIKE ?', [
+      'contract-test-%',
+    ]);
+    await connection.execute('DELETE FROM sdd_users WHERE install_id IN (?, ?)', [
+      CONTRACT_SETTINGS_INSTALL_ID,
+      CONTRACT_INGEST_INSTALL_ID,
+    ]);
   } finally {
     await connection.end();
   }
@@ -120,7 +155,9 @@ describe('API Contract Tests', () => {
       signal: AbortSignal.timeout(3000),
     }).catch(() => null);
     if (!res?.ok) {
-      throw new Error(`Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`);
+      throw new Error(
+        `Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`,
+      );
     }
     didReachServer = true;
     await cleanupContractData();
@@ -156,12 +193,20 @@ describe('API Contract Tests', () => {
 
     it('GET /api/ingest/batches/:id — returns BatchDetail', async () => {
       const listResponse = await api('GET', '/api/ingest/batches');
-      const list = validateContract('BatchListResponse', listResponse.body, BatchListResponseSchema);
-      const first = list.items[0];
-      if (!first) return;
-      const { status, body } = await api('GET', `/api/ingest/batches/${first.id}`);
-      expect(status).toBe(200);
-      validateContract('BatchDetail', body, BatchDetailSchema);
+      const list = validateContract(
+        'BatchListResponse',
+        listResponse.body,
+        BatchListResponseSchema,
+      );
+      for (const item of list.items.slice(0, 10)) {
+        const { status, body } = await api('GET', `/api/ingest/batches/${item.id}`);
+        if (status !== 200) {
+          continue;
+        }
+        validateContract('BatchDetail', body, BatchDetailSchema);
+        return;
+      }
+      throw new Error('no stable batch detail row was available during this test run');
     });
 
     it('POST /api/ingest/otlp-logs — returns IngestLogsResponse', async () => {
@@ -283,12 +328,34 @@ describe('API Contract Tests', () => {
 
     it('GET /api/sdd/interactions/:id — returns SddInteractionDetail', async () => {
       const listResponse = await api('GET', '/api/sdd/interactions');
-      const list = validateContract('SddInteractionItem[]', listResponse.body, SddInteractionItemSchema.array());
+      const list = validateContract(
+        'SddInteractionItem[]',
+        listResponse.body,
+        SddInteractionItemSchema.array(),
+      );
       const first = list[0];
       if (!first) return;
       const { status, body } = await api('GET', `/api/sdd/interactions/${first.id}`);
       expect(status).toBe(200);
       validateContract('SddInteractionDetail', body, SddInteractionDetailSchema);
+    });
+
+    it('GET /api/sdd/interactions/:id/tool-calls — returns SddInteractionToolCallListResponse', async () => {
+      const listResponse = await api('GET', '/api/sdd/interactions');
+      const list = validateContract(
+        'SddInteractionItem[]',
+        listResponse.body,
+        SddInteractionItemSchema.array(),
+      );
+      const first = list[0];
+      if (!first) return;
+      const { status, body } = await api('GET', `/api/sdd/interactions/${first.id}/tool-calls`);
+      expect(status).toBe(200);
+      validateContract(
+        'SddInteractionToolCallListResponse',
+        body,
+        SddInteractionToolCallListResponseSchema,
+      );
     });
 
     it('GET /api/sdd/errors — returns SddErrorItem[]', async () => {

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 export interface ExtractedLogEvent {
   eventId: string;
   sequence: number;
+  eventSequence: number | null;
   eventName: string;
   displayName: string | null;
   sessionId: string | null;
@@ -72,6 +73,7 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
         const eventName =
           pickString(attributes, ['event_name', 'event.name', 'event.type', 'type', 'name']) ??
           'unknown';
+        const eventSequence = readNumber(attributes['event.sequence']);
         const eventTime = readUnixNanoDate(logRecord.timeUnixNano);
         const observedAt = readUnixNanoDate(logRecord.observedTimeUnixNano);
         const promptText = pickPromptText(attributes, bodyJson, bodyText, eventName);
@@ -100,15 +102,20 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
           'command.name',
           'tool.name',
         ]);
-        const toolResultArtifact = extractArtifactFromToolResult({ eventName, attributes });
-        const artifactPath = toolResultArtifact?.filePath ?? pickString(attributes, [
-          'artifact.path',
-          'file.path',
-          'output_path',
-          'requirements.path',
-          'sdd.requirements_path',
-          'sdd.artifact_path',
-        ]);
+        const toolResultArtifact = extractArtifactFromToolResult({
+          eventName,
+          attributes,
+        });
+        const artifactPath =
+          toolResultArtifact?.filePath ??
+          pickString(attributes, [
+            'artifact.path',
+            'file.path',
+            'output_path',
+            'requirements.path',
+            'sdd.requirements_path',
+            'sdd.artifact_path',
+          ]);
         const persistedAttributes = toolResultArtifact
           ? {
               ...attributes,
@@ -116,12 +123,8 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
               'sdd.artifact_is_write': 'true',
             }
           : attributes;
-        const sessionId = pickString(attributes, [
-          'session_id',
-          'session.id',
-          'claude.session_id',
-        ]);
-        const promptId = pickString(attributes, ['prompt_id', 'prompt.id', 'request_id']);
+        const sessionId = pickString(attributes, ['session_id', 'session.id', 'claude.session_id']);
+        const promptId = pickString(attributes, ['prompt_id', 'prompt.id']);
 
         events.push({
           eventId: createEventId({
@@ -135,6 +138,7 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
             sessionId,
           }),
           sequence: events.length,
+          eventSequence,
           eventName,
           displayName: null,
           sessionId,
@@ -156,7 +160,9 @@ export function extractOtelLogEvents(payload: unknown, batchId: string): Extract
           promptText,
           responseText,
           errorType,
-          errorMessage: errorMessage ?? (isStrongError(severityText, severityNumber, eventName, errorType) ? bodyText : null),
+          errorMessage:
+            errorMessage ??
+            (isStrongError(severityText, severityNumber, eventName, errorType) ? bodyText : null),
           stackTrace,
           isStrongError: isStrongError(severityText, severityNumber, eventName, errorType),
         });
@@ -441,11 +447,16 @@ function isErrorEventName(eventName: string): boolean {
 }
 
 function normalizeEventName(eventName: string): string {
-  return eventName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return eventName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function isPathLike(value: string): boolean {
-  return value.includes('/') || value.includes('\\') || value.startsWith('.') || value.startsWith('~');
+  return (
+    value.includes('/') || value.includes('\\') || value.startsWith('.') || value.startsWith('~')
+  );
 }
 
 function hasWritableContentField(input: Record<string, unknown>): boolean {

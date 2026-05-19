@@ -1,7 +1,27 @@
 const intlInt = new Intl.NumberFormat('zh-CN');
-const intlPct = new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 1 });
-const intlTime = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-const intlDt   = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const intlPct = new Intl.NumberFormat('zh-CN', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+const intlUsd = new Intl.NumberFormat('zh-CN', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 4,
+});
+const intlTime = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+const intlDt = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
 
 export function formatInteger(value: number | null | undefined): string {
   return intlInt.format(value ?? 0);
@@ -10,6 +30,11 @@ export function formatInteger(value: number | null | undefined): string {
 export function formatPercent(value: number | null | undefined): string {
   if (value == null) return 'unknown';
   return intlPct.format(value);
+}
+
+export function formatUsd(value: number | null | undefined): string {
+  if (value == null) return '—';
+  return intlUsd.format(value);
 }
 
 export function formatBytes(value: number | null | undefined): string {
@@ -36,7 +61,7 @@ export function truncate(value: unknown, max = 120): string {
 }
 
 const GOOD = new Set(['parsed', 'success', 'completed', 'ok']);
-const BAD  = /failed|error/;
+const BAD = /failed|error/;
 const WARN = new Set(['processing', 'queued', 'received', 'pending']);
 
 export type StatusVariant = 'good' | 'warn' | 'bad' | 'neutral';

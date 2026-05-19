@@ -47,9 +47,16 @@ async function cleanupCase1() {
         'DELETE FROM sdd_interaction_texts WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
         [id],
       );
+      await connection.execute(
+        'DELETE FROM sdd_interaction_tool_calls WHERE interaction_id IN (SELECT id FROM sdd_interactions WHERE source_batch_id = ?)',
+        [id],
+      );
       await connection.execute('DELETE FROM sdd_interactions WHERE source_batch_id = ?', [id]);
       await connection.execute('DELETE FROM otel_log_events WHERE batch_id = ?', [id]);
-      await connection.execute('DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?', ['clean_batch', id]);
+      await connection.execute(
+        'DELETE FROM ingest_outbox WHERE event_type = ? AND aggregate_id = ?',
+        ['clean_batch', id],
+      );
       await connection.execute('DELETE FROM otel_raw_payloads WHERE batch_id = ?', [id]);
       await connection.execute('DELETE FROM otel_ingest_batches WHERE id = ?', [id]);
     }
@@ -66,7 +73,10 @@ async function postOtlp(payload: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const body = (await res.json()) as { success: boolean; data?: { batchId: string } };
+  const body = (await res.json()) as {
+    success: boolean;
+    data?: { batchId: string };
+  };
   return { status: res.status, body };
 }
 
@@ -90,9 +100,13 @@ describe('case 1: requirements_root_path 上报闭环', () => {
   let didReachServer = false;
 
   beforeAll(async () => {
-    const res = await fetch(`${BASE}/api/ingest/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+    const res = await fetch(`${BASE}/api/ingest/health`, {
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => null);
     if (!res?.ok) {
-      throw new Error(`Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`);
+      throw new Error(
+        `Server not running at ${BASE}. Start it with: pnpm --filter @sdd-telemetry/server dev`,
+      );
     }
     didReachServer = true;
     await cleanupCase1();
