@@ -28,6 +28,7 @@ import type {
   SddWorkItem,
   SddWorkItemDetail,
 } from '@sdd-telemetry/api';
+import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import {
   addTimeRangeWhere,
@@ -300,7 +301,12 @@ export class SddQueryService {
 
   async createSemantic(input: CreateSddSemanticRequest): Promise<SddSemantic> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async (manager) => {
+    const unitOfWork = new TypeOrmUnitOfWork(dataSource);
+    await unitOfWork.run(async (context) => {
+      if (!context.manager) {
+        throw new Error('missing transaction manager');
+      }
+      const manager = context.manager;
       await manager.query(
         `INSERT INTO sdd_skill_semantics
           (semantic_code, display_name, description, artifact_filename_patterns,
@@ -354,7 +360,12 @@ export class SddQueryService {
 
   async updateSemantic(id: string, input: UpdateSddSemanticRequest): Promise<SddSemantic> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async (manager) => {
+    const unitOfWork = new TypeOrmUnitOfWork(dataSource);
+    await unitOfWork.run(async (context) => {
+      if (!context.manager) {
+        throw new Error('missing transaction manager');
+      }
+      const manager = context.manager;
       await manager.query(
         `UPDATE sdd_skill_semantics
          SET display_name = ?,
@@ -393,7 +404,12 @@ export class SddQueryService {
 
   async deleteSemantic(id: string): Promise<void> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    await dataSource.transaction(async (manager) => {
+    const unitOfWork = new TypeOrmUnitOfWork(dataSource);
+    await unitOfWork.run(async (context) => {
+      if (!context.manager) {
+        throw new Error('missing transaction manager');
+      }
+      const manager = context.manager;
       await manager.query(`DELETE FROM sdd_skill_aliases WHERE semantic_id = ?`, [id]);
       await manager.query(`DELETE FROM sdd_skill_semantics WHERE id = ?`, [id]);
     });

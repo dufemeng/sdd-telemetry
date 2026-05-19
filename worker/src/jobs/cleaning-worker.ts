@@ -269,38 +269,30 @@ async function persistCleanedData(
     textRetentionDays: number;
   },
 ): Promise<number> {
-  const connection = await pool.getConnection();
-  let acquiredLocks: string[] = [];
+  return withTransaction(pool, async (connection) => {
+    const acquiredLocks: string[] = [];
+    try {
+      for (const event of input.events) {
+        await upsertLogEvent(connection, input.batch, event, input.eventRetentionDays);
+      }
 
-  try {
-    await connection.beginTransaction();
+      acquiredLocks.push(...(await acquireCleaningLocks(connection, input.events)));
+      const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
+      const interactions = await upsertInteractions(
+        connection,
+        scopedEvents,
+        input.textRetentionDays,
+      );
+      const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
+      const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
+      const artifacts = await upsertWorkItems(connection, scopedEvents);
+      const errors = await upsertErrors(connection, scopedEvents, interactions);
 
-    for (const event of input.events) {
-      await upsertLogEvent(connection, input.batch, event, input.eventRetentionDays);
+      return interactions.size + toolCalls + usages + errors + artifacts;
+    } finally {
+      await releaseCleaningLocks(connection, acquiredLocks);
     }
-
-    acquiredLocks = await acquireCleaningLocks(connection, input.events);
-    const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
-    const interactions = await upsertInteractions(
-      connection,
-      scopedEvents,
-      input.textRetentionDays,
-    );
-    const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
-    const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
-    const artifacts = await upsertWorkItems(connection, scopedEvents);
-    const errors = await upsertErrors(connection, scopedEvents, interactions);
-
-    const derivedCount = interactions.size + toolCalls + usages + errors + artifacts;
-    await connection.commit();
-    return derivedCount;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    await releaseCleaningLocks(connection, acquiredLocks);
-    connection.release();
-  }
+  });
 }
 
 async function acquireCleaningLocks(
