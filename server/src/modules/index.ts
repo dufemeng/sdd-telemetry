@@ -7,6 +7,7 @@ import './ingest/ingest-receive.service';
 import './ingest/ingest-write.repository';
 import './ingest/ingest.controller';
 import './ops/ops.controller';
+import './ops/ops-query.repository';
 import './ops/ops-query.service';
 import './sdd/sdd.controller';
 import './sdd/sdd-query.service';

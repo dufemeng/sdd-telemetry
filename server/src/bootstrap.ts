@@ -7,6 +7,7 @@ import { IngestReceiveService } from './modules/ingest/ingest-receive.service';
 import { IngestWriteRepository } from './modules/ingest/ingest-write.repository';
 import { EventsQueryRepository } from './modules/events/events-query.repository';
 import { EventsQueryService } from './modules/events/events-query.service';
+import { OpsQueryRepository } from './modules/ops/ops-query.repository';
 import { OpsQueryService } from './modules/ops/ops-query.service';
 import { SddQueryService } from './modules/sdd/sdd-query.service';
 
@@ -19,6 +20,7 @@ void Bootstrap.configure({
     IngestWriteRepository,
     EventsQueryRepository,
     EventsQueryService,
+    OpsQueryRepository,
     OpsQueryService,
     SddQueryService,
   ],

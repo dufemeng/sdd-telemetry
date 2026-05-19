@@ -13,56 +13,12 @@ import type {
   OpsTableRowsResponse,
   OpsTablesResponse,
 } from '@sdd-telemetry/api';
-import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { toIsoDate, toNumber, toStringId, truncateText } from '../query-utils';
-
-interface TableRow {
-  table_name?: string;
-  TABLE_NAME?: string;
-  estimated_rows?: string | number;
-  TABLE_ROWS?: string | number;
-  updated_at?: Date | string | null;
-  UPDATE_TIME?: Date | string | null;
-}
-
-interface ColumnRow {
-  table_name?: string;
-  TABLE_NAME?: string;
-  column_name?: string;
-  COLUMN_NAME?: string;
-  data_type?: string;
-  DATA_TYPE?: string;
-  column_type?: string;
-  COLUMN_TYPE?: string;
-  is_nullable?: string;
-  IS_NULLABLE?: string;
-  column_key?: string;
-  COLUMN_KEY?: string;
-  column_default?: string | null;
-  COLUMN_DEFAULT?: string | null;
-  extra?: string;
-  EXTRA?: string;
-  character_maximum_length?: string | number | null;
-  CHARACTER_MAXIMUM_LENGTH?: string | number | null;
-  numeric_precision?: string | number | null;
-  NUMERIC_PRECISION?: string | number | null;
-}
-
-interface QueueRow {
-  pending_outbox: string | number;
-  dispatching_outbox: string | number;
-  failed_outbox: string | number;
-}
-
-interface JobRow {
-  id: string | number;
-  status: string;
-  aggregate_id: string | number | null;
-  attempts: string | number;
-  last_error: string | null;
-  created_at: Date | string | null;
-  updated_at: Date | string | null;
-}
+import {
+  OpsQueryRepository,
+  type ColumnRow,
+  type JobRow,
+} from './ops-query.repository';
 
 const allowedTables = [
   'sdd_users',
@@ -82,39 +38,31 @@ const allowedTables = [
 
 @Provide('opsQueryService')
 export class OpsQueryService {
-  @Inject('mysqlDataSourceManager')
-  mysqlDataSourceManager!: MysqlDataSourceManager;
+  @Inject('opsQueryRepository')
+  opsQueryRepository!: OpsQueryRepository;
 
   async listTables(): Promise<OpsTablesResponse> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const [tableRows, columnRows, countRows] = await Promise.all([
-      dataSource.query(
-        `SELECT table_name, update_time AS updated_at
-         FROM information_schema.tables
-         WHERE table_schema = DATABASE()
-           AND table_name IN (${allowedTables.map(() => '?').join(',')})
-         ORDER BY table_name ASC`,
-        allowedTables,
-      ) as Promise<TableRow[]>,
-      this.listColumnsForTables(allowedTables),
+      this.opsQueryRepository.listAllowedTablesMeta(allowedTables),
+      this.opsQueryRepository.listColumnsForTables(allowedTables),
       Promise.all(
-        allowedTables.map(name =>
-          (dataSource.query(`SELECT COUNT(*) AS cnt FROM \`${name}\``) as Promise<[{ cnt: string | number }]>)
-            .then(rows => ({ name, count: toNumber(rows[0]?.cnt) })),
-        ),
+        allowedTables.map(async name => ({
+          name,
+          count: await this.opsQueryRepository.countRows(name),
+        })),
       ),
     ]);
 
     const rowCountByTable = new Map(countRows.map(r => [r.name, r.count]));
-    const columnsByTable  = groupColumnsByTable(columnRows);
+    const columnsByTable = groupColumnsByTable(columnRows);
 
     const tables: OpsTable[] = tableRows.map(row => {
       const tableName = String(row.table_name ?? row.TABLE_NAME);
       return {
         tableName,
         estimatedRows: rowCountByTable.get(tableName) ?? 0,
-        updatedAt:     toIsoDate(row.updated_at ?? row.UPDATE_TIME),
-        columns:       columnsByTable.get(tableName) ?? [],
+        updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+        columns: columnsByTable.get(tableName) ?? [],
       };
     });
 
@@ -124,8 +72,7 @@ export class OpsQueryService {
   async listTableRows(tableName: string, query: OpsTableRowsQuery): Promise<OpsTableRowsResponse> {
     assertAllowedTable(tableName);
 
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const columns = toOpsColumns(await this.listColumnsForTables([tableName]));
+    const columns = toOpsColumns(await this.opsQueryRepository.listColumnsForTables([tableName]));
     const columnNames = columns.map(column => column.columnName);
     const columnSet = new Set(columnNames);
     const orderBy = columnNames.includes(query.orderBy ?? '') ? query.orderBy : 'id';
@@ -144,14 +91,14 @@ export class OpsQueryService {
       orderBy === 'id'
         ? `ORDER BY \`${orderBy}\` ${direction}`
         : `ORDER BY \`${orderBy}\` ${direction}, \`id\` ${direction}`;
-    const rows = (await dataSource.query(
-      `SELECT *
-       FROM \`${tableName}\`
-       ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
-       ${orderSql}
-       LIMIT ?`,
-      [...params, query.limit + 1],
-    )) as Array<Record<string, unknown>>;
+
+    const rows = await this.opsQueryRepository.listTableRows({
+      tableName,
+      whereClauses: clauses,
+      params,
+      orderSql,
+      limit: query.limit + 1,
+    });
     const visibleRows = rows.slice(0, query.limit);
     const longTextColumns = new Set(
       columns
@@ -175,19 +122,14 @@ export class OpsQueryService {
         }
         return nextRow;
       }),
-      nextCursor: rows.length > query.limit && orderBy === 'id' ? toStringId(visibleRows.at(-1)?.id) : null,
+      nextCursor:
+        rows.length > query.limit && orderBy === 'id' ? toStringId(visibleRows.at(-1)?.id) : null,
     };
   }
 
   async getTableRow(tableName: string, id: string): Promise<OpsTableRowResponse> {
     assertAllowedTable(tableName);
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT * FROM \`${tableName}\` WHERE id = ? LIMIT 1`,
-      [id],
-    )) as Array<Record<string, unknown>>;
-
-    const raw = rows[0] ?? null;
+    const raw = await this.opsQueryRepository.getTableRow(tableName, id);
     if (!raw) return { tableName, row: null };
 
     const row: Record<string, unknown> = {};
@@ -198,14 +140,7 @@ export class OpsQueryService {
   }
 
   async getQueue(): Promise<OpsQueue> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT
-         SUM(status = 'pending') AS pending_outbox,
-         SUM(status = 'dispatching') AS dispatching_outbox,
-         SUM(status = 'failed_terminal') AS failed_outbox
-       FROM ingest_outbox`,
-    )) as QueueRow[];
+    const rows = await this.opsQueryRepository.aggregateOutboxStatus();
     const row = rows[0];
 
     return {
@@ -217,7 +152,6 @@ export class OpsQueryService {
   }
 
   async listJobs(limit: number, cursor?: string): Promise<OpsJobsResponse> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const clauses: string[] = [];
     const params: unknown[] = [];
 
@@ -226,15 +160,7 @@ export class OpsQueryService {
       params.push(cursor);
     }
 
-    const rows = (await dataSource.query(
-      `SELECT id, status, aggregate_id, attempts, last_error,
-              gmt_create AS created_at, gmt_modified AS updated_at
-       FROM ingest_outbox
-       ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
-       ORDER BY id DESC
-       LIMIT ?`,
-      [...params, limit + 1],
-    )) as JobRow[];
+    const rows = await this.opsQueryRepository.listOutboxJobs(clauses, params, limit + 1);
     const visibleRows = rows.slice(0, limit);
 
     return {
@@ -254,24 +180,6 @@ export class OpsQueryService {
       createdAt: toIsoDate(row.created_at),
       updatedAt: toIsoDate(row.updated_at),
     };
-  }
-
-  private async listColumnsForTables(tableNames: string[]): Promise<ColumnRow[]> {
-    if (tableNames.length === 0) {
-      return [];
-    }
-
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return (await dataSource.query(
-      `SELECT table_name, column_name, data_type, column_type, is_nullable,
-              column_key, column_default, extra, character_maximum_length,
-              numeric_precision
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name IN (${tableNames.map(() => '?').join(',')})
-       ORDER BY table_name ASC, ordinal_position ASC`,
-      tableNames,
-    )) as ColumnRow[];
   }
 }
 
@@ -420,7 +328,7 @@ function buildFilterClause(
   const columnSql = `\`${filter.column}\``;
   const operator = filter.operator;
 
-  if (operator === 'is_null')     return `${columnSql} IS NULL`;
+  if (operator === 'is_null') return `${columnSql} IS NULL`;
   if (operator === 'is_not_null') return `${columnSql} IS NOT NULL`;
 
   if (operator === 'in' || operator === 'not_in') {
