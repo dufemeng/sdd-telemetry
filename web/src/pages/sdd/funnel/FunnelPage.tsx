@@ -1,11 +1,11 @@
 import React from 'react';
 import { CheckSquare, GitBranch, Layers3, Workflow } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/useShellContext';
+import { useShellContext } from '@/components/layout/useShellContext';
 import { useSddFunnel } from './useSddFunnel';
-import { StatCard } from '../../../components/ui/StatCard';
-import { Panel } from '../../../components/ui/Panel';
-import { BarList } from '../../../components/ui/BarList';
-import { formatInteger, formatPercent } from '../../../lib/format';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { BarList } from '@/components/ui/BarList';
+import { formatInteger, formatPercent } from '@/lib/format';
 
 export default function FunnelPage() {
   const { timeRange } = useShellContext();

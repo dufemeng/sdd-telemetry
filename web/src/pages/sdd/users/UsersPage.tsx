@@ -1,10 +1,10 @@
 import { UserRound } from 'lucide-react';
 import { useSddUsers } from './useSddUsers';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable } from '../../../components/ui/DataTable';
-import { Pagination } from '../../../components/ui/Pagination';
-import { formatInteger, formatTime } from '../../../lib/format';
-import { useClientPagination } from '../../../lib/useClientPagination';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { formatInteger, formatTime } from '@/lib/format';
+import { useClientPagination } from '@/lib/useClientPagination';
 
 const PAGE_SIZE = 20;
 

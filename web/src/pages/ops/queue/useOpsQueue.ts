@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { OpsQueue } from '@sdd-telemetry/api';
-import { requestData } from '../../../api/client';
+import { requestData } from '@/api/client';
 
 export function useOpsQueue() {
   return useQuery({

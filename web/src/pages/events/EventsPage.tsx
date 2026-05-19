@@ -1,12 +1,12 @@
 import { Activity, BarChart3, Clock3, Search } from 'lucide-react';
-import { useShellContext } from '../../components/layout/useShellContext';
+import { useShellContext } from '@/components/layout/useShellContext';
 import { useEventDistribution } from './useEventDistribution';
 import { useEventTimeline } from './useEventTimeline';
-import { StatCard } from '../../components/ui/StatCard';
-import { Panel } from '../../components/ui/Panel';
-import { BarList } from '../../components/ui/BarList';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { formatInteger, formatTime, formatDateTime } from '../../lib/format';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { BarList } from '@/components/ui/BarList';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { formatInteger, formatTime, formatDateTime } from '@/lib/format';
 
 export default function EventsPage() {
   const { timeRange } = useShellContext();

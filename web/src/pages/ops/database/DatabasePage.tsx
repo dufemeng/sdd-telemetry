@@ -3,18 +3,18 @@ import { Database, ListFilter, Table2 } from 'lucide-react';
 import { useOpsTables } from './useOpsTables';
 import { useTableRow } from './useTableRow';
 import { useTableRows } from './useTableRows';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable } from '../../../components/ui/DataTable';
-import { EmptyState } from '../../../components/ui/EmptyState';
-import { Pagination } from '../../../components/ui/Pagination';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   RowInspectorDrawer,
   type RowInspectorField,
   type RowInspectorTextBlock,
-} from '../../../components/ui/RowInspectorDrawer';
-import { formatInteger, formatBytes, truncate } from '../../../lib/format';
-import { useDebouncedValue } from '../../../lib/useDebouncedValue';
-import { useCursorPagination } from '../../../lib/useCursorPagination';
+} from '@/components/ui/RowInspectorDrawer';
+import { formatInteger, formatBytes, truncate } from '@/lib/format';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { useCursorPagination } from '@/lib/useCursorPagination';
 import { FilterStrip } from './FilterStrip';
 import { toBackendFilterGroups, type FilterGroup } from './databaseFilter';
 

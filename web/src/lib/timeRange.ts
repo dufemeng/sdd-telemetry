@@ -1,4 +1,4 @@
-import type { TimeRange } from '../components/layout/TopBar';
+import type { TimeRange } from '@/components/layout/TopBar';
 
 export function timeRangeToHours(range: TimeRange): number {
   return Number(range.replace('h', ''));

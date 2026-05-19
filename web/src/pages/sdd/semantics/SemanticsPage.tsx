@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useSddSemantics } from './useSddSemantics';
 import { SemanticForm } from './SemanticForm';
-import { Panel } from '../../../components/ui/Panel';
-import { Pagination } from '../../../components/ui/Pagination';
-import { useClientPagination } from '../../../lib/useClientPagination';
+import { Panel } from '@/components/ui/Panel';
+import { Pagination } from '@/components/ui/Pagination';
+import { useClientPagination } from '@/lib/useClientPagination';
 import type { SddSemantic } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;

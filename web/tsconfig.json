@@ -4,7 +4,9 @@
     "composite": true,
     "declaration": true,
     "exactOptionalPropertyTypes": false,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
   "references": [{ "path": "../packages/api" }]

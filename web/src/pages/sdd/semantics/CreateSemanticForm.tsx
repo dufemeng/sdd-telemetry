@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useCreateSddSemantic } from './useSddSemantics';
-import { Panel } from '../../../components/ui/Panel';
+import { Panel } from '@/components/ui/Panel';
 
 export function CreateSemanticForm() {
   const [code,    setCode]    = useState('');

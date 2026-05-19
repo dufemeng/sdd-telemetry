@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { OpsTableFilterGroup, OpsTableRowsResponse } from '@sdd-telemetry/api';
-import { requestData } from '../../../api/client';
+import { requestData } from '@/api/client';
 
 interface TableRowsParams {
   tableName: string;

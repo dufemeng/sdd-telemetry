@@ -1,18 +1,18 @@
 import { Workflow, UserRound, Gauge, BarChart3, Layers3, FileStack, GitBranch, FileText } from 'lucide-react';
-import { useIngestHealth } from '../ingest/useIngestHealth';
-import { useSddFunnel } from '../sdd/funnel/useSddFunnel';
-import { useEventDistribution } from '../events/useEventDistribution';
-import { useSddUsers } from '../sdd/users/useSddUsers';
-import { useBatchList } from '../batches/useBatchList';
+import { useIngestHealth } from '@/pages/ingest/useIngestHealth';
+import { useSddFunnel } from '@/pages/sdd/funnel/useSddFunnel';
+import { useEventDistribution } from '@/pages/events/useEventDistribution';
+import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
+import { useBatchList } from '@/pages/batches/useBatchList';
 import { useSddOverview } from './useSddOverview';
-import { StatCard } from '../../components/ui/StatCard';
-import { Panel } from '../../components/ui/Panel';
-import { BarList } from '../../components/ui/BarList';
-import { DataTable } from '../../components/ui/DataTable';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { formatInteger, formatTime, formatBytes } from '../../lib/format';
-import { useShellContext } from '../../components/layout/useShellContext';
-import { timeRangeToHours } from '../../lib/timeRange';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { BarList } from '@/components/ui/BarList';
+import { DataTable } from '@/components/ui/DataTable';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatInteger, formatTime, formatBytes } from '@/lib/format';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { timeRangeToHours } from '@/lib/timeRange';
 
 export default function OverviewPage() {
   const { timeRange } = useShellContext();

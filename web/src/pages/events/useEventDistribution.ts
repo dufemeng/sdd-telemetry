@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { EventDistribution } from '@sdd-telemetry/api';
-import { requestData } from '../../api/client';
-import { timeRangeToFromIso } from '../../lib/timeRange';
-import type { TimeRange } from '../../components/layout/TopBar';
+import { requestData } from '@/api/client';
+import { timeRangeToFromIso } from '@/lib/timeRange';
+import type { TimeRange } from '@/components/layout/TopBar';
 
 export function useEventDistribution(timeRange: TimeRange, limit = 50) {
   const from = timeRangeToFromIso(timeRange);

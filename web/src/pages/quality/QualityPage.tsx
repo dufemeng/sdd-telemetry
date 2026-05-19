@@ -1,11 +1,11 @@
 import { Activity, AlertCircle, Code2, Gauge, ListFilter } from 'lucide-react';
 import { useFieldCoverage } from './useFieldCoverage';
-import { StatCard } from '../../components/ui/StatCard';
-import { Panel } from '../../components/ui/Panel';
-import { DataTable } from '../../components/ui/DataTable';
-import { Pagination } from '../../components/ui/Pagination';
-import { formatInteger, formatPercent, truncate } from '../../lib/format';
-import { useClientPagination } from '../../lib/useClientPagination';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { formatInteger, formatPercent, truncate } from '@/lib/format';
+import { useClientPagination } from '@/lib/useClientPagination';
 
 const PAGE_SIZE = 20;
 

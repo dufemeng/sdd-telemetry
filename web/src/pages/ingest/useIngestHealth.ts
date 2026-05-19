@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { IngestHealth } from '@sdd-telemetry/api';
-import { requestData } from '../../api/client';
+import { requestData } from '@/api/client';
 
 export function useIngestHealth(windowHours = 24) {
   return useQuery({

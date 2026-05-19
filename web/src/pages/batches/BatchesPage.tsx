@@ -1,11 +1,11 @@
 import { FileStack } from 'lucide-react';
 import { useBatchList } from './useBatchList';
-import { Panel } from '../../components/ui/Panel';
-import { DataTable } from '../../components/ui/DataTable';
-import { Pagination } from '../../components/ui/Pagination';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { formatInteger, formatBytes, formatTime, truncate } from '../../lib/format';
-import { useCursorPagination } from '../../lib/useCursorPagination';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatInteger, formatBytes, formatTime, truncate } from '@/lib/format';
+import { useCursorPagination } from '@/lib/useCursorPagination';
 
 const PAGE_SIZE = 20;
 

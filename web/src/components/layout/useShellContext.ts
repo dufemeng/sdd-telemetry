@@ -1,4 +1,4 @@
-import { useOutletContext } from 'react-router-dom';
+import { createContext, useContext } from 'react';
 import type { TimeRange } from './TopBar';
 
 export interface ShellContext {
@@ -6,6 +6,8 @@ export interface ShellContext {
   search: string;
 }
 
+export const ShellContext = createContext<ShellContext>(null!);
+
 export function useShellContext() {
-  return useOutletContext<ShellContext>();
+  return useContext(ShellContext);
 }

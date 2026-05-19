@@ -1,4 +1,4 @@
-import { formatInteger } from '../../lib/format';
+import { formatInteger } from '@/lib/format';
 import { EmptyState } from './EmptyState';
 
 interface BarItem {

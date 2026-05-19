@@ -1,28 +1,28 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeftCircle, ArrowRightCircle, TerminalSquare, Wrench, Workflow } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/useShellContext';
+import { useShellContext } from '@/components/layout/useShellContext';
 import {
   useSddInteractionDetail,
   useSddInteractions,
   useSddInteractionToolCalls,
 } from './useSddInteractions';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable, type DataTableRow } from '../../../components/ui/DataTable';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable, type DataTableRow } from '@/components/ui/DataTable';
 import {
   RowInspectorDrawer,
   type RowInspectorField,
   type RowInspectorTextBlock,
-} from '../../../components/ui/RowInspectorDrawer';
-import { Pagination } from '../../../components/ui/Pagination';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
+} from '@/components/ui/RowInspectorDrawer';
+import { Pagination } from '@/components/ui/Pagination';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
   formatTime,
   formatDateTime,
   formatInteger,
   formatUsd,
   truncate,
-} from '../../../lib/format';
-import { useClientPagination } from '../../../lib/useClientPagination';
+} from '@/lib/format';
+import { useClientPagination } from '@/lib/useClientPagination';
 import type {
   SddInteractionDetail,
   SddInteractionItem,

@@ -1,13 +1,13 @@
 import { Activity, AlertCircle, Clock3, Loader2, TerminalSquare } from 'lucide-react';
 import { useOpsQueue } from './useOpsQueue';
 import { useOpsJobs } from './useOpsJobs';
-import { StatCard } from '../../../components/ui/StatCard';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable } from '../../../components/ui/DataTable';
-import { Pagination } from '../../../components/ui/Pagination';
-import { StatusBadge } from '../../../components/ui/StatusBadge';
-import { formatInteger, formatTime, truncate } from '../../../lib/format';
-import { useCursorPagination } from '../../../lib/useCursorPagination';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatInteger, formatTime, truncate } from '@/lib/format';
+import { useCursorPagination } from '@/lib/useCursorPagination';
 
 const PAGE_SIZE = 20;
 

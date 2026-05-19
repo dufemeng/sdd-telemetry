@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { OpsJobsResponse } from '@sdd-telemetry/api';
-import { requestData } from '../../../api/client';
+import { requestData } from '@/api/client';
 
 export function useOpsJobs(limit = 20, cursor?: string) {
   const params = new URLSearchParams({ limit: String(limit) });

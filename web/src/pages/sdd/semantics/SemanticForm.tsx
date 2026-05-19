@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { useCreateSddSemantic, useDeleteSddSemantic, useUpdateSddSemantic } from './useSddSemantics';
-import { Panel } from '../../../components/ui/Panel';
+import { Panel } from '@/components/ui/Panel';
 import type { SddSemantic } from '@sdd-telemetry/api';
 
 const inputCls =

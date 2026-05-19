@@ -4,9 +4,9 @@ import type {
   SddInteractionItem,
   SddInteractionToolCallListResponse,
 } from '@sdd-telemetry/api';
-import { requestData } from '../../../api/client';
-import { timeRangeToFromIso } from '../../../lib/timeRange';
-import type { TimeRange } from '../../../components/layout/TopBar';
+import { requestData } from '@/api/client';
+import { timeRangeToFromIso } from '@/lib/timeRange';
+import type { TimeRange } from '@/components/layout/TopBar';
 
 export function useSddInteractions(timeRange: TimeRange, limit = 100) {
   const from = timeRangeToFromIso(timeRange);

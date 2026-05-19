@@ -1,4 +1,4 @@
-import { statusVariant, type StatusVariant } from '../../lib/format';
+import { statusVariant, type StatusVariant } from '@/lib/format';
 
 const VARIANT_STYLES: Record<StatusVariant, string> = {
   good:    'text-[var(--color-good-text)] bg-[var(--color-good-bg)]',

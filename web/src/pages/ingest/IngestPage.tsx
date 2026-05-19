@@ -1,14 +1,14 @@
 import React from 'react';
 import { Activity, AlertCircle, CheckSquare, Copy, HardDrive } from 'lucide-react';
 import { useIngestHealth } from './useIngestHealth';
-import { useBatchList } from '../batches/useBatchList';
-import { StatCard } from '../../components/ui/StatCard';
-import { Panel } from '../../components/ui/Panel';
-import { DataTable } from '../../components/ui/DataTable';
-import { Pagination } from '../../components/ui/Pagination';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { formatInteger, formatBytes, formatTime } from '../../lib/format';
-import { useCursorPagination } from '../../lib/useCursorPagination';
+import { useBatchList } from '@/pages/batches/useBatchList';
+import { StatCard } from '@/components/ui/StatCard';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatInteger, formatBytes, formatTime } from '@/lib/format';
+import { useCursorPagination } from '@/lib/useCursorPagination';
 
 const PAGE_SIZE = 20;
 

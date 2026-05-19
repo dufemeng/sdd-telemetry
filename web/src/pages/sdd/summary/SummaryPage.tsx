@@ -1,9 +1,9 @@
 import { Layers3 } from 'lucide-react';
-import { useShellContext } from '../../../components/layout/useShellContext';
+import { useShellContext } from '@/components/layout/useShellContext';
 import { useSddUsageSummary } from './useSddUsageSummary';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable } from '../../../components/ui/DataTable';
-import { formatInteger, formatTime } from '../../../lib/format';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { formatInteger, formatTime } from '@/lib/format';
 
 export default function SummaryPage() {
   const { timeRange } = useShellContext();

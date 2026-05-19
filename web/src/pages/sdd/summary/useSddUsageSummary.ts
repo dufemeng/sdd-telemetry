@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { SddUsageSummaryResponse } from '@sdd-telemetry/api';
-import { requestData } from '../../../api/client';
-import { timeRangeToFromIso } from '../../../lib/timeRange';
-import type { TimeRange } from '../../../components/layout/TopBar';
+import { requestData } from '@/api/client';
+import { timeRangeToFromIso } from '@/lib/timeRange';
+import type { TimeRange } from '@/components/layout/TopBar';
 
 export function useSddUsageSummary(timeRange: TimeRange) {
   const from = timeRangeToFromIso(timeRange);

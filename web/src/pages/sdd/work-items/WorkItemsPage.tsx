@@ -1,10 +1,10 @@
 import { GitBranch } from 'lucide-react';
 import { useSddWorkItems } from './useSddWorkItems';
-import { Panel } from '../../../components/ui/Panel';
-import { DataTable } from '../../../components/ui/DataTable';
-import { Pagination } from '../../../components/ui/Pagination';
-import { formatTime } from '../../../lib/format';
-import { useClientPagination } from '../../../lib/useClientPagination';
+import { Panel } from '@/components/ui/Panel';
+import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
+import { formatTime } from '@/lib/format';
+import { useClientPagination } from '@/lib/useClientPagination';
 
 const PAGE_SIZE = 20;
 
