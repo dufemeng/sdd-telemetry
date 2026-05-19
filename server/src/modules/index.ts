@@ -1,4 +1,5 @@
 import './events/events.controller';
+import './events/events-query.repository';
 import './events/events-query.service';
 import '../infrastructure/mysql/data-source-manager';
 import './ingest/ingest-health.service';

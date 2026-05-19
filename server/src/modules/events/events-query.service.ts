@@ -9,44 +9,14 @@ import type {
   FieldValuesQuery,
   TimeRangeQuery,
 } from '@sdd-telemetry/api';
-import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import {
-  addTimeRangeWhere,
   parseJsonRecord,
   readPath,
   stringifyScalar,
   toIsoDate,
   toNumber,
-  whereSql,
 } from '../query-utils';
-
-interface CountRow {
-  count_value: string | number;
-}
-
-interface DistributionRow {
-  event_name: string;
-  count_value: string | number;
-  latest_at: Date | string | null;
-}
-
-interface EventSampleRow {
-  event_name: string;
-  session_id: string | null;
-  prompt_id: string | null;
-  service_name: string | null;
-  service_version: string | null;
-  severity_text: string | null;
-  attributes_json: unknown;
-  resource_json: unknown;
-  body_text: string | null;
-}
-
-interface TimelineRow {
-  bucket_start: Date | string;
-  event_count: string | number;
-  distinct_event_names: string | number;
-}
+import { EventsQueryRepository, type EventSampleRow } from './events-query.repository';
 
 const eventDescriptions: Record<string, string> = {
   api_request_body: 'LLM 请求体事件，通常包含 prompt、session 和 skill 调用上下文。',
@@ -56,33 +26,14 @@ const eventDescriptions: Record<string, string> = {
 
 @Provide('eventsQueryService')
 export class EventsQueryService {
-  @Inject('mysqlDataSourceManager')
-  mysqlDataSourceManager!: MysqlDataSourceManager;
+  @Inject('eventsQueryRepository')
+  eventsQueryRepository!: EventsQueryRepository;
 
   async getDistribution(query: EventDistributionQuery): Promise<EventDistribution> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    addTimeRangeWhere(clauses, params, 'event_time', query);
-
     const [totalRows, distinctRows, rows] = await Promise.all([
-      dataSource.query(
-        `SELECT COUNT(*) AS count_value FROM otel_log_events ${whereSql(clauses)}`,
-        params,
-      ) as Promise<CountRow[]>,
-      dataSource.query(
-        `SELECT COUNT(DISTINCT event_name) AS count_value FROM otel_log_events ${whereSql(clauses)}`,
-        params,
-      ) as Promise<CountRow[]>,
-      dataSource.query(
-        `SELECT event_name, COUNT(*) AS count_value, MAX(event_time) AS latest_at
-         FROM otel_log_events
-         ${whereSql(clauses)}
-         GROUP BY event_name
-         ORDER BY count_value DESC, event_name ASC
-         LIMIT ?`,
-        [...params, query.limit],
-      ) as Promise<DistributionRow[]>,
+      this.eventsQueryRepository.countTotal(query),
+      this.eventsQueryRepository.countDistinctEventNames(query),
+      this.eventsQueryRepository.aggregateByEventName(query, query.limit),
     ]);
     const totalEvents = toNumber(totalRows[0]?.count_value);
 
@@ -103,25 +54,9 @@ export class EventsQueryService {
   }
 
   async getFieldCoverage(query: TimeRangeQuery): Promise<FieldCoverage> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    addTimeRangeWhere(clauses, params, 'event_time', query);
-
     const [totalRows, sampleRows] = await Promise.all([
-      dataSource.query(
-        `SELECT COUNT(*) AS count_value FROM otel_log_events ${whereSql(clauses)}`,
-        params,
-      ) as Promise<CountRow[]>,
-      dataSource.query(
-        `SELECT event_name, session_id, prompt_id, service_name, service_version,
-                severity_text, attributes_json, resource_json, body_text
-         FROM otel_log_events
-         ${whereSql(clauses)}
-         ORDER BY id DESC
-         LIMIT 1000`,
-        params,
-      ) as Promise<EventSampleRow[]>,
+      this.eventsQueryRepository.countTotal(query),
+      this.eventsQueryRepository.sampleEvents(query, 1000),
     ]);
 
     const totalEvents = toNumber(totalRows[0]?.count_value);
@@ -178,20 +113,7 @@ export class EventsQueryService {
   }
 
   async getFieldValues(query: FieldValuesQuery): Promise<FieldValues> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    addTimeRangeWhere(clauses, params, 'event_time', query);
-
-    const rows = (await dataSource.query(
-      `SELECT event_name, session_id, prompt_id, service_name, service_version,
-              severity_text, attributes_json, resource_json, body_text
-       FROM otel_log_events
-       ${whereSql(clauses)}
-       ORDER BY id DESC
-       LIMIT 5000`,
-      params,
-    )) as EventSampleRow[];
+    const rows = await this.eventsQueryRepository.sampleEvents(query, 5000);
 
     const counts = new Map<string, number>();
     for (const row of rows) {
@@ -222,23 +144,7 @@ export class EventsQueryService {
   }
 
   async getTimeline(query: EventTimelineQuery): Promise<EventTimeline> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses = ['event_time IS NOT NULL'];
-    const params: unknown[] = [];
-    addTimeRangeWhere(clauses, params, 'event_time', query);
-    const format = query.bucket === 'day' ? '%Y-%m-%d 00:00:00' : '%Y-%m-%d %H:00:00';
-    const intervalSql = query.bucket === 'day' ? 'INTERVAL 1 DAY' : 'INTERVAL 1 HOUR';
-
-    const rows = (await dataSource.query(
-      `SELECT STR_TO_DATE(DATE_FORMAT(event_time, ?), '%Y-%m-%d %H:%i:%s') AS bucket_start,
-              COUNT(*) AS event_count,
-              COUNT(DISTINCT event_name) AS distinct_event_names
-       FROM otel_log_events
-       ${whereSql(clauses)}
-       GROUP BY bucket_start
-       ORDER BY bucket_start ASC`,
-      [format, ...params],
-    )) as TimelineRow[];
+    const rows = await this.eventsQueryRepository.bucketizeByTimestamp(query, query.bucket);
 
     return {
       bucket: query.bucket,
