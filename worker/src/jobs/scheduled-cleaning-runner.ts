@@ -1,7 +1,8 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise';
+import type { Pool } from 'mysql2/promise';
 import type { Logger } from 'pino';
 import { withTransaction } from '../infrastructure/mysql/client';
 import { cleanBatch, TerminalCleaningError } from './cleaning-worker';
+import { OutboxRepository } from './outbox.repository';
 
 export interface ScheduledCleaningOptions {
   pool: Pool;
@@ -19,19 +20,14 @@ export interface ScheduledCleaningResult {
   deadlineReached: boolean;
 }
 
-interface OutboxRow extends RowDataPacket {
-  id: string;
-  aggregate_id: string;
-  attempts: number;
-  max_attempts: number;
-}
-
 interface ClaimedOutbox {
   id: string;
   batchId: string;
   attempts: number;
   maxAttempts: number;
 }
+
+const outboxRepository = new OutboxRepository();
 
 export async function runScheduledCleaning(
   options: ScheduledCleaningOptions,
@@ -89,43 +85,19 @@ async function claimOneOutbox(options: ScheduledCleaningOptions): Promise<Claime
   const lockSeconds = options.lockSeconds ?? Number(process.env.SCHEDULE_CLEANING_LOCK_SECONDS ?? 120);
 
   return withTransaction(options.pool, async connection => {
-    const [rows] = await connection.query<OutboxRow[]>(
-      `SELECT id, aggregate_id, attempts, max_attempts
-       FROM ingest_outbox
-       WHERE event_type = 'clean_batch'
-         AND status IN ('pending', 'dispatching')
-         AND attempts < max_attempts
-         AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP(3))
-         AND (locked_until IS NULL OR locked_until < CURRENT_TIMESTAMP(3))
-       ORDER BY id ASC
-       LIMIT 1
-       FOR UPDATE`,
-    );
+    const rows = await outboxRepository.lockAndLoadNextOutbox(connection);
     const row = rows[0];
     if (!row) {
       return null;
     }
 
-    await connection.query(
-      `UPDATE ingest_outbox
-       SET status = 'dispatching',
-           attempts = attempts + 1,
-           locked_by = ?,
-           locked_until = DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND),
-           gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE id = ?`,
-      [options.workerId, lockSeconds, row.id],
+    await outboxRepository.markOutboxDispatching(
+      connection,
+      row.id,
+      options.workerId,
+      lockSeconds,
     );
-
-    await connection.query(
-      `UPDATE otel_ingest_batches
-       SET status = 'queued',
-           status_reason = 'claimed by scheduled cleaner',
-           gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE id = ?
-         AND status IN ('received', 'failed_retryable')`,
-      [row.aggregate_id],
-    );
+    await outboxRepository.markBatchQueued(connection, row.aggregate_id);
 
     return {
       id: String(row.id),
@@ -137,18 +109,7 @@ async function claimOneOutbox(options: ScheduledCleaningOptions): Promise<Claime
 }
 
 async function markOutboxSucceeded(pool: Pool, row: ClaimedOutbox): Promise<void> {
-  await pool.query(
-    `UPDATE ingest_outbox
-     SET status = 'dispatched',
-         locked_by = NULL,
-         locked_until = NULL,
-         next_retry_at = NULL,
-         last_error = NULL,
-         dispatched_at = CURRENT_TIMESTAMP(3),
-         gmt_modified = CURRENT_TIMESTAMP(3)
-     WHERE id = ?`,
-    [row.id],
-  );
+  await outboxRepository.markOutboxSucceeded(pool, row.id);
 }
 
 async function markOutboxFailed(
@@ -159,22 +120,13 @@ async function markOutboxFailed(
   const terminal = error instanceof TerminalCleaningError || row.attempts >= row.maxAttempts;
   const retrySeconds = Math.min(300, 2 ** Math.min(row.attempts, 8));
 
-  await pool.query(
-    `UPDATE ingest_outbox
-     SET status = ?,
-         locked_by = NULL,
-         locked_until = NULL,
-         next_retry_at = IF(?, NULL, DATE_ADD(CURRENT_TIMESTAMP(3), INTERVAL ? SECOND)),
-         last_error = ?,
-         gmt_modified = CURRENT_TIMESTAMP(3)
-     WHERE id = ?`,
-    [
-      terminal ? 'failed_terminal' : 'pending',
-      terminal,
-      retrySeconds,
-      stringifyError(error),
-      row.id,
-    ],
+  await outboxRepository.markOutboxFailed(
+    pool,
+    row.id,
+    terminal ? 'failed_terminal' : 'pending',
+    terminal,
+    retrySeconds,
+    stringifyError(error),
   );
 
   return terminal;
