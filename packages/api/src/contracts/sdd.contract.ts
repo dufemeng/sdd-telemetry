@@ -67,6 +67,7 @@ export const SddFunnelSchema = z.object({
 
 export const SddListQuerySchema = PaginationQuerySchema.merge(TimeRangeQuerySchema).extend({
   semanticCode: z.string().optional(),
+  rawSkillName: z.string().optional(),
   userId: IdSchema.optional(),
   workItemId: IdSchema.optional(),
   sessionId: z.string().optional(),
@@ -77,7 +78,11 @@ export const SddListQuerySchema = PaginationQuerySchema.merge(TimeRangeQuerySche
 export const SddUsageSummaryQuerySchema = TimeRangeQuerySchema.extend({
   semanticCode: z.string().optional(),
   status: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  matched: z.enum(['all', 'matched', 'unmatched']).default('all'),
+  keyword: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 export const SddUsageSummaryItemSchema = z.object({
@@ -100,6 +105,72 @@ export const SddUsageSummaryItemSchema = z.object({
 
 export const SddUsageSummaryResponseSchema = z.object({
   items: z.array(SddUsageSummaryItemSchema),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+});
+
+export const SddMetricWithPreviousSchema = z.object({
+  current: z.number().nullable(),
+  previous: z.number().nullable(),
+});
+
+export const SddSkillAnalyticsQuerySchema = TimeRangeQuerySchema;
+
+export const SddSkillAnalyticsSchema = z.object({
+  kpis: z.object({
+    interactionCount: SddMetricWithPreviousSchema,
+    skillUsageCount: SddMetricWithPreviousSchema,
+    activeUserCount: SddMetricWithPreviousSchema,
+    coveredWorkItemCount: SddMetricWithPreviousSchema,
+    pairingSuccessRate: SddMetricWithPreviousSchema,
+    semanticMatchRate: SddMetricWithPreviousSchema,
+  }),
+  callQuality: z.object({
+    triggeredCount: z.number(),
+    withPromptCount: z.number(),
+    withResponseCount: z.number(),
+    pairedCount: z.number(),
+    promptCoverageRate: z.number().nullable(),
+    responseCoverageRate: z.number().nullable(),
+    pairingSuccessRate: z.number().nullable(),
+  }),
+  topSemantics: z.array(
+    z.object({
+      semanticCode: z.string(),
+      displayName: z.string(),
+      usageCount: z.number(),
+      userCount: z.number(),
+      workItemCount: z.number(),
+      conversionRate: z.number().nullable(),
+    }),
+  ).max(10),
+  matchHealth: z.object({
+    matchedCount: z.number(),
+    unmatchedCount: z.number(),
+    matchRate: z.number().nullable(),
+    topUnmatched: z.array(
+      z.object({
+        rawSkillName: z.string(),
+        usageCount: z.number(),
+      }),
+    ).max(5),
+  }),
+});
+
+export const SddSkillTimeseriesQuerySchema = TimeRangeQuerySchema.extend({
+  bucket: z.enum(['15m', '1h', '3h']).optional(),
+});
+
+export const SddSkillTimeseriesSchema = z.object({
+  bucket: z.enum(['15m', '1h', '3h']),
+  points: z.array(
+    z.object({
+      timestamp: ISODateTimeSchema,
+      triggeredCount: z.number(),
+      pairedCount: z.number(),
+    }),
+  ),
 });
 
 export const SddUsageItemSchema = z.object({
@@ -255,6 +326,10 @@ export type SddListQuery = z.infer<typeof SddListQuerySchema>;
 export type SddUsageSummaryQuery = z.infer<typeof SddUsageSummaryQuerySchema>;
 export type SddUsageSummaryItem = z.infer<typeof SddUsageSummaryItemSchema>;
 export type SddUsageSummaryResponse = z.infer<typeof SddUsageSummaryResponseSchema>;
+export type SddSkillAnalyticsQuery = z.infer<typeof SddSkillAnalyticsQuerySchema>;
+export type SddSkillAnalytics = z.infer<typeof SddSkillAnalyticsSchema>;
+export type SddSkillTimeseriesQuery = z.infer<typeof SddSkillTimeseriesQuerySchema>;
+export type SddSkillTimeseries = z.infer<typeof SddSkillTimeseriesSchema>;
 export type SddUsageItem = z.infer<typeof SddUsageItemSchema>;
 export type SddInteractionItem = z.infer<typeof SddInteractionItemSchema>;
 export type SddInteractionDetail = z.infer<typeof SddInteractionDetailSchema>;

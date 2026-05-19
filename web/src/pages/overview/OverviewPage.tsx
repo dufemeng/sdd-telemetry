@@ -1,6 +1,6 @@
 import { Workflow, UserRound, Gauge, BarChart3, Layers3, FileStack, GitBranch, FileText } from 'lucide-react';
 import { useIngestHealth } from '@/pages/ingest/useIngestHealth';
-import { useSddFunnel } from '@/pages/sdd/funnel/useSddFunnel';
+import { useSddFunnel } from './useSddFunnel';
 import { useEventDistribution } from '@/pages/events/useEventDistribution';
 import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
 import { useBatchList } from '@/pages/batches/useBatchList';

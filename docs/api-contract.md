@@ -367,7 +367,89 @@ export const SddFunnelSchema = z.object({
 3. `triggeredCount` 等于当前时间范围内的 `sdd_skill_usages` 数量；prompt/response 相关计数来自 `sdd_interactions` + `sdd_interaction_texts`。
 4. `pairingSuccessRate` 当前口径为 `1 - failedInteractions / totalInteractions`，其中 failed interaction 由清洗出的 `status='failed'` 判定。
 
-### 6.7 GET /api/sdd/usage-summary
+### 6.7 GET /api/sdd/skill-analytics
+
+技能分析页聚合数据。
+
+Query：
+
+```ts
+export const SddSkillAnalyticsQuerySchema = TimeRangeQuerySchema;
+```
+
+Response data 包含：
+
+```ts
+{
+  kpis: {
+    interactionCount: { current: number | null; previous: number | null },
+    skillUsageCount: { current: number | null; previous: number | null },
+    activeUserCount: { current: number | null; previous: number | null },
+    coveredWorkItemCount: { current: number | null; previous: number | null },
+    pairingSuccessRate: { current: number | null; previous: number | null },
+    semanticMatchRate: { current: number | null; previous: number | null },
+  },
+  callQuality: {
+    triggeredCount: number,
+    withPromptCount: number,
+    withResponseCount: number,
+    pairedCount: number,
+    promptCoverageRate: number | null,
+    responseCoverageRate: number | null,
+    pairingSuccessRate: number | null,
+  },
+  topSemantics: Array<{
+    semanticCode: string,
+    displayName: string,
+    usageCount: number,
+    userCount: number,
+    workItemCount: number,
+    conversionRate: number | null,
+  }>,
+  matchHealth: {
+    matchedCount: number,
+    unmatchedCount: number,
+    matchRate: number | null,
+    topUnmatched: Array<{ rawSkillName: string, usageCount: number }>,
+  },
+}
+```
+
+说明：
+
+1. `previous` 为当前时间窗前一段等长窗口。
+2. `semanticMatchRate` 按 usage 次数计算，`semantic_id IS NOT NULL` 为已匹配。
+3. `callQuality.pairingSuccessRate` 沿用 `/api/sdd/funnel` 口径。
+4. `callQuality.triggered/withPrompt/withResponse/paired` 在技能分析页按 usage 粒度统计，避免和 interaction 计数混用。
+
+### 6.8 GET /api/sdd/skill-timeseries
+
+技能调用时序。
+
+Query：
+
+```ts
+export const SddSkillTimeseriesQuerySchema = TimeRangeQuerySchema.extend({
+  bucket: z.enum(['15m', '1h', '3h']).optional(),
+});
+```
+
+Response data：
+
+```ts
+{
+  bucket: '15m' | '1h' | '3h',
+  points: Array<{
+    timestamp: string,
+    triggeredCount: number,
+    pairedCount: number,
+  }>,
+}
+```
+
+说明：固定返回 24 个点，缺数据 bucket 由后端补 0。
+
+### 6.9 GET /api/sdd/usage-summary
 
 Skill 使用概览，按 `rawSkillName` 聚合，并关联语义、用户、会话、需求和版本分布。
 
@@ -379,7 +461,11 @@ export const SddUsageSummaryQuerySchema = z.object({
   to: z.string().optional(),
   semanticCode: z.string().optional(),
   status: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  matched: z.enum(['all', 'matched', 'unmatched']).default('all'),
+  keyword: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 ```
 
@@ -406,10 +492,13 @@ export const SddUsageSummaryResponseSchema = z.object({
       lastSeenAt: z.string().nullable(),
     }),
   ),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
 });
 ```
 
-### 6.8 GET /api/sdd/usages
+### 6.10 GET /api/sdd/usages
 
 Skill usage 列表和过滤。
 
@@ -417,6 +506,7 @@ Query 支持：
 
 ```text
 semanticCode
+rawSkillName
 userId
 workItemId
 status
@@ -424,7 +514,7 @@ from / to
 limit / cursor
 ```
 
-### 6.9 GET /api/sdd/interactions
+### 6.11 GET /api/sdd/interactions
 
 prompt / response 交互列表。列表只返回 `promptPreview` / `responsePreview`，用于表格快速浏览；成本、token 和调用次数来自 `api_request` 默认事件聚合。
 
@@ -458,7 +548,7 @@ effort: z.string().nullable().optional(),
 speed: z.string().nullable().optional(),
 ```
 
-### 6.10 GET /api/sdd/interactions/:interactionId
+### 6.12 GET /api/sdd/interactions/:interactionId
 
 单条交互详情，用于 Row Inspector 抽屉查看整行数据和完整 prompt / response。
 
@@ -472,7 +562,7 @@ export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
 });
 ```
 
-### 6.11 GET /api/sdd/interactions/:interactionId/tool-calls
+### 6.13 GET /api/sdd/interactions/:interactionId/tool-calls
 
 单条 interaction 的工具调用时间线，按 `sequence ASC` 排序。
 
@@ -500,7 +590,7 @@ export const SddInteractionToolCallListResponseSchema = z.object({
 });
 ```
 
-### 6.12 GET /api/sdd/errors
+### 6.14 GET /api/sdd/errors
 
 异常 / 错误视图。
 
@@ -535,27 +625,27 @@ schema_parse_failed
 
 今日 MVP 不展示异常 / 错误 Tab，但保留 API 和数据表，后续再设计降噪视图。
 
-### 6.13 GET /api/sdd/users
+### 6.15 GET /api/sdd/users
 
 用户 / 机器维度。
 
 Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
 
-### 6.14 GET /api/sdd/versions
+### 6.16 GET /api/sdd/versions
 
 版本分析。
 
 今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
 
-### 6.15 GET /api/sdd/work-items
+### 6.17 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.16 GET /api/sdd/work-items/:workItemId
+### 6.18 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
-### 6.17 POST /api/sdd/user-settings
+### 6.19 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 

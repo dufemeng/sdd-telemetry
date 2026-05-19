@@ -14,6 +14,10 @@ import {
   SddOverviewQuerySchema,
   SddOverviewSchema,
   SddSemanticSchema,
+  SddSkillAnalyticsQuerySchema,
+  SddSkillAnalyticsSchema,
+  SddSkillTimeseriesQuerySchema,
+  SddSkillTimeseriesSchema,
   SddUsageSummaryQuerySchema,
   SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
@@ -28,6 +32,8 @@ import {
   type SddInteractionToolCallListResponse,
   type SddOverview,
   type SddSemantic,
+  type SddSkillAnalytics,
+  type SddSkillTimeseries,
   type SddUsageSummaryResponse,
   type SddUsageItem,
   type SddUserItem,
@@ -87,6 +93,20 @@ export class SddController {
     const query = parseWithSchema(SddFunnelQuerySchema, this.ctx.query);
     const data: SddFunnel = await this.sddQueryService.getFunnel(query);
     return ok(parseWithSchema(SddFunnelSchema, data));
+  }
+
+  @Get('/skill-analytics')
+  async skillAnalytics() {
+    const query = parseWithSchema(SddSkillAnalyticsQuerySchema, this.ctx.query);
+    const data: SddSkillAnalytics = await this.sddQueryService.getSkillAnalytics(query);
+    return ok(parseWithSchema(SddSkillAnalyticsSchema, data));
+  }
+
+  @Get('/skill-timeseries')
+  async skillTimeseries() {
+    const query = parseWithSchema(SddSkillTimeseriesQuerySchema, this.ctx.query);
+    const data: SddSkillTimeseries = await this.sddQueryService.getSkillTimeseries(query);
+    return ok(parseWithSchema(SddSkillTimeseriesSchema, data));
   }
 
   @Get('/usage-summary')

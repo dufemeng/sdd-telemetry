@@ -20,8 +20,7 @@ const IngestPage        = lazy(() => import('./pages/ingest/IngestPage'));
 const BatchesPage       = lazy(() => import('./pages/batches/BatchesPage'));
 const EventsPage        = lazy(() => import('./pages/events/EventsPage'));
 const QualityPage       = lazy(() => import('./pages/quality/QualityPage'));
-const FunnelPage        = lazy(() => import('./pages/sdd/funnel/FunnelPage'));
-const SummaryPage       = lazy(() => import('./pages/sdd/summary/SummaryPage'));
+const SkillsPage        = lazy(() => import('./pages/sdd/skills/SkillsPage'));
 const InteractionsPage  = lazy(() => import('./pages/sdd/interactions/InteractionsPage'));
 const UsersPage         = lazy(() => import('./pages/sdd/users/UsersPage'));
 const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPage'));
@@ -40,8 +39,7 @@ export const router = createBrowserRouter([
       { path: 'batches',              element: wrap(BatchesPage),      errorElement: <RouteError /> },
       { path: 'events',               element: wrap(EventsPage),       errorElement: <RouteError /> },
       { path: 'quality',              element: wrap(QualityPage),      errorElement: <RouteError /> },
-      { path: 'sdd/funnel',           element: wrap(FunnelPage),       errorElement: <RouteError /> },
-      { path: 'sdd/summary',          element: wrap(SummaryPage),      errorElement: <RouteError /> },
+      { path: 'sdd/skills',           element: wrap(SkillsPage),       errorElement: <RouteError /> },
       { path: 'sdd/interactions',     element: wrap(InteractionsPage), errorElement: <RouteError /> },
       { path: 'sdd/users',            element: wrap(UsersPage),        errorElement: <RouteError /> },
       { path: 'sdd/work-items',       element: wrap(WorkItemsPage),    errorElement: <RouteError /> },

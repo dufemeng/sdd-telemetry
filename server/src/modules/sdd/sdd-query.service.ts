@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Provide } from '@midwayjs/core';
+import type { DataSource } from 'typeorm';
 import type {
   CreateSddSemanticRequest,
   UpdateSddSemanticRequest,
@@ -14,6 +15,10 @@ import type {
   SddOverview,
   SddOverviewQuery,
   SddSemantic,
+  SddSkillAnalytics,
+  SddSkillAnalyticsQuery,
+  SddSkillTimeseries,
+  SddSkillTimeseriesQuery,
   SddUsageSummaryItem,
   SddUsageSummaryQuery,
   SddUsageSummaryResponse,
@@ -83,6 +88,40 @@ interface UsageVersionRow {
   raw_skill_name: string;
   version: string | null;
   count_value: string | number;
+}
+
+interface SkillAnalyticsKpiRow {
+  interaction_count: string | number;
+  skill_usage_count: string | number;
+  active_user_count: string | number;
+  covered_work_item_count: string | number;
+  failed_interaction_count: string | number;
+  matched_skill_usage_count: string | number;
+}
+
+interface SkillMatchHealthRow {
+  matched_count: string | number;
+  unmatched_count: string | number;
+}
+
+interface TopUnmatchedRow {
+  raw_skill_name: string;
+  usage_count: string | number;
+}
+
+interface SkillTimeseriesRow {
+  bucket_index: string | number;
+  triggered_count: string | number;
+  paired_count: string | number | null;
+}
+
+interface SkillQualityAnalyticsRow {
+  triggered_count: string | number;
+  interaction_count: string | number;
+  with_prompt_count: string | number | null;
+  with_response_count: string | number | null;
+  paired_count: string | number | null;
+  failed_count: string | number | null;
 }
 
 interface UsageRow {
@@ -207,6 +246,11 @@ interface ArtifactRow {
 
 interface IdRow {
   id: string | number;
+}
+
+interface ResolvedTimeWindow {
+  from: string;
+  to: string;
 }
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
@@ -482,9 +526,197 @@ export class SddQueryService {
     };
   }
 
+  async getSkillAnalytics(query: SddSkillAnalyticsQuery): Promise<SddSkillAnalytics> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const currentWindow = resolveSkillAnalyticsWindow(query);
+    const previousWindow = previousTimeWindow(currentWindow);
+
+    const [currentKpiRows, previousKpiRows, qualityRows, topRows, matchRows, unmatchedRows] =
+      await Promise.all([
+        this.querySkillAnalyticsKpis(dataSource, currentWindow),
+        this.querySkillAnalyticsKpis(dataSource, previousWindow),
+        this.querySkillQuality(dataSource, currentWindow),
+        dataSource.query(
+          `SELECT s.semantic_code, s.display_name,
+                  COUNT(u.id) AS usage_count,
+                  COUNT(DISTINCT u.user_id) AS user_count,
+                  COUNT(DISTINCT u.work_item_id) AS work_item_count
+           FROM sdd_skill_usages u
+           INNER JOIN sdd_skill_semantics s ON s.id = u.semantic_id
+           WHERE u.event_time >= ? AND u.event_time <= ?
+           GROUP BY s.semantic_code, s.display_name
+           ORDER BY usage_count DESC, s.semantic_code ASC
+           LIMIT 10`,
+          [currentWindow.from, currentWindow.to],
+        ) as Promise<FunnelRow[]>,
+        dataSource.query(
+          `SELECT
+             SUM(u.semantic_id IS NOT NULL) AS matched_count,
+             SUM(u.semantic_id IS NULL) AS unmatched_count
+           FROM sdd_skill_usages u
+           WHERE u.event_time >= ? AND u.event_time <= ?`,
+          [currentWindow.from, currentWindow.to],
+        ) as Promise<SkillMatchHealthRow[]>,
+        dataSource.query(
+          `SELECT u.raw_skill_name, COUNT(*) AS usage_count
+           FROM sdd_skill_usages u
+           WHERE u.event_time >= ? AND u.event_time <= ? AND u.semantic_id IS NULL
+           GROUP BY u.raw_skill_name
+           ORDER BY usage_count DESC, u.raw_skill_name ASC
+           LIMIT 5`,
+          [currentWindow.from, currentWindow.to],
+        ) as Promise<TopUnmatchedRow[]>,
+      ]);
+
+    const current = currentKpiRows[0];
+    const previous = previousKpiRows[0];
+    const quality = qualityRows[0];
+    const matchedCount = toNumber(matchRows[0]?.matched_count);
+    const unmatchedCount = toNumber(matchRows[0]?.unmatched_count);
+    const totalMatchedState = matchedCount + unmatchedCount;
+    const currentSkillUsageCount = toNumber(current?.skill_usage_count);
+    const previousSkillUsageCount = toNumber(previous?.skill_usage_count);
+    const currentInteractionCount = toNumber(current?.interaction_count);
+    const previousInteractionCount = toNumber(previous?.interaction_count);
+    const currentFailedInteractionCount = toNumber(current?.failed_interaction_count);
+    const previousFailedInteractionCount = toNumber(previous?.failed_interaction_count);
+    const currentMatchedSkillUsageCount = toNumber(current?.matched_skill_usage_count);
+    const previousMatchedSkillUsageCount = toNumber(previous?.matched_skill_usage_count);
+    const qualityInteractionCount = toNumber(quality?.interaction_count);
+    const qualityTriggeredCount = toNumber(quality?.triggered_count);
+    const withPromptCount = toNumber(quality?.with_prompt_count);
+    const withResponseCount = toNumber(quality?.with_response_count);
+    const pairedCount = toNumber(quality?.paired_count);
+    const failedCount = toNumber(quality?.failed_count);
+
+    return {
+      kpis: {
+        interactionCount: {
+          current: currentInteractionCount,
+          previous: previousInteractionCount,
+        },
+        skillUsageCount: {
+          current: currentSkillUsageCount,
+          previous: previousSkillUsageCount,
+        },
+        activeUserCount: {
+          current: toNumber(current?.active_user_count),
+          previous: toNumber(previous?.active_user_count),
+        },
+        coveredWorkItemCount: {
+          current: toNumber(current?.covered_work_item_count),
+          previous: toNumber(previous?.covered_work_item_count),
+        },
+        pairingSuccessRate: {
+          current:
+            currentInteractionCount > 0
+              ? 1 - currentFailedInteractionCount / currentInteractionCount
+              : null,
+          previous:
+            previousInteractionCount > 0
+              ? 1 - previousFailedInteractionCount / previousInteractionCount
+              : null,
+        },
+        semanticMatchRate: {
+          current:
+            currentSkillUsageCount > 0
+              ? currentMatchedSkillUsageCount / currentSkillUsageCount
+              : null,
+          previous:
+            previousSkillUsageCount > 0
+              ? previousMatchedSkillUsageCount / previousSkillUsageCount
+              : null,
+        },
+      },
+      callQuality: {
+        triggeredCount: qualityTriggeredCount,
+        withPromptCount,
+        withResponseCount,
+        pairedCount,
+        promptCoverageRate:
+          qualityTriggeredCount > 0 ? withPromptCount / qualityTriggeredCount : null,
+        responseCoverageRate:
+          qualityTriggeredCount > 0 ? withResponseCount / qualityTriggeredCount : null,
+        pairingSuccessRate:
+          qualityInteractionCount > 0 ? 1 - failedCount / qualityInteractionCount : null,
+      },
+      topSemantics: topRows.map((row) => {
+        const usageCount = toNumber(row.usage_count);
+        return {
+          semanticCode: row.semantic_code ?? 'unknown',
+          displayName: row.display_name ?? '未匹配 Skill',
+          usageCount,
+          userCount: toNumber(row.user_count),
+          workItemCount: toNumber(row.work_item_count),
+          conversionRate: currentInteractionCount > 0 ? usageCount / currentInteractionCount : null,
+        };
+      }),
+      matchHealth: {
+        matchedCount,
+        unmatchedCount,
+        matchRate: totalMatchedState > 0 ? matchedCount / totalMatchedState : null,
+        topUnmatched: unmatchedRows.map((row) => ({
+          rawSkillName: row.raw_skill_name,
+          usageCount: toNumber(row.usage_count),
+        })),
+      },
+    };
+  }
+
+  async getSkillTimeseries(query: SddSkillTimeseriesQuery): Promise<SddSkillTimeseries> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const window = resolveSkillAnalyticsWindow(query);
+    const bucket = query.bucket ?? chooseSkillTimeseriesBucket(window);
+    const bucketSeconds = bucketToSeconds(bucket);
+    const points = createSkillTimeseriesTemplate(window, bucketSeconds);
+    const rows = (await dataSource.query(
+      `SELECT
+         FLOOR(TIMESTAMPDIFF(SECOND, ?, u.event_time) / ?) AS bucket_index,
+         COUNT(u.id) AS triggered_count,
+         SUM(
+           t.prompt_text IS NOT NULL AND t.prompt_text <> ''
+           AND t.response_text IS NOT NULL AND t.response_text <> ''
+         ) AS paired_count
+       FROM sdd_skill_usages u
+       LEFT JOIN sdd_interactions i ON i.id = u.interaction_id
+       LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+       WHERE u.event_time >= ? AND u.event_time <= ?
+       GROUP BY bucket_index
+       HAVING bucket_index >= 0 AND bucket_index < 24
+       ORDER BY bucket_index ASC`,
+      [window.from, bucketSeconds, window.from, window.to],
+    )) as SkillTimeseriesRow[];
+
+    for (const row of rows) {
+      const index = toNumber(row.bucket_index);
+      const point = points[index];
+      if (!point) {
+        continue;
+      }
+      point.triggeredCount = toNumber(row.triggered_count);
+      point.pairedCount = toNumber(row.paired_count);
+    }
+
+    return { bucket, points };
+  }
+
   async getUsageSummary(query: SddUsageSummaryQuery): Promise<SddUsageSummaryResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const { where, params } = this.buildUsageSummaryWhere(query);
+    const page = query.page;
+    const pageSize = query.limit ?? query.pageSize;
+    const offset = (page - 1) * pageSize;
+    const countRows = (await dataSource.query(
+      `SELECT COUNT(*) AS count_value
+       FROM (
+         SELECT u.raw_skill_name, s.semantic_code, s.display_name
+         FROM sdd_skill_usages u
+         LEFT JOIN sdd_skill_semantics s ON s.id = u.semantic_id
+         ${where}
+         GROUP BY s.semantic_code, s.display_name, u.raw_skill_name
+       ) grouped_usage_summary`,
+      params,
+    )) as CountRow[];
     const rows = (await dataSource.query(
       `SELECT s.semantic_code, s.display_name AS semantic_display_name,
               u.raw_skill_name,
@@ -499,12 +731,12 @@ export class SddQueryService {
        ${where}
        GROUP BY s.semantic_code, s.display_name, u.raw_skill_name
        ORDER BY usage_count DESC, u.raw_skill_name ASC
-       LIMIT ?`,
-      [...params, query.limit],
+       LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset],
     )) as UsageSummaryRow[];
 
     if (rows.length === 0) {
-      return { items: [] };
+      return { items: [], total: toNumber(countRows[0]?.count_value), page, pageSize };
     }
 
     const rawSkillNames = rows.map((row) => row.raw_skill_name);
@@ -547,6 +779,9 @@ export class SddQueryService {
           lastSeenAt: toIsoDate(row.last_seen_at),
         }),
       ),
+      total: toNumber(countRows[0]?.count_value),
+      page,
+      pageSize,
     };
   }
 
@@ -934,10 +1169,82 @@ export class SddQueryService {
       params.push(query.status);
     }
 
+    if (query.matched === 'matched') {
+      clauses.push('u.semantic_id IS NOT NULL');
+    } else if (query.matched === 'unmatched') {
+      clauses.push('u.semantic_id IS NULL');
+    }
+
+    if (query.keyword) {
+      clauses.push('(u.raw_skill_name LIKE ? OR s.display_name LIKE ? OR s.semantic_code LIKE ?)');
+      const keyword = `%${query.keyword}%`;
+      params.push(keyword, keyword, keyword);
+    }
+
     return {
       where: whereSql(clauses),
       params,
     };
+  }
+
+  private async querySkillAnalyticsKpis(
+    dataSource: DataSource,
+    window: ResolvedTimeWindow,
+  ): Promise<SkillAnalyticsKpiRow[]> {
+    return (await dataSource.query(
+      `SELECT
+         (SELECT COUNT(*) FROM sdd_interactions i
+          WHERE i.started_at >= ? AND i.started_at <= ?) AS interaction_count,
+         (SELECT COUNT(*) FROM sdd_skill_usages u
+          WHERE u.event_time >= ? AND u.event_time <= ?) AS skill_usage_count,
+         (SELECT COUNT(DISTINCT u.user_id) FROM sdd_skill_usages u
+          WHERE u.event_time >= ? AND u.event_time <= ?) AS active_user_count,
+         (SELECT COUNT(DISTINCT u.work_item_id) FROM sdd_skill_usages u
+          WHERE u.event_time >= ? AND u.event_time <= ?) AS covered_work_item_count,
+         (SELECT COUNT(*) FROM sdd_interactions i
+          WHERE i.started_at >= ? AND i.started_at <= ? AND i.status = 'failed') AS failed_interaction_count,
+         (SELECT COUNT(*) FROM sdd_skill_usages u
+          WHERE u.event_time >= ? AND u.event_time <= ? AND u.semantic_id IS NOT NULL) AS matched_skill_usage_count`,
+      [
+        window.from,
+        window.to,
+        window.from,
+        window.to,
+        window.from,
+        window.to,
+        window.from,
+        window.to,
+        window.from,
+        window.to,
+        window.from,
+        window.to,
+      ],
+    )) as SkillAnalyticsKpiRow[];
+  }
+
+  private async querySkillQuality(
+    dataSource: DataSource,
+    window: ResolvedTimeWindow,
+  ): Promise<SkillQualityAnalyticsRow[]> {
+    return (await dataSource.query(
+      `SELECT
+         COUNT(u.id) AS triggered_count,
+         (SELECT COUNT(*) FROM sdd_interactions i
+          WHERE i.started_at >= ? AND i.started_at <= ?) AS interaction_count,
+         SUM(t.prompt_text IS NOT NULL AND t.prompt_text <> '') AS with_prompt_count,
+         SUM(t.response_text IS NOT NULL AND t.response_text <> '') AS with_response_count,
+         SUM(
+           t.prompt_text IS NOT NULL AND t.prompt_text <> ''
+           AND t.response_text IS NOT NULL AND t.response_text <> ''
+         ) AS paired_count,
+         (SELECT COUNT(*) FROM sdd_interactions i
+          WHERE i.started_at >= ? AND i.started_at <= ? AND i.status = 'failed') AS failed_count
+       FROM sdd_skill_usages u
+       LEFT JOIN sdd_interactions i ON i.id = u.interaction_id
+       LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+       WHERE u.event_time >= ? AND u.event_time <= ?`,
+      [window.from, window.to, window.from, window.to, window.from, window.to],
+    )) as SkillQualityAnalyticsRow[];
   }
 
   private addCommonFilters(
@@ -966,6 +1273,10 @@ export class SddQueryService {
       clauses.push(`${alias}.status = ?`);
       params.push(query.status);
     }
+    if (query.rawSkillName) {
+      clauses.push(`${alias}.raw_skill_name = ?`);
+      params.push(query.rawSkillName);
+    }
     if (query.cursor) {
       clauses.push(`${alias}.id < ?`);
       params.push(query.cursor);
@@ -985,6 +1296,65 @@ export class SddQueryService {
       lastSeenAt: toIsoDate(row.last_seen_at),
     };
   }
+}
+
+function resolveSkillAnalyticsWindow(query: SddSkillAnalyticsQuery): ResolvedTimeWindow {
+  const toDate = query.to ? new Date(query.to) : new Date();
+  const fromDate = query.from
+    ? new Date(query.from)
+    : new Date(toDate.getTime() - 24 * 3_600_000);
+
+  return {
+    from: fromDate.toISOString(),
+    to: toDate.toISOString(),
+  };
+}
+
+function previousTimeWindow(window: ResolvedTimeWindow): ResolvedTimeWindow {
+  const fromDate = new Date(window.from);
+  const toDate = new Date(window.to);
+  const durationMs = Math.max(toDate.getTime() - fromDate.getTime(), 1);
+
+  return {
+    from: new Date(fromDate.getTime() - durationMs).toISOString(),
+    to: fromDate.toISOString(),
+  };
+}
+
+function chooseSkillTimeseriesBucket(window: ResolvedTimeWindow): '15m' | '1h' | '3h' {
+  const fromMs = new Date(window.from).getTime();
+  const toMs = new Date(window.to).getTime();
+  const hours = Math.max((toMs - fromMs) / 3_600_000, 0);
+
+  if (hours <= 6) {
+    return '15m';
+  }
+  if (hours <= 24) {
+    return '1h';
+  }
+  return '3h';
+}
+
+function bucketToSeconds(bucket: '15m' | '1h' | '3h'): number {
+  if (bucket === '15m') {
+    return 15 * 60;
+  }
+  if (bucket === '1h') {
+    return 60 * 60;
+  }
+  return 3 * 60 * 60;
+}
+
+function createSkillTimeseriesTemplate(
+  window: ResolvedTimeWindow,
+  bucketSeconds: number,
+): SddSkillTimeseries['points'] {
+  const fromMs = new Date(window.from).getTime();
+  return Array.from({ length: 24 }, (_, index) => ({
+    timestamp: new Date(fromMs + index * bucketSeconds * 1000).toISOString(),
+    triggeredCount: 0,
+    pairedCount: 0,
+  }));
 }
 
 function toInteractionItem(row: InteractionRow): SddInteractionItem {

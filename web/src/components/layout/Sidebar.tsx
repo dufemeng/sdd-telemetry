@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
-  Activity, BarChart3, CheckSquare, Database, FileStack, Gauge,
+  BarChart3, CheckSquare, Database, FileStack, Gauge,
   GitBranch, Layers3, ListFilter, Settings, Table2, TerminalSquare,
   UserRound, Workflow,
 } from 'lucide-react';
@@ -17,8 +17,7 @@ const NAV_GROUPS = [
     label: '观测',
     items: [
       { to: '/events',           label: '事件分布', icon: BarChart3 },
-      { to: '/sdd/funnel',       label: '技能分布', icon: Activity },
-      { to: '/sdd/summary',      label: '技能概览', icon: Layers3 },
+      { to: '/sdd/skills',       label: '技能分析', icon: Layers3 },
       { to: '/sdd/users',        label: '用户维度', icon: UserRound },
       { to: '/sdd/work-items',   label: '工作项',   icon: GitBranch },
     ],
