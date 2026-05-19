@@ -83,10 +83,6 @@ interface IdRow extends RowDataPacket {
   id: string;
 }
 
-interface LockRow extends RowDataPacket {
-  lock_status: number | null;
-}
-
 interface InteractionRef {
   id: string;
   key: string;
@@ -270,82 +266,23 @@ async function persistCleanedData(
   },
 ): Promise<number> {
   return withTransaction(pool, async (connection) => {
-    const acquiredLocks: string[] = [];
-    try {
-      for (const event of input.events) {
-        await upsertLogEvent(connection, input.batch, event, input.eventRetentionDays);
-      }
-
-      acquiredLocks.push(...(await acquireCleaningLocks(connection, input.events)));
-      const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
-      const interactions = await upsertInteractions(
-        connection,
-        scopedEvents,
-        input.textRetentionDays,
-      );
-      const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
-      const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
-      const artifacts = await upsertWorkItems(connection, scopedEvents);
-      const errors = await upsertErrors(connection, scopedEvents, interactions);
-
-      return interactions.size + toolCalls + usages + errors + artifacts;
-    } finally {
-      await releaseCleaningLocks(connection, acquiredLocks);
+    for (const event of input.events) {
+      await upsertLogEvent(connection, input.batch, event, input.eventRetentionDays);
     }
+
+    const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
+    const interactions = await upsertInteractions(
+      connection,
+      scopedEvents,
+      input.textRetentionDays,
+    );
+    const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
+    const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
+    const artifacts = await upsertWorkItems(connection, scopedEvents);
+    const errors = await upsertErrors(connection, scopedEvents, interactions);
+
+    return interactions.size + toolCalls + usages + errors + artifacts;
   });
-}
-
-async function acquireCleaningLocks(
-  connection: PoolConnection,
-  events: ExtractedLogEvent[],
-): Promise<string[]> {
-  const lockNames = unique(
-    events
-      .map((event) =>
-        event.promptId
-          ? `prompt:${event.promptId}`
-          : event.sessionId
-            ? `session:${event.sessionId}`
-            : '',
-      )
-      .filter(isNonEmptyString)
-      .map(toCleaningLockName),
-  ).sort();
-  const acquired: string[] = [];
-
-  try {
-    for (const lockName of lockNames) {
-      const [rows] = await connection.query<LockRow[]>('SELECT GET_LOCK(?, 10) AS lock_status', [
-        lockName,
-      ]);
-      if (rows[0]?.lock_status !== 1) {
-        throw new TerminalCleaningError(`timeout acquiring interaction cleaning lock: ${lockName}`);
-      }
-      acquired.push(lockName);
-    }
-  } catch (error) {
-    await releaseCleaningLocks(connection, acquired);
-    throw error;
-  }
-
-  return lockNames;
-}
-
-async function releaseCleaningLocks(
-  connection: PoolConnection,
-  lockNames: string[],
-): Promise<void> {
-  for (const lockName of [...lockNames].reverse()) {
-    try {
-      await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);
-    } catch {
-      // The transaction outcome matters more than a best-effort named-lock release.
-    }
-  }
-}
-
-function toCleaningLockName(rawKey: string): string {
-  return `sdd-clean:${sha256(rawKey).slice(0, 48)}`;
 }
 
 async function upsertLogEvent(
