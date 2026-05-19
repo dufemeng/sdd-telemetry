@@ -3,12 +3,14 @@ import type { Context } from '@midwayjs/koa';
 import {
   OpsJobsResponseSchema,
   OpsQueueSchema,
+  OpsTableRowResponseSchema,
   OpsTableRowsQuerySchema,
   OpsTableRowsResponseSchema,
   OpsTablesResponseSchema,
   PaginationQuerySchema,
   type OpsJobsResponse,
   type OpsQueue,
+  type OpsTableRowResponse,
   type OpsTableRowsResponse,
   type OpsTablesResponse,
 } from '@sdd-telemetry/api';
@@ -36,6 +38,14 @@ export class OpsController {
     const query = parseWithSchema(OpsTableRowsQuerySchema, this.ctx.query);
     const data: OpsTableRowsResponse = await this.opsQueryService.listTableRows(tableName, query);
     return ok(parseWithSchema(OpsTableRowsResponseSchema, data));
+  }
+
+  @Get('/tables/:tableName/rows/:id')
+  async tableRow() {
+    const tableName = this.ctx.params.tableName as string;
+    const id = this.ctx.params.id as string;
+    const data: OpsTableRowResponse = await this.opsQueryService.getTableRow(tableName, id);
+    return ok(parseWithSchema(OpsTableRowResponseSchema, data));
   }
 
   @Get('/jobs')

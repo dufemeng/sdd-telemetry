@@ -101,6 +101,11 @@ export const OpsJobsResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+export const OpsTableRowResponseSchema = z.object({
+  tableName: z.string(),
+  row: z.record(z.string(), z.unknown()).nullable(),
+});
+
 export type OpsTable = z.infer<typeof OpsTableSchema>;
 export type OpsColumn = z.infer<typeof OpsColumnSchema>;
 export type OpsTableFilter = z.infer<typeof OpsTableFilterSchema>;
@@ -109,6 +114,7 @@ export type OpsFilterOperator = z.infer<typeof OpsFilterOperatorSchema>;
 export type OpsTablesResponse = z.infer<typeof OpsTablesResponseSchema>;
 export type OpsTableRowsQuery = z.infer<typeof OpsTableRowsQuerySchema>;
 export type OpsTableRowsResponse = z.infer<typeof OpsTableRowsResponseSchema>;
+export type OpsTableRowResponse = z.infer<typeof OpsTableRowResponseSchema>;
 export type OpsQueue = z.infer<typeof OpsQueueSchema>;
 export type OpsJob = z.infer<typeof OpsJobSchema>;
 export type OpsJobsResponse = z.infer<typeof OpsJobsResponseSchema>;

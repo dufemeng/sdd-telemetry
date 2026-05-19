@@ -8,6 +8,7 @@ import type {
   OpsTable,
   OpsTableFilter,
   OpsTableFilterGroup,
+  OpsTableRowResponse,
   OpsTableRowsQuery,
   OpsTableRowsResponse,
   OpsTablesResponse,
@@ -176,6 +177,24 @@ export class OpsQueryService {
       }),
       nextCursor: rows.length > query.limit && orderBy === 'id' ? toStringId(visibleRows.at(-1)?.id) : null,
     };
+  }
+
+  async getTableRow(tableName: string, id: string): Promise<OpsTableRowResponse> {
+    assertAllowedTable(tableName);
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT * FROM \`${tableName}\` WHERE id = ? LIMIT 1`,
+      [id],
+    )) as Array<Record<string, unknown>>;
+
+    const raw = rows[0] ?? null;
+    if (!raw) return { tableName, row: null };
+
+    const row: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      row[key] = value instanceof Date ? value.toISOString() : value;
+    }
+    return { tableName, row };
   }
 
   async getQueue(): Promise<OpsQueue> {
