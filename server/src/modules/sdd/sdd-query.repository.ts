@@ -56,12 +56,12 @@ export interface UsageVersionRow {
 }
 
 export interface SkillAnalyticsKpiRow {
-  interaction_count: string | number;
   skill_usage_count: string | number;
   active_user_count: string | number;
   covered_work_item_count: string | number;
-  failed_interaction_count: string | number;
-  matched_skill_usage_count: string | number;
+  user_triggered_count: string | number;
+  auto_triggered_count: string | number;
+  multi_stage_work_item_count: string | number;
 }
 
 export interface SkillMatchHealthRow {
@@ -659,18 +659,30 @@ export class SddQueryRepository {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT
-         (SELECT COUNT(*) FROM sdd_interactions i
-          WHERE i.started_at >= ? AND i.started_at <= ?) AS interaction_count,
          (SELECT COUNT(*) FROM sdd_skill_usages u
           WHERE u.event_time >= ? AND u.event_time <= ?) AS skill_usage_count,
          (SELECT COUNT(DISTINCT u.user_id) FROM sdd_skill_usages u
           WHERE u.event_time >= ? AND u.event_time <= ?) AS active_user_count,
          (SELECT COUNT(DISTINCT u.work_item_id) FROM sdd_skill_usages u
           WHERE u.event_time >= ? AND u.event_time <= ?) AS covered_work_item_count,
-         (SELECT COUNT(*) FROM sdd_interactions i
-          WHERE i.started_at >= ? AND i.started_at <= ? AND i.status = 'failed') AS failed_interaction_count,
          (SELECT COUNT(*) FROM sdd_skill_usages u
-          WHERE u.event_time >= ? AND u.event_time <= ? AND u.semantic_id IS NOT NULL) AS matched_skill_usage_count`,
+          WHERE u.event_time >= ? AND u.event_time <= ?
+            AND u.invocation_trigger = 'user-slash') AS user_triggered_count,
+         (SELECT COUNT(*) FROM sdd_skill_usages u
+          WHERE u.event_time >= ? AND u.event_time <= ?
+            AND u.invocation_trigger IN ('claude-proactive', 'nested-skill')) AS auto_triggered_count,
+         (SELECT COUNT(*) FROM (
+            SELECT work_item_id
+            FROM sdd_work_item_artifacts
+            WHERE artifact_type IN ('proposal', 'design', 'task', 'review')
+              AND work_item_id IN (
+                SELECT DISTINCT work_item_id
+                FROM sdd_work_item_artifacts
+                WHERE first_seen_at >= ? AND first_seen_at <= ?
+              )
+            GROUP BY work_item_id
+            HAVING COUNT(DISTINCT artifact_type) >= 3
+          ) sub) AS multi_stage_work_item_count`,
       [
         window.from,
         window.to,

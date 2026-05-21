@@ -119,12 +119,12 @@ export const SddSkillAnalyticsQuerySchema = TimeRangeQuerySchema;
 
 export const SddSkillAnalyticsSchema = z.object({
   kpis: z.object({
-    interactionCount: SddMetricWithPreviousSchema,
     skillUsageCount: SddMetricWithPreviousSchema,
     activeUserCount: SddMetricWithPreviousSchema,
     coveredWorkItemCount: SddMetricWithPreviousSchema,
-    pairingSuccessRate: SddMetricWithPreviousSchema,
-    semanticMatchRate: SddMetricWithPreviousSchema,
+    userTriggeredCount: SddMetricWithPreviousSchema,
+    autoTriggeredCount: SddMetricWithPreviousSchema,
+    multiStageWorkItemCount: SddMetricWithPreviousSchema,
   }),
   callQuality: z.object({
     triggeredCount: z.number(),

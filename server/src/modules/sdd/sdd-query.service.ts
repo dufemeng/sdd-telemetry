@@ -252,13 +252,6 @@ export class SddQueryService {
     const unmatchedCount = toNumber(matchRows[0]?.unmatched_count);
     const totalMatchedState = matchedCount + unmatchedCount;
     const currentSkillUsageCount = toNumber(current?.skill_usage_count);
-    const previousSkillUsageCount = toNumber(previous?.skill_usage_count);
-    const currentInteractionCount = toNumber(current?.interaction_count);
-    const previousInteractionCount = toNumber(previous?.interaction_count);
-    const currentFailedInteractionCount = toNumber(current?.failed_interaction_count);
-    const previousFailedInteractionCount = toNumber(previous?.failed_interaction_count);
-    const currentMatchedSkillUsageCount = toNumber(current?.matched_skill_usage_count);
-    const previousMatchedSkillUsageCount = toNumber(previous?.matched_skill_usage_count);
     const qualityInteractionCount = toNumber(quality?.interaction_count);
     const qualityTriggeredCount = toNumber(quality?.triggered_count);
     const withPromptCount = toNumber(quality?.with_prompt_count);
@@ -268,13 +261,9 @@ export class SddQueryService {
 
     return {
       kpis: {
-        interactionCount: {
-          current: currentInteractionCount,
-          previous: previousInteractionCount,
-        },
         skillUsageCount: {
           current: currentSkillUsageCount,
-          previous: previousSkillUsageCount,
+          previous: toNumber(previous?.skill_usage_count),
         },
         activeUserCount: {
           current: toNumber(current?.active_user_count),
@@ -284,25 +273,17 @@ export class SddQueryService {
           current: toNumber(current?.covered_work_item_count),
           previous: toNumber(previous?.covered_work_item_count),
         },
-        pairingSuccessRate: {
-          current:
-            currentInteractionCount > 0
-              ? 1 - currentFailedInteractionCount / currentInteractionCount
-              : null,
-          previous:
-            previousInteractionCount > 0
-              ? 1 - previousFailedInteractionCount / previousInteractionCount
-              : null,
+        userTriggeredCount: {
+          current: toNumber(current?.user_triggered_count),
+          previous: toNumber(previous?.user_triggered_count),
         },
-        semanticMatchRate: {
-          current:
-            currentSkillUsageCount > 0
-              ? currentMatchedSkillUsageCount / currentSkillUsageCount
-              : null,
-          previous:
-            previousSkillUsageCount > 0
-              ? previousMatchedSkillUsageCount / previousSkillUsageCount
-              : null,
+        autoTriggeredCount: {
+          current: toNumber(current?.auto_triggered_count),
+          previous: toNumber(previous?.auto_triggered_count),
+        },
+        multiStageWorkItemCount: {
+          current: toNumber(current?.multi_stage_work_item_count),
+          previous: toNumber(previous?.multi_stage_work_item_count),
         },
       },
       callQuality: {
@@ -325,7 +306,8 @@ export class SddQueryService {
           usageCount,
           userCount: toNumber(row.user_count),
           workItemCount: toNumber(row.work_item_count),
-          conversionRate: currentInteractionCount > 0 ? usageCount / currentInteractionCount : null,
+          conversionRate:
+            currentSkillUsageCount > 0 ? usageCount / currentSkillUsageCount : null,
         };
       }),
       matchHealth: {
