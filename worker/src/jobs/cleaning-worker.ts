@@ -110,6 +110,7 @@ export async function cleanBatch(
       events,
       eventRetentionDays,
       textRetentionDays,
+      logger: dependencies.logger,
     });
 
     await markBatchParsed(dependencies.pool, loadedBatch.batchId, events.length, derivedCount);
@@ -184,6 +185,7 @@ async function persistCleanedData(
     events: ExtractedLogEvent[];
     eventRetentionDays: number;
     textRetentionDays: number;
+    logger: Logger;
   },
 ): Promise<number> {
   return withTransaction(pool, async (connection) => {
@@ -198,6 +200,19 @@ async function persistCleanedData(
       ...traceAnchorEvents,
       ...sessionAnchorEvents,
     ]);
+    if (assignments.skippedMultiPromptTraceIds.length > 0) {
+      // trace 锚点本应是高置信度配对路径，一旦同 trace 跨多个 prompt_id，
+      // 锚点会 silent 退化到 session 时序回填或孤儿桶。打 warn 让排查时有迹可循
+      // （见 docs/design-fix-interaction-fallback-bucket.md §11.2）。
+      input.logger.warn(
+        {
+          batchId: input.batch.batchId,
+          skippedTraceIds: assignments.skippedMultiPromptTraceIds,
+          skippedCount: assignments.skippedMultiPromptTraceIds.length,
+        },
+        'trace anchor skipped: multiple prompt_ids per trace, falling back to session window',
+      );
+    }
     const orphanEventIds = scopedEvents
       .filter((event) => !assignments.eventToKey.has(event.event_id))
       .map((event) => event.event_id);
@@ -1003,7 +1018,17 @@ function buildSessionAnchorIndex(anchorEvents: EventRow[]): Map<string, SessionP
   return index;
 }
 
-function buildTracePromptIndex(anchorEvents: EventRow[]): Map<string, string> {
+interface TracePromptIndex {
+  index: Map<string, string>;
+  /**
+   * 同一个 trace_id 关联多个 prompt_id 时无法用 trace 锚点（不知道该挑哪个 prompt），
+   * 会退化到 session 时序回填或被识别为孤儿。这些 trace_id 记录在这里供 caller 观测，
+   * 避免 silent fallback 在排查时成为盲点（见 docs/design-fix-interaction-fallback-bucket.md §11.2）。
+   */
+  skippedMultiPromptTraceIds: string[];
+}
+
+function buildTracePromptIndex(anchorEvents: EventRow[]): TracePromptIndex {
   const promptIdsByTrace = new Map<string, Set<string>>();
 
   for (const event of anchorEvents) {
@@ -1017,16 +1042,19 @@ function buildTracePromptIndex(anchorEvents: EventRow[]): Map<string, string> {
   }
 
   const index = new Map<string, string>();
+  const skippedMultiPromptTraceIds: string[] = [];
   for (const [traceId, promptIds] of promptIdsByTrace.entries()) {
     if (promptIds.size === 1) {
       const [promptId] = promptIds;
       if (promptId) {
         index.set(traceId, promptId);
       }
+    } else if (promptIds.size > 1) {
+      skippedMultiPromptTraceIds.push(traceId);
     }
   }
 
-  return index;
+  return { index, skippedMultiPromptTraceIds };
 }
 
 function compareSessionAnchors(left: SessionPromptAnchor, right: SessionPromptAnchor): number {
@@ -1143,6 +1171,11 @@ function interactionKeyForEvent(
 export interface InteractionAssignments {
   groupsByKey: Map<string, InteractionGroup>;
   eventToKey: Map<string, string>;
+  /**
+   * 同一个 trace_id 关联多个 prompt_id 而被跳过的 trace 锚点。dashboard / 日志层
+   * 应观察这个列表的大小，避免 silent fallback（见 §11.2）。
+   */
+  skippedMultiPromptTraceIds: string[];
 }
 
 export function computeInteractionAssignments(
@@ -1150,9 +1183,10 @@ export function computeInteractionAssignments(
   additionalAnchorEvents: EventRow[] = [],
 ): InteractionAssignments {
   const anchorEvents = [...additionalAnchorEvents, ...events];
+  const tracePromptIndex = buildTracePromptIndex(anchorEvents);
   const anchors = {
     session: buildSessionAnchorIndex(anchorEvents),
-    trace: buildTracePromptIndex(anchorEvents),
+    trace: tracePromptIndex.index,
   };
   const groupsByKey = new Map<string, InteractionGroup>();
   const eventToKey = new Map<string, string>();
@@ -1179,7 +1213,11 @@ export function computeInteractionAssignments(
     }
   }
 
-  return { groupsByKey, eventToKey };
+  return {
+    groupsByKey,
+    eventToKey,
+    skippedMultiPromptTraceIds: tracePromptIndex.skippedMultiPromptTraceIds,
+  };
 }
 
 function sortEventsBySequence(events: EventRow[]): EventRow[] {

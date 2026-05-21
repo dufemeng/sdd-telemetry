@@ -301,4 +301,61 @@ describe('computeInteractionAssignments', () => {
     expect(onlyGroup!.pairingMethod).toBe('anchored_by_user_prompt');
     expect(onlyGroup!.events.map((event) => event.event_id)).toEqual(['response-body']);
   });
+
+  it('同 trace_id 关联多个 prompt_id 时跳过 trace 锚并把 traceId 报告给 caller（§11.2 silent fallback 可观测）', () => {
+    // 构造：trace-multi 下既有 p1 又有 p2 的 user_prompt，
+    // 这时无法用 trace 锚点（不知挑哪个 prompt），应被记录到 skippedMultiPromptTraceIds
+    const events: EventRow[] = [
+      row({
+        event_id: 'u1',
+        session_id: 'session-A',
+        event_name: 'claude_code.user_prompt',
+        prompt_id: 'p1',
+        trace_id: 'trace-multi',
+        event_sequence: 1,
+      }),
+      row({
+        event_id: 'u2',
+        session_id: 'session-A',
+        event_name: 'claude_code.user_prompt',
+        prompt_id: 'p2',
+        trace_id: 'trace-multi',
+        event_sequence: 5,
+      }),
+      // 另一个正常 trace 应该照常进入 index、不出现在 skipped 列表里
+      row({
+        event_id: 'u3',
+        session_id: 'session-B',
+        event_name: 'claude_code.user_prompt',
+        prompt_id: 'p3',
+        trace_id: 'trace-single',
+        event_sequence: 1,
+      }),
+    ];
+
+    const { skippedMultiPromptTraceIds } = computeInteractionAssignments(events);
+
+    expect(skippedMultiPromptTraceIds).toEqual(['trace-multi']);
+  });
+
+  it('没有 trace 冲突时 skippedMultiPromptTraceIds 应该为空', () => {
+    const events: EventRow[] = [
+      row({
+        event_id: 'a',
+        prompt_id: 'p1',
+        trace_id: 'trace-1',
+        event_sequence: 1,
+      }),
+      row({
+        event_id: 'b',
+        prompt_id: 'p2',
+        trace_id: 'trace-2',
+        event_sequence: 2,
+      }),
+    ];
+
+    const { skippedMultiPromptTraceIds } = computeInteractionAssignments(events);
+
+    expect(skippedMultiPromptTraceIds).toEqual([]);
+  });
 });

@@ -625,3 +625,81 @@ WHERE parse_completed_at > NOW() - INTERVAL 1 DAY;
 2. `pairing_method` 只保留 `prompt_id` / `anchored_by_user_prompt`。
 3. 存量开发数据通过 `pnpm db:reset-derived` 保留 raw payload、清空事件层和 SDD 派生表，再跑 worker 重清洗。
 4. 本节之前恢复的原文保留为评审上下文，不再删除或改写。
+
+---
+
+## 11. Follow-up TODO（架构评审产出，2026-05-21）
+
+`dfda83a` 修复在原 design 基础上做了 4 处升级（三级锚点 / 跨 batch 精准拉锚点 / 双键比较 / pairingMethod 取置信度下界），整体架构超出原设计预期。评审仍发现 4 个非阻塞瑕疵，挂在这里作为 P2 follow-up：
+
+### TODO 11.1 `pairing_method` 拆分 L2 / L3 两个 tag
+
+**问题**：当前 `anchored_by_user_prompt` 同时覆盖两种来源：
+
+- **L2**：通过 `trace_id` 借用同 trace 唯一的 `prompt_id`（OTel 协议层关联，置信度接近直绑）
+- **L3**：通过 `session_id + (sequence, time)` 时序回填（推测时间窗，置信度中等）
+
+两者在 dashboard 上看不出差异，无法区分"高置信度 anchored"和"兜底 anchored"。
+
+**建议**：拆分为：
+- `anchored_by_trace`（L2）
+- `anchored_by_session_window`（L3）
+
+**影响范围**：
+- `worker/src/jobs/cleaning-worker.ts` — `interactionKeyForEvent` 三个分支分别返回不同 tag
+- `packages/api/src/contracts/sdd.contract.ts` — `pairingMethod` 枚举扩展
+- `web/src/pages/sdd/interactions/InteractionsPage.tsx` — `formatPairingMethod` 加两个 case
+- worker 单元测试需要补 L2 路径覆盖
+
+### ~~TODO 11.2 L2 silent fallback 加可观测性~~ ✅ 已完成 2026-05-21
+
+**问题**：`buildTracePromptIndex` 只在"trace 唯一对应一个 prompt_id"时启用 L2 锚，
+跨多个 prompt 的 trace 会 silent 退化到 L3，没有日志/metric，排查盲点。
+
+**实现方案**：
+- `buildTracePromptIndex` 返回值升级为 `{ index, skippedMultiPromptTraceIds }`，
+  纯函数仍然 side-effect-free
+- `InteractionAssignments` 透传 `skippedMultiPromptTraceIds: string[]`
+- `persistCleanedData` 检测到非空数组时 `logger.warn`，结构化字段：
+  `{ batchId, skippedTraceIds, skippedCount }`
+- 测试覆盖：`worker/test/interaction-assignment.test.ts` 加 2 个用例
+  （同 trace × 多 prompt → 跳过；正常 trace → 列表为空）
+
+**改动落点**：
+- `worker/src/jobs/cleaning-worker.ts`：~30 行（含注释）
+- `worker/test/interaction-assignment.test.ts`：~60 行（含 2 用例）
+
+**验证**：worker typecheck 通过、测试 18/18（原 16 + 新 2）。
+
+### TODO 11.3 补集成测试 fixture
+
+**问题**：当前 `worker/test/interaction-assignment.test.ts`（304 行）覆盖了核心分桶逻辑的单元测试，但 design §6.2 提议的 4 个端到端 OTel payload fixture 没落地：
+
+1. `single-prompt.json`：1 session × 1 prompt × N api_request × M tool_use
+2. `multi-prompt.json`：1 session × 3 prompts × 各自 api_request
+3. `missing-prompt-id.json`：1 session × 2 prompts，部分事件缺 `prompt_id` 验证锚点回填
+4. `orphan-only.json`：session 内只有 hook 事件、无 user_prompt 验证孤儿路径
+
+**风险**：未来 Claude Code OTel payload 结构变化时（譬如新 event 类型、attribute key rename），单元测试可能仍过但端到端断裂。
+
+**建议**：在 `worker/test/integration/` 下补 4 个 fixture + 端到端集成测试。需要 MySQL，可挂 `test:integration` script。
+
+### TODO 11.4 孤儿事件量级在 dashboard 主路径可见
+
+**问题**：孤儿事件标 `sdd.orphan_reason='no_prompt_anchor'` 在 `otel_log_events.attributes_json`，但 dashboard 主路径看不见。当前只能写 SQL 手动查：
+
+```sql
+SELECT COUNT(*) FROM otel_log_events
+WHERE JSON_UNQUOTE(JSON_EXTRACT(attributes_json, '$."sdd.orphan_reason"')) = 'no_prompt_anchor';
+```
+
+**风险**：Claude Code 上报字段变化时（譬如某次升级让 `prompt_id` 上报覆盖率突降），sdd-telemetry 这边只会看到 anchored / orphan 增多，但没有自动告警。
+
+**建议**：
+- 在 `/api/ingest/health` 接口加 `orphanRate` 字段（孤儿事件占该窗口总事件比例）
+- 或在 Ops 页加"孤儿事件趋势"卡片
+- 阈值告警：日孤儿率 > 10% 时显式标红
+
+---
+
+以上 4 项作为 P2 follow-up，单独立项跟进，不阻塞 B1 修复上线。
