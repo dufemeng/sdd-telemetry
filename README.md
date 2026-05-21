@@ -47,6 +47,7 @@ pnpm build                               # 全量构建
 pnpm db:migrate                          # 跑迁移
 pnpm db:seed                             # 写入种子数据
 pnpm db:verify                           # 验证 schema
+pnpm db:reset-derived                    # 保留 raw payload，清空并重排派生清洗任务
 pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
 ```
 

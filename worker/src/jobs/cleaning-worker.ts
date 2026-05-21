@@ -192,15 +192,42 @@ async function persistCleanedData(
     }
 
     const scopedEvents = await loadScopedEvents(connection, input.batch.batchId, input.events);
+    const traceAnchorEvents = await loadTraceAnchorEvents(connection, scopedEvents);
+    const sessionAnchorEvents = await loadSessionAnchorEvents(connection, scopedEvents);
+    const assignments = computeInteractionAssignments(scopedEvents, [
+      ...traceAnchorEvents,
+      ...sessionAnchorEvents,
+    ]);
+    const orphanEventIds = scopedEvents
+      .filter((event) => !assignments.eventToKey.has(event.event_id))
+      .map((event) => event.event_id);
+    if (orphanEventIds.length > 0) {
+      await cleaningRepository.markEventsAsOrphan(connection, orphanEventIds, 'no_prompt_anchor');
+    }
     const interactions = await upsertInteractions(
       connection,
-      scopedEvents,
+      assignments,
       input.textRetentionDays,
     );
-    const toolCalls = await upsertToolCalls(connection, scopedEvents, interactions);
-    const usages = await upsertSkillUsages(connection, scopedEvents, interactions);
+    const toolCalls = await upsertToolCalls(
+      connection,
+      scopedEvents,
+      interactions,
+      assignments.eventToKey,
+    );
+    const usages = await upsertSkillUsages(
+      connection,
+      scopedEvents,
+      interactions,
+      assignments.eventToKey,
+    );
     const artifacts = await upsertWorkItems(connection, scopedEvents);
-    const errors = await upsertErrors(connection, scopedEvents, interactions);
+    const errors = await upsertErrors(
+      connection,
+      scopedEvents,
+      interactions,
+      assignments.eventToKey,
+    );
 
     return interactions.size + toolCalls + usages + errors + artifacts;
   });
@@ -243,32 +270,70 @@ async function loadScopedEvents(
   events: ExtractedLogEvent[],
 ): Promise<EventRow[]> {
   const promptIds = unique(events.map((event) => event.promptId).filter(isNonEmptyString));
-  const sessionIds = unique(events.map((event) => event.sessionId).filter(isNonEmptyString));
   const clauses = ['batch_id = ?'];
   const params: Array<string | string[]> = [batchId];
 
+  // 跨 batch 只按 prompt_id 拉完整 turn。session 只用于后面的 anchor 查找，
+  // 不再把整段 session events 拉进 interaction 聚合。
   if (promptIds.length > 0) {
     clauses.push(`prompt_id IN (${promptIds.map(() => '?').join(',')})`);
     params.push(...promptIds);
   }
 
-  if (sessionIds.length > 0) {
-    clauses.push(`session_id IN (${sessionIds.map(() => '?').join(',')})`);
-    params.push(...sessionIds);
-  }
-
   return cleaningRepository.loadScopedEvents(connection, clauses, params);
+}
+
+async function loadSessionAnchorEvents(
+  connection: PoolConnection,
+  scopedEvents: EventRow[],
+): Promise<EventRow[]> {
+  const sessionIds = unique(
+    scopedEvents
+      .filter((event) => !event.prompt_id)
+      .map((event) => event.session_id)
+      .filter(isNonEmptyString),
+  );
+
+  return cleaningRepository.loadSessionAnchorEvents(connection, sessionIds);
+}
+
+async function loadTraceAnchorEvents(
+  connection: PoolConnection,
+  scopedEvents: EventRow[],
+): Promise<EventRow[]> {
+  const traceIds = unique(
+    scopedEvents
+      .filter((event) => !event.prompt_id)
+      .map((event) => event.trace_id)
+      .filter(isNonEmptyString),
+  );
+
+  return cleaningRepository.loadTraceAnchorEvents(connection, traceIds);
 }
 
 async function upsertInteractions(
   connection: PoolConnection,
-  events: EventRow[],
+  assignments: InteractionAssignments,
   textRetentionDays: number,
 ): Promise<Map<string, InteractionRef>> {
-  const groups = groupInteractionEvents(events);
   const refs = new Map<string, InteractionRef>();
 
-  for (const [key, groupEvents] of groups.entries()) {
+  for (const [key, group] of assignments.groupsByKey.entries()) {
+    const groupEvents = group.events;
+    const hasDirectPromptEvents = groupEvents.some((event) => event.prompt_id);
+    if (!hasDirectPromptEvents) {
+      const existingInteractionId = await cleaningRepository.findIdByKey(
+        connection,
+        'sdd_interactions',
+        'interaction_key',
+        key,
+      );
+      if (existingInteractionId) {
+        refs.set(key, { id: existingInteractionId, key });
+      }
+      continue;
+    }
+
     const orderedEvents = sortEventsBySequence(groupEvents);
     const apiRequestEvents = orderedEvents.filter(isApiRequestEvent);
     const apiErrorEvents = orderedEvents.filter(isApiErrorEvent);
@@ -334,7 +399,7 @@ async function upsertInteractions(
       model: tier1Metrics.model,
       commandName,
       commandSource,
-      pairingMethod: promptId ? 'prompt_id' : 'session_window',
+      pairingMethod: group.pairingMethod,
       startedAt,
       completedAt,
       durationMs,
@@ -383,6 +448,7 @@ async function upsertToolCalls(
   connection: PoolConnection,
   events: EventRow[],
   interactions: Map<string, InteractionRef>,
+  eventToKey: Map<string, string>,
 ): Promise<number> {
   const toolEvents = sortEventsBySequence(events).filter(
     (event) => isToolDecisionEvent(event) || isToolResultEvent(event),
@@ -410,7 +476,8 @@ async function upsertToolCalls(
       continue;
     }
 
-    const interaction = interactions.get(interactionKeyForEvent(firstEvent));
+    const key = eventToKey.get(firstEvent.event_id);
+    const interaction = key ? interactions.get(key) : undefined;
     if (!interaction) {
       continue;
     }
@@ -457,6 +524,7 @@ async function upsertSkillUsages(
   connection: PoolConnection,
   events: EventRow[],
   interactions: Map<string, InteractionRef>,
+  eventToKey: Map<string, string>,
 ): Promise<number> {
   const aliases = await cleaningRepository.loadSkillAliases(connection);
   const aliasBySkillName = new Map(aliases.map((alias) => [alias.skill_name, alias]));
@@ -475,7 +543,8 @@ async function upsertSkillUsages(
     const alias = aliasBySkillName.get(rawSkillName);
     const matchedBy = alias ? 'alias_exact' : 'unmatched';
 
-    const interaction = interactions.get(interactionKeyForEvent(event));
+    const key = eventToKey.get(event.event_id);
+    const interaction = key ? interactions.get(key) : undefined;
     const usageKey = sha256(`usage:${event.event_id}:${rawSkillName}`);
 
     await cleaningRepository.upsertSkillUsage(connection, {
@@ -505,6 +574,7 @@ async function upsertErrors(
   connection: PoolConnection,
   events: EventRow[],
   interactions: Map<string, InteractionRef>,
+  eventToKey: Map<string, string>,
 ): Promise<number> {
   let count = 0;
 
@@ -528,7 +598,8 @@ async function upsertErrors(
       readString(attributes['error.stack']);
     const messageHash = errorMessage ? sha256(errorMessage) : null;
     const stackHash = stackTrace ? sha256(stackTrace) : null;
-    const interaction = interactions.get(interactionKeyForEvent(event));
+    const key = eventToKey.get(event.event_id);
+    const interaction = key ? interactions.get(key) : undefined;
     const { usageId, workItemId } = await findUsageAndWorkItemForError(connection, event);
 
     await cleaningRepository.upsertError(connection, {
@@ -889,21 +960,226 @@ async function markBatchParsed(
   await cleaningRepository.markBatchParsed(pool, batchId, eventCount, derivedCount);
 }
 
-function groupInteractionEvents(events: EventRow[]): Map<string, EventRow[]> {
-  const groups = new Map<string, EventRow[]>();
+export type InteractionPairingMethod = 'prompt_id' | 'anchored_by_user_prompt';
 
-  for (const event of events) {
-    const key = interactionKeyForEvent(event);
-    if (!key) {
+interface SessionPromptAnchor {
+  eventSequence: number | null;
+  eventTimeMs: number | null;
+  promptId: string;
+}
+
+export interface InteractionGroup {
+  events: EventRow[];
+  pairingMethod: InteractionPairingMethod;
+}
+
+function buildSessionAnchorIndex(anchorEvents: EventRow[]): Map<string, SessionPromptAnchor[]> {
+  const index = new Map<string, SessionPromptAnchor[]>();
+
+  for (const event of anchorEvents) {
+    const eventTimeMs = asDate(event.event_time)?.getTime() ?? null;
+    if (
+      !isUserPromptEvent(event) ||
+      !event.session_id ||
+      !event.prompt_id ||
+      (event.event_sequence == null && eventTimeMs == null)
+    ) {
       continue;
     }
 
-    const group = groups.get(key) ?? [];
-    group.push(event);
-    groups.set(key, group);
+    const anchors = index.get(event.session_id) ?? [];
+    anchors.push({
+      eventSequence: event.event_sequence,
+      eventTimeMs,
+      promptId: event.prompt_id,
+    });
+    index.set(event.session_id, anchors);
   }
 
-  return groups;
+  for (const anchors of index.values()) {
+    anchors.sort(compareSessionAnchors);
+  }
+
+  return index;
+}
+
+function buildTracePromptIndex(anchorEvents: EventRow[]): Map<string, string> {
+  const promptIdsByTrace = new Map<string, Set<string>>();
+
+  for (const event of anchorEvents) {
+    if (!event.trace_id || !event.prompt_id) {
+      continue;
+    }
+
+    const promptIds = promptIdsByTrace.get(event.trace_id) ?? new Set<string>();
+    promptIds.add(event.prompt_id);
+    promptIdsByTrace.set(event.trace_id, promptIds);
+  }
+
+  const index = new Map<string, string>();
+  for (const [traceId, promptIds] of promptIdsByTrace.entries()) {
+    if (promptIds.size === 1) {
+      const [promptId] = promptIds;
+      if (promptId) {
+        index.set(traceId, promptId);
+      }
+    }
+  }
+
+  return index;
+}
+
+function compareSessionAnchors(left: SessionPromptAnchor, right: SessionPromptAnchor): number {
+  if (left.eventSequence != null && right.eventSequence != null) {
+    return left.eventSequence - right.eventSequence;
+  }
+  if (left.eventTimeMs != null && right.eventTimeMs != null) {
+    return left.eventTimeMs - right.eventTimeMs;
+  }
+  if (left.eventSequence != null) {
+    return -1;
+  }
+  if (right.eventSequence != null) {
+    return 1;
+  }
+  return 0;
+}
+
+function findLatestSessionAnchorBefore(
+  anchors: SessionPromptAnchor[],
+  event: EventRow,
+): SessionPromptAnchor | null {
+  let candidate: SessionPromptAnchor | null = null;
+  const eventTimeMs = asDate(event.event_time)?.getTime() ?? null;
+
+  for (const anchor of anchors) {
+    if (isAnchorNotAfterEvent(anchor, event.event_sequence, eventTimeMs)) {
+      candidate = latestAnchorForEvent(candidate, anchor, event.event_sequence, eventTimeMs);
+    }
+  }
+
+  return candidate;
+}
+
+function latestAnchorForEvent(
+  current: SessionPromptAnchor | null,
+  next: SessionPromptAnchor,
+  eventSequence: number | null,
+  eventTimeMs: number | null,
+): SessionPromptAnchor {
+  if (!current) {
+    return next;
+  }
+  if (eventSequence != null && current.eventSequence != null && next.eventSequence != null) {
+    return next.eventSequence > current.eventSequence ? next : current;
+  }
+  if (eventTimeMs != null && current.eventTimeMs != null && next.eventTimeMs != null) {
+    return next.eventTimeMs > current.eventTimeMs ? next : current;
+  }
+  if (current.eventSequence == null && next.eventSequence != null) {
+    return next;
+  }
+  return current;
+}
+
+function isAnchorNotAfterEvent(
+  anchor: SessionPromptAnchor,
+  eventSequence: number | null,
+  eventTimeMs: number | null,
+): boolean {
+  if (eventSequence != null && anchor.eventSequence != null) {
+    return anchor.eventSequence <= eventSequence;
+  }
+  if (eventTimeMs != null && anchor.eventTimeMs != null) {
+    return anchor.eventTimeMs <= eventTimeMs;
+  }
+  return false;
+}
+
+function interactionKeyForEvent(
+  event: EventRow,
+  anchors: {
+    session: Map<string, SessionPromptAnchor[]>;
+    trace: Map<string, string>;
+  },
+): { key: string; pairingMethod: InteractionPairingMethod } | null {
+  if (event.prompt_id) {
+    return {
+      key: sha256(`prompt:${event.prompt_id}`),
+      pairingMethod: 'prompt_id',
+    };
+  }
+
+  if (event.trace_id) {
+    const promptId = anchors.trace.get(event.trace_id);
+    if (promptId) {
+      return {
+        key: sha256(`prompt:${promptId}`),
+        pairingMethod: 'anchored_by_user_prompt',
+      };
+    }
+  }
+
+  if (!event.session_id) {
+    return null;
+  }
+
+  const sessionAnchors = anchors.session.get(event.session_id);
+  if (!sessionAnchors || sessionAnchors.length === 0) {
+    return null;
+  }
+
+  const anchor = findLatestSessionAnchorBefore(sessionAnchors, event);
+  if (!anchor) {
+    return null;
+  }
+
+  return {
+    key: sha256(`prompt:${anchor.promptId}`),
+    pairingMethod: 'anchored_by_user_prompt',
+  };
+}
+
+export interface InteractionAssignments {
+  groupsByKey: Map<string, InteractionGroup>;
+  eventToKey: Map<string, string>;
+}
+
+export function computeInteractionAssignments(
+  events: EventRow[],
+  additionalAnchorEvents: EventRow[] = [],
+): InteractionAssignments {
+  const anchorEvents = [...additionalAnchorEvents, ...events];
+  const anchors = {
+    session: buildSessionAnchorIndex(anchorEvents),
+    trace: buildTracePromptIndex(anchorEvents),
+  };
+  const groupsByKey = new Map<string, InteractionGroup>();
+  const eventToKey = new Map<string, string>();
+
+  for (const event of events) {
+    const assignment = interactionKeyForEvent(event, anchors);
+    if (!assignment) {
+      // 孤儿事件留在 otel_log_events 不写入 sdd_interactions，避免污染聚合层。
+      continue;
+    }
+
+    eventToKey.set(event.event_id, assignment.key);
+    const existing = groupsByKey.get(assignment.key);
+    if (existing) {
+      existing.events.push(event);
+      if (assignment.pairingMethod === 'anchored_by_user_prompt') {
+        existing.pairingMethod = 'anchored_by_user_prompt';
+      }
+    } else {
+      groupsByKey.set(assignment.key, {
+        events: [event],
+        pairingMethod: assignment.pairingMethod,
+      });
+    }
+  }
+
+  return { groupsByKey, eventToKey };
 }
 
 function sortEventsBySequence(events: EventRow[]): EventRow[] {
@@ -1101,18 +1377,6 @@ function isToolResultEvent(event: EventRow): boolean {
 function isNamedEvent(event: EventRow, expectedName: string): boolean {
   const normalized = normalizeEventName(event.event_name);
   return normalized === expectedName || normalized.endsWith(`_${expectedName}`);
-}
-
-function interactionKeyForEvent(event: EventRow): string {
-  if (event.prompt_id) {
-    return sha256(`prompt:${event.prompt_id}`);
-  }
-
-  if (event.session_id) {
-    return sha256(`session:${event.session_id}`);
-  }
-
-  return '';
 }
 
 function isRequestEvent(event: EventRow): boolean {

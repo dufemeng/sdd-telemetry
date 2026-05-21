@@ -209,7 +209,7 @@ KEY idx_status_retry(status, next_retry_at)
 | `user_id`         | BIGINT UNSIGNED | NULL, INDEX      | 用户                                                   |
 | `session_id`      | VARCHAR(191)    | NULL, INDEX      | session 标识                                           |
 | `prompt_id`       | VARCHAR(191)    | NULL, INDEX      | prompt 标识                                            |
-| `trace_id`        | VARCHAR(64)     | NULL             | OTel trace id                                          |
+| `trace_id`        | VARCHAR(64)     | NULL, INDEX      | OTel trace id，用于缺 `prompt_id` 事件的 prompt anchor |
 | `span_id`         | VARCHAR(64)     | NULL             | OTel span id                                           |
 | `event_name`      | VARCHAR(191)    | NOT NULL, INDEX  | 事件名                                                 |
 | `display_name`    | VARCHAR(191)    | NULL             | 页面展示名                                             |
@@ -260,7 +260,7 @@ sha256(
 | `model`                 | VARCHAR(128)      | NULL               | LLM model                                    |
 | `command_name`          | VARCHAR(191)      | NULL               | 命令名                                       |
 | `command_source`        | VARCHAR(191)      | NULL               | 命令来源                                     |
-| `pairing_method`        | VARCHAR(64)       | NOT NULL           | `prompt_id` / `session_window` / `heuristic` |
+| `pairing_method`        | VARCHAR(64)       | NOT NULL           | `prompt_id` / `anchored_by_user_prompt`      |
 | `started_at`            | DATETIME(3)       | NULL, INDEX        | 开始时间                                     |
 | `completed_at`          | DATETIME(3)       | NULL               | 完成时间                                     |
 | `duration_ms`           | INT UNSIGNED      | NULL               | 耗时                                         |
@@ -288,8 +288,11 @@ sha256(
 prompt_id 存在：
   sha256("prompt:" + prompt_id)
 
-否则：
-  sha256("session:" + session_id + ":" + started_at + ":" + command_name)
+prompt_id 缺失但可通过 trace_id 或 user_prompt anchor 回填：
+  sha256("prompt:" + anchor.prompt_id)
+
+无可信 anchor：
+  不写入 sdd_interactions，只在 otel_log_events 标记 orphan
 ```
 
 ### 5.2 sdd_interaction_texts

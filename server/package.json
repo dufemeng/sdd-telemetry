@@ -16,6 +16,7 @@
     "db:seed": "tsx src/infrastructure/mysql/seed.ts",
     "db:verify": "tsx src/infrastructure/mysql/verify-schema.ts",
     "db:reset-local": "CONFIRM_RESET=1 tsx src/infrastructure/mysql/reset-local-data.ts",
+    "db:reset-derived": "CONFIRM_RESET_DERIVED=1 tsx src/infrastructure/mysql/reset-derived-data.ts",
     "db:import-legacy-sqlite": "tsx src/infrastructure/mysql/import-legacy-sqlite-raw.ts"
   },
   "dependencies": {

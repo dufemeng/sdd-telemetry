@@ -130,6 +130,7 @@ export interface InteractionRow {
   query_source: string | null;
   effort: string | null;
   speed: string | null;
+  pairing_method: string | null;
   prompt_text: string | null;
   response_text: string | null;
 }
@@ -476,6 +477,7 @@ export class SddQueryRepository {
               i.cost_usd, i.input_tokens, i.output_tokens, i.cache_read_tokens,
               i.cache_creation_tokens, i.llm_call_count, i.tool_call_count,
               i.skill_name, i.agent_name, i.plugin_name, i.query_source, i.effort, i.speed,
+              i.pairing_method,
               t.prompt_text, t.response_text
        FROM sdd_interactions i
        LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
@@ -494,6 +496,7 @@ export class SddQueryRepository {
               i.cost_usd, i.input_tokens, i.output_tokens, i.cache_read_tokens,
               i.cache_creation_tokens, i.llm_call_count, i.tool_call_count,
               i.skill_name, i.agent_name, i.plugin_name, i.query_source, i.effort, i.speed,
+              i.pairing_method,
               t.prompt_text, t.response_text, t.response_json
        FROM sdd_interactions i
        LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id

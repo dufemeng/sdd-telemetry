@@ -12,6 +12,7 @@ import {
 @Index('idx_otel_log_events_user_id', ['userId'])
 @Index('idx_otel_log_events_session_id', ['sessionId'])
 @Index('idx_otel_log_events_prompt_id', ['promptId'])
+@Index('idx_otel_log_events_trace_id', ['traceId'])
 @Index('idx_otel_log_events_event_name', ['eventName'])
 @Index('idx_otel_log_events_service_version', ['serviceVersion'])
 @Index('idx_otel_log_events_event_time', ['eventTime'])

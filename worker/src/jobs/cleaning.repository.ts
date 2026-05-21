@@ -20,6 +20,8 @@ export interface EventRow extends RowDataPacket {
   user_id: string | number | null;
   session_id: string | null;
   prompt_id: string | null;
+  trace_id: string | null;
+  span_id: string | null;
   event_name: string;
   service_version: string | null;
   severity_text: string | null;
@@ -326,13 +328,55 @@ export class CleaningRepository {
     params: Array<string | string[]>,
   ): Promise<EventRow[]> {
     const [rows] = await connection.query<EventRow[]>(
-      `SELECT id, event_id, batch_id, user_id, session_id, prompt_id, event_name,
+      `SELECT id, event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
        WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       params,
+    );
+    return rows;
+  }
+
+  async loadSessionAnchorEvents(
+    connection: PoolConnection,
+    sessionIds: string[],
+  ): Promise<EventRow[]> {
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const [rows] = await connection.query<EventRow[]>(
+      `SELECT id, event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
+              service_version, severity_text, severity_number, event_time, event_sequence,
+              attributes_json, body_json, body_text
+       FROM otel_log_events
+       WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
+         AND prompt_id IS NOT NULL
+       ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
+      sessionIds,
+    );
+    return rows;
+  }
+
+  async loadTraceAnchorEvents(
+    connection: PoolConnection,
+    traceIds: string[],
+  ): Promise<EventRow[]> {
+    if (traceIds.length === 0) {
+      return [];
+    }
+
+    const [rows] = await connection.query<EventRow[]>(
+      `SELECT id, event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
+              service_version, severity_text, severity_number, event_time, event_sequence,
+              attributes_json, body_json, body_text
+       FROM otel_log_events
+       WHERE trace_id IN (${traceIds.map(() => '?').join(',')})
+         AND prompt_id IS NOT NULL
+       ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
+      traceIds,
     );
     return rows;
   }
@@ -754,21 +798,55 @@ export class CleaningRepository {
     );
   }
 
+  async markEventsAsOrphan(
+    connection: PoolConnection,
+    eventIds: string[],
+    reason: string,
+  ): Promise<void> {
+    if (eventIds.length === 0) {
+      return;
+    }
+
+    // 用 JSON_SET 在 attributes_json 上 patch 一个 sdd.orphan_reason 字段，
+    // 让监控查询能用 JSON_EXTRACT 统计孤儿率。
+    await connection.query<ResultSetHeader>(
+      `UPDATE otel_log_events
+       SET attributes_json = JSON_SET(
+             COALESCE(attributes_json, JSON_OBJECT()),
+             '$."sdd.orphan_reason"',
+             ?
+           ),
+           gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE event_id IN (${eventIds.map(() => '?').join(',')})`,
+      [reason, ...eventIds],
+    );
+  }
+
   async selectIdByKey(
     connection: PoolConnection,
     tableName: 'sdd_interactions' | 'sdd_work_items',
     keyColumn: 'interaction_key' | 'work_item_key',
     key: string,
   ): Promise<string> {
+    const id = await this.findIdByKey(connection, tableName, keyColumn, key);
+    if (!id) {
+      throw new Error(`failed to select id from ${tableName}`);
+    }
+    return id;
+  }
+
+  async findIdByKey(
+    connection: PoolConnection,
+    tableName: 'sdd_interactions' | 'sdd_work_items',
+    keyColumn: 'interaction_key' | 'work_item_key',
+    key: string,
+  ): Promise<string | null> {
     const [rows] = await connection.query<IdRow[]>(
       `SELECT id FROM ${tableName} WHERE ${keyColumn} = ? LIMIT 1`,
       [key],
     );
     const id = rows[0]?.id;
-    if (!id) {
-      throw new Error(`failed to select id from ${tableName}`);
-    }
-    return String(id);
+    return id ? String(id) : null;
   }
 
   private greatestNullableSql(columnName: string): string {

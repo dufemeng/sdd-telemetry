@@ -48,7 +48,7 @@ P0 只承诺新系统接收的新数据完整跑通。
 | 字段覆盖率 / 数据质量 | 基于事件层和 SDD 派生层统计 |
 | Raw 批次详情 | 查看 batch、payload、状态、错误、清洗耗时 |
 | SDD skill 配置 | 管理 semantic 和 alias |
-| prompt / response 配对 | 支持跨 batch 按 `prompt_id / session_id` 重算 |
+| prompt / response 配对 | 支持跨 batch 按 `prompt_id` 重算；缺 `prompt_id` 事件只通过 trace/user_prompt anchor 回填 |
 | skill usage | 原始 skill name 映射到 SDD semantic |
 | 异常 / 错误视图 | 只纳入强错误，避免弱文本噪音 |
 | 用户 / 机器维度 | 基于 `sdd_users` 和事件资源字段统计 |
@@ -262,12 +262,13 @@ prompt / response 可能分散在不同 batch。清洗不能只看当前 batch�
 ```text
 clean batch
 -> 先写入 otel_log_events
--> 找出本 batch 涉及的 prompt_id / session_id
--> 回查这些 prompt_id / session_id 的所有有效事件
+-> 找出本 batch 涉及的 prompt_id
+-> 回查这些 prompt_id 的所有有效事件
+-> 对缺 prompt_id 事件额外查询同 trace / 同 session 的 prompt anchor（只作回填，不聚合 session）
 -> 重算对应 sdd_interactions / sdd_skill_usages / sdd_errors
 ```
 
-清洗触发粒度是 batch，实际派生范围是相关 `prompt_id / session_id`。
+清洗触发粒度是 batch，实际派生范围是相关 `prompt_id`。`session_id` 只用于查找 prompt anchor，不再作为 interaction 分桶 key。
 
 ### 8.5 Chair/FaaS 定时任务降级方案
 
@@ -567,7 +568,7 @@ README 可按步骤启动完整链路
 | 异步清洗比同步复杂 | dashboard 有延迟窗口 | batch status + 查询策略 |
 | Schedule 未触发 / 触发失败 | raw 入库但无人清洗 | `ingest_outbox` + 下次定时扫描 |
 | job 重试重复写 | 派生数据污染 | stable key + upsert + reprocess 清理 |
-| prompt/response 跨 batch | 单 batch 配对失败 | 按 `prompt_id / session_id` 重算 |
+| prompt/response 跨 batch | 单 batch 配对失败 | 按 `prompt_id` 重算；缺失 `prompt_id` 时用 trace/user_prompt anchor 回填 |
 | TypeORM 和 dal v2 不同 | 未来 ORM 层重写 | Repository + UnitOfWork 隔离 |
 | 前端改动变大 | 适配成本上升 | ViewModel adapter，只改请求层 |
 | raw payload 大 | MySQL 压力 | body limit + 7 天 TTL |

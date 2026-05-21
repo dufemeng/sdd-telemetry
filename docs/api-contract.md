@@ -176,7 +176,13 @@ Batch 详情，包括 raw 摘要、清洗错误、状态流转。
 
 ### 4.5 POST /api/ingest/batches/:batchId/reprocess
 
-人工重算某个 batch。
+人工重算某个 batch。P0 contract 预留该接口，当前实现尚未开放 HTTP 入口。
+本地开发环境如果需要从 raw payload 重建派生数据，使用：
+
+```bash
+pnpm db:reset-derived
+pnpm --filter @sdd-telemetry/worker once
+```
 
 规则：
 
@@ -366,6 +372,7 @@ export const SddFunnelSchema = z.object({
 2. `callQuality` 用于今日 MVP 的调用质量漏斗：触发 Skill、有 prompt、有 response、prompt/response 成功配对。
 3. `triggeredCount` 等于当前时间范围内的 `sdd_skill_usages` 数量；prompt/response 相关计数来自 `sdd_interactions` + `sdd_interaction_texts`。
 4. `pairingSuccessRate` 当前口径为 `1 - failedInteractions / totalInteractions`，其中 failed interaction 由清洗出的 `status='failed'` 判定。
+5. 无可信 prompt anchor 的 orphan event 不写入 `sdd_interactions`，因此不参与 interaction 口径统计。
 
 ### 6.7 GET /api/sdd/skill-analytics
 
@@ -546,6 +553,7 @@ pluginName: z.string().nullable().optional(),
 querySource: z.string().nullable().optional(),
 effort: z.string().nullable().optional(),
 speed: z.string().nullable().optional(),
+pairingMethod: z.enum(['prompt_id', 'anchored_by_user_prompt']).optional(),
 ```
 
 ### 6.12 GET /api/sdd/interactions/:interactionId

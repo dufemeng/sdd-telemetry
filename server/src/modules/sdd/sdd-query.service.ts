@@ -799,7 +799,17 @@ function toInteractionItem(row: InteractionRow): SddInteractionItem {
     querySource: row.query_source,
     effort: row.effort,
     speed: row.speed,
+    pairingMethod: toPairingMethod(row.pairing_method),
   };
+}
+
+function toPairingMethod(
+  value: string | null,
+): 'prompt_id' | 'anchored_by_user_prompt' | undefined {
+  if (value === 'prompt_id' || value === 'anchored_by_user_prompt') {
+    return value;
+  }
+  return undefined;
 }
 
 function toNullableNumber(value: unknown): number | null {

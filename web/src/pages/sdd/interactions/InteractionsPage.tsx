@@ -79,6 +79,7 @@ export default function InteractionsPage() {
               '用户',
               'sessionId',
               'promptId',
+              '配对方式',
               '模型',
               '成本',
               'tokens',
@@ -145,6 +146,7 @@ function toTableRow(item: SddInteractionItem): DataTableRow {
       item.userId ?? '—',
       item.sessionId ?? '—',
       item.promptId ?? '—',
+      formatPairingMethod(item.pairingMethod),
       item.model ?? '—',
       formatUsd(item.costUsd),
       formatTokenPair(item),
@@ -203,6 +205,11 @@ function toDetailFields(row: SddInteractionItem | SddInteractionDetail): RowInsp
       label: 'Prompt ID',
       value: display(row.promptId),
       copyValue: row.promptId,
+      mono: true,
+    },
+    {
+      label: 'Pairing Method',
+      value: formatPairingMethod(row.pairingMethod),
       mono: true,
     },
     {
@@ -310,6 +317,17 @@ function display(value: string | null | undefined): string {
 
 function displayNumber(value: number | null | undefined): string {
   return value == null ? '—' : formatInteger(value);
+}
+
+function formatPairingMethod(value: SddInteractionItem['pairingMethod']): string {
+  switch (value) {
+    case 'prompt_id':
+      return 'prompt_id';
+    case 'anchored_by_user_prompt':
+      return 'anchored';
+    default:
+      return '—';
+  }
 }
 
 function formatTokenPair(item: SddInteractionItem): string {

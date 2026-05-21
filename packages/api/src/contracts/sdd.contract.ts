@@ -216,6 +216,7 @@ export const SddInteractionItemSchema = z.object({
   querySource: z.string().nullable().optional(),
   effort: z.string().nullable().optional(),
   speed: z.string().nullable().optional(),
+  pairingMethod: z.enum(['prompt_id', 'anchored_by_user_prompt']).optional(),
 });
 
 export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
