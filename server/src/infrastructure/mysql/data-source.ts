@@ -5,6 +5,7 @@ import { CreateP0Schema1778769900000 } from './migrations/1778769900000-create-p
 import { RenameAuditColumns1778769950000 } from './migrations/1778769950000-rename-audit-columns';
 import { AddWorkItemDetectionFields1778769960000 } from './migrations/1778769960000-add-work-item-detection-fields';
 import { InteractionFidelity1778770000000 } from './migrations/1778770000000-interaction-fidelity';
+import { AddOtelTraceIndex1779000000000 } from './migrations/1779000000000-add-otel-trace-index';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -26,6 +27,7 @@ export function createAppDataSource(): DataSource {
       RenameAuditColumns1778769950000,
       AddWorkItemDetectionFields1778769960000,
       InteractionFidelity1778770000000,
+      AddOtelTraceIndex1779000000000,
     ],
   });
 }
