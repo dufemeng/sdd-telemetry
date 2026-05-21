@@ -1,6 +1,7 @@
 import type { TimeRange } from '@/components/layout/TopBar';
 
 export function timeRangeToHours(range: TimeRange): number {
+  if (range.endsWith('d')) return Number(range.replace('d', '')) * 24;
   return Number(range.replace('h', ''));
 }
 

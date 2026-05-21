@@ -309,7 +309,7 @@ describe('interaction fidelity cleaning', () => {
     expect(Number(interaction.output_tokens)).toBe(30);
     expect(Number(interaction.cache_read_tokens)).toBe(6);
     expect(Number(interaction.cache_creation_tokens)).toBe(9);
-    expect(Number(interaction.duration_ms)).toBe(3000);
+    expect(Number(interaction.duration_ms)).toBe(7);
     expect(Number(interaction.llm_call_count)).toBe(2);
     expect(Number(interaction.tool_call_count)).toBe(1);
     expect(interaction.skill_name).toBe('bk-fe:design');

@@ -354,6 +354,7 @@ export class CleaningRepository {
        FROM otel_log_events
        WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
          AND prompt_id IS NOT NULL
+         AND event_name LIKE '%user_prompt%'
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       sessionIds,
     );

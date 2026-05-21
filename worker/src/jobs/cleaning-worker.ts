@@ -374,9 +374,8 @@ async function upsertInteractions(
     const startedAt = asDate(firstEvent.event_time);
     const completedAt = asDate(completedEvent?.event_time);
     const tier1Metrics = extractTier1Metrics(apiRequestEvents);
-    const fallbackDurationMs =
+    const durationMs =
       startedAt && completedAt ? Math.max(0, completedAt.getTime() - startedAt.getTime()) : null;
-    const durationMs = tier1Metrics.durationMs ?? fallbackDurationMs;
     const status = lastTerminalEvent
       ? isApiErrorEvent(lastTerminalEvent)
         ? 'failed'
@@ -1247,7 +1246,6 @@ function extractTier1Metrics(events: EventRow[]): {
   outputTokens: number | null;
   cacheReadTokens: number | null;
   cacheCreationTokens: number | null;
-  durationMs: number | null;
   llmCallCount: number;
   skillName: string | null;
   agentName: string | null;
@@ -1267,7 +1265,6 @@ function extractTier1Metrics(events: EventRow[]): {
       'cache_creation_input_tokens',
       'cache_write_tokens',
     ]),
-    durationMs: sumRowNumbers(events, ['duration_ms', 'duration.ms']),
     llmCallCount: events.length,
     skillName: pickLastRowString(events, ['skill_name', 'skill.name']),
     agentName: pickLastRowString(events, ['agent_name', 'agent.name']),

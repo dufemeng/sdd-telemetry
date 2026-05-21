@@ -1,9 +1,9 @@
 import { RefreshCw, Search } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
-export type TimeRange = '6h' | '24h' | '72h';
+export type TimeRange = '24h' | '7d' | '30d';
 
-export const TIME_RANGES: readonly TimeRange[] = ['6h', '24h', '72h'] as const;
+export const TIME_RANGES: readonly TimeRange[] = ['24h', '7d', '30d'] as const;
 
 interface TopBarProps {
   timeRange: TimeRange;
