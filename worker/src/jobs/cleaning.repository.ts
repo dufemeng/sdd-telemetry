@@ -759,10 +759,17 @@ export class CleaningRepository {
       `UPDATE sdd_skill_usages
        SET work_item_id = ?,
            gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE session_id = ?
-         AND raw_skill_name = ?
-         AND (work_item_id IS NULL OR work_item_id = ?)
-         AND (? IS NULL OR event_time IS NULL OR event_time <= ?)`,
+       WHERE id = (
+         SELECT id FROM (
+           SELECT id FROM sdd_skill_usages
+           WHERE session_id = ?
+             AND raw_skill_name = ?
+             AND (work_item_id IS NULL OR work_item_id = ?)
+             AND (? IS NULL OR event_time IS NULL OR event_time <= ?)
+           ORDER BY event_time DESC, id DESC
+           LIMIT 1
+         ) t
+       )`,
       [
         input.workItemId,
         input.sessionId,
