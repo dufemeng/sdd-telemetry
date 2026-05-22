@@ -1,12 +1,14 @@
 node_modules
 dist
 .turbo
+.pnpm-store/
 .env
 .env.local
 coverage
 *.log
 *.tsbuildinfo
 .DS_Store
+sdd-telemetry-images.tar.gz
 .superpowers/
 .agents
 references/

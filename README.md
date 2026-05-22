@@ -37,6 +37,32 @@ pnpm dev
 
 服务地址：API `http://localhost:4318`，Web `http://localhost:5173`
 
+## 离线 Docker 部署
+
+在当前 Mac 上构建 Linux amd64 镜像包：
+
+```bash
+docker buildx build --platform linux/amd64 --target app -t sdd-telemetry-app:local --load .
+docker buildx build --platform linux/amd64 --target web -t sdd-telemetry-web:local --load .
+docker pull --platform linux/amd64 mysql:8.4
+docker image ls --tree sdd-telemetry-app:local
+docker image ls --tree sdd-telemetry-web:local
+docker image ls --tree mysql:8.4
+docker save --platform linux/amd64 sdd-telemetry-app:local sdd-telemetry-web:local mysql:8.4 | gzip > sdd-telemetry-images.tar.gz
+```
+
+把 `sdd-telemetry-images.tar.gz`、`compose.prod.yml` 传到 Linux 服务器后：
+
+```bash
+gunzip -c sdd-telemetry-images.tar.gz | docker load
+docker compose -f compose.prod.yml up -d mysql
+docker compose -f compose.prod.yml --profile setup run --rm migrate
+docker compose -f compose.prod.yml --profile setup run --rm seed
+docker compose -f compose.prod.yml up -d server worker web
+```
+
+默认端口：API `4318`，Web `8080`，MySQL `3306`。可通过 `API_PUBLISHED_PORT`、`WEB_PUBLISHED_PORT`、`MYSQL_PUBLISHED_PORT` 和 `MYSQL_*` 环境变量覆盖。
+
 ## 常用命令
 
 ```bash

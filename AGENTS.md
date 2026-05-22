@@ -63,7 +63,7 @@ pnpm build
 如果改动影响运行链路，还要做本地冒烟：
 
 ```bash
-docker compose up -d mysql redis
+docker compose up -d mysql
 pnpm db:migrate
 pnpm db:seed
 pnpm db:verify
