@@ -460,7 +460,7 @@ function isPathLike(value: string): boolean {
 }
 
 function hasWritableContentField(input: Record<string, unknown>): boolean {
-  return hasOwn(input, 'content') || hasOwn(input, 'new_string');
+  return hasOwn(input, 'content') || hasOwn(input, 'new_string') || hasOwn(input, 'edits');
 }
 
 function hasOwn(input: Record<string, unknown>, key: string): boolean {
