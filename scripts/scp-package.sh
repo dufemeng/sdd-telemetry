@@ -17,12 +17,17 @@ require_cmd git
 require_cmd ssh
 require_cmd scp
 
-VERSION="${VERSION:-$(git rev-parse --short HEAD)}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/docker}"
+# shellcheck source=./docker-version.sh
+source "$ROOT_DIR/scripts/docker-version.sh"
+
+VERSION="${VERSION:-$(read_latest_docker_version "$OUTPUT_DIR" || true)}"
+[[ -n "$VERSION" ]] || die "未找到最近打包版本。请先运行 pnpm docker:package，或设置 VERSION=<发布版本>。"
 SERVER="${SERVER:-}"
 REMOTE_DIR="${REMOTE_DIR:-project/sdd-telemetry-deploy}"
-ARTIFACT="${ARTIFACT:-$ROOT_DIR/dist/docker/sdd-telemetry-images-${VERSION}.tar.gz}"
+ARTIFACT="${ARTIFACT:-$OUTPUT_DIR/sdd-telemetry-images-${VERSION}.tar.gz}"
 CHECKSUM="${CHECKSUM:-${ARTIFACT}.sha256}"
-BUNDLE="${BUNDLE:-$ROOT_DIR/dist/docker/sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
+BUNDLE="${BUNDLE:-$OUTPUT_DIR/sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
 
 [[ -n "$SERVER" ]] || die "请设置 SERVER=user@host"
 [[ -f "$ARTIFACT" ]] || die "镜像包不存在：$ARTIFACT"

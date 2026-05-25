@@ -173,7 +173,7 @@ elif [[ -n "$ARCHIVE" ]]; then
 else
   REPO="${REPO:-${GITHUB_REPOSITORY:-$(detect_repo)}}"
   [[ -n "$REPO" ]] || die "请设置 REPO=owner/repo，或设置 ARCHIVE=/path/to/sdd-telemetry-images-<version>.tar.gz。"
-  [[ -n "$VERSION" ]] || die "请设置 VERSION=<git短hash>。"
+  [[ -n "$VERSION" ]] || die "请设置 VERSION=<发布版本>。"
 
   TAG="${TAG:-deploy-${VERSION}}"
   BUNDLE_NAME="${BUNDLE_NAME:-sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"

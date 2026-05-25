@@ -13,11 +13,14 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"
 }
 
-require_cmd git
 require_cmd tar
 
-VERSION="${VERSION:-$(git rev-parse --short HEAD)}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/docker}"
+# shellcheck source=./docker-version.sh
+source "$ROOT_DIR/scripts/docker-version.sh"
+
+VERSION="${VERSION:-$(read_latest_docker_version "$OUTPUT_DIR" || true)}"
+[[ -n "$VERSION" ]] || die "未找到最近打包版本。请先运行 pnpm docker:package，或设置 VERSION=<发布版本>。"
 ARTIFACT="${ARTIFACT:-$OUTPUT_DIR/sdd-telemetry-images-${VERSION}.tar.gz}"
 CHECKSUM="${CHECKSUM:-${ARTIFACT}.sha256}"
 BUNDLE="${BUNDLE:-$OUTPUT_DIR/sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"

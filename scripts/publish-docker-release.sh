@@ -17,11 +17,14 @@ require_cmd git
 require_cmd docker
 require_cmd gh
 
+# shellcheck source=./docker-version.sh
+source "$ROOT_DIR/scripts/docker-version.sh"
+
 if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
   die "发布前已跟踪文件必须无未提交改动。请先提交当前变更。"
 fi
 
-VERSION="${VERSION:-$(git rev-parse --short HEAD)}"
+VERSION="${VERSION:-$(new_docker_version)}"
 TAG="${TAG:-deploy-${VERSION}}"
 
 printf 'Packaging Docker images for version %s\n' "$VERSION"

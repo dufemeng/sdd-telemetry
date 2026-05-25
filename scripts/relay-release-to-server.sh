@@ -57,7 +57,7 @@ require_cmd ssh
 require_cmd tar
 
 VERSION="${VERSION:-${1:-}}"
-[[ -n "$VERSION" ]] || die "请设置 VERSION=<版本号>，例如 VERSION=341d59e pnpm docker:relay。"
+[[ -n "$VERSION" ]] || die "请设置 VERSION=<发布版本>，例如 VERSION=20260525-185012-cst pnpm docker:relay。"
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-$(detect_repo)}}"
 [[ -n "$REPO" ]] || die "无法识别 GitHub 仓库。请设置 REPO=owner/repo。"

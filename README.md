@@ -48,7 +48,7 @@ pnpm docker:package
 # 等价：./scripts/package-docker.sh
 ```
 
-脚本默认使用当前 git 短 hash 作为版本号，产物在 `dist/docker/`。对外传输优先使用单文件 deployment bundle：
+不传 `VERSION` 时，脚本默认使用中国大陆时区生成可读版本号，例如 `20260525-185012-cst`。产物在 `dist/docker/`，对外传输优先使用单文件 deployment bundle：
 
 ```text
 dist/docker/sdd-telemetry-images-<VERSION>.tar.gz
@@ -58,7 +58,9 @@ dist/docker/sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
 
 bundle 内包含镜像包、镜像 checksum、`compose.prod.yml` 和 `deploy-docker.sh` 四个文件，适合 Release 下载或 IM / scp 中转。
 
-如果工作区有未提交改动，脚本会拒绝复用当前 commit hash；临时测试可显式允许：
+成功打包后脚本会把本次版本写入 `dist/docker/latest-version`；后续 `pnpm docker:release` 和 `./scripts/scp-package.sh` 默认自动使用该版本，不需要再次输入。`VERSION=<自定义版本>` 仍可用于显式覆盖。
+
+如果工作区有未提交改动，脚本默认拒绝构建；临时测试可显式允许：
 
 ```bash
 ALLOW_DIRTY=1 pnpm docker:package
@@ -73,7 +75,7 @@ gh auth login # 首次执行
 REPO=<owner>/<repo> pnpm docker:publish
 ```
 
-`docker:publish` 使用当前 commit 短 hash 作为 `VERSION`，输出的版本号用于后续两步。它要求已跟踪文件没有未提交改动，未跟踪的本地草稿不参与发布判断。
+`docker:publish` 自动生成上海时区的 `VERSION` 并贯穿打包与 Release 上传，输出的版本号用于后续两步。它要求已跟踪文件没有未提交改动，未跟踪的本地草稿不参与发布判断。
 
 GitHub Release 中只需要下载 `sdd-telemetry-deploy-bundle-<VERSION>.tar.gz`。如果公司电脑可以通过命令行访问 Release，可先在本机配置一次转发目标；配置文件只保存在本机，不提交到仓库：
 
@@ -148,6 +150,12 @@ WEB_PUBLISHED_PORT=18081 API_PUBLISHED_PORT=4319 REPO=<owner>/<repo> VERSION=<VE
 
 ```bash
 SERVER=<user>@<server> VERSION=<VERSION> ./scripts/scp-package.sh
+```
+
+若该电脑刚执行过 `pnpm docker:package`，可省略 `VERSION`：
+
+```bash
+SERVER=<user>@<server> ./scripts/scp-package.sh
 ```
 
 服务器上执行：

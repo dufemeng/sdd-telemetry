@@ -12,6 +12,9 @@ INCLUDE_MYSQL="${INCLUDE_MYSQL:-0}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/docker}"
 VERSION_INPUT="${VERSION:-}"
 
+# shellcheck source=./docker-version.sh
+source "$ROOT_DIR/scripts/docker-version.sh"
+
 die() {
   printf 'ERROR: %s\n' "$*" >&2
   exit 1
@@ -39,15 +42,14 @@ require_cmd awk
 
 VERSION="$VERSION_INPUT"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(git rev-parse --short HEAD 2>/dev/null || true)"
-  [[ -n "$VERSION" ]] || VERSION="$(date +%Y%m%d%H%M%S)"
+  VERSION="$(new_docker_version)"
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
       if [[ "${ALLOW_DIRTY:-0}" != "1" ]]; then
         die "当前工作区有未提交改动。先提交，或显式设置 ALLOW_DIRTY=1。"
       fi
-      VERSION="${VERSION}-dirty-$(date +%Y%m%d%H%M%S)"
+      VERSION="${VERSION}-dirty"
     fi
   fi
 fi
@@ -97,3 +99,6 @@ printf 'CHECKSUM=%s\n' "$CHECKSUM"
 
 VERSION="$VERSION" OUTPUT_DIR="$OUTPUT_DIR" ARTIFACT="$ARTIFACT" CHECKSUM="$CHECKSUM" \
   "$ROOT_DIR/scripts/bundle-docker-release.sh"
+
+write_latest_docker_version "$OUTPUT_DIR" "$VERSION"
+printf 'LATEST_VERSION_FILE=%s\n' "$OUTPUT_DIR/latest-version"

@@ -56,7 +56,7 @@
 - 强制重启用 `pnpm restart`（等价于 `pnpm stop && pnpm start`，pnpm 生命周期命令）；单服务用 `restart:web` / `restart:server` / `restart:worker`
 - watch 模式下改 `src/` 自动生效；改 `.env` / `vite.config.ts` / `tsconfig.json` / 装依赖 / 进程崩 需手动重启
 - 不要用 `node dist/`（start 脚本等价于 dev，不是编译产物）
-- 离线 Docker 部署入口以 `README.md` 为准：本地可用 `pnpm docker:publish` 一键打包单文件 deployment bundle 并上传 Release（底层仍为 `docker:package` + `docker:release`），无法访问 Release 时可将 bundle 经 IM / scp 转发，无 Docker 的中转机用 `pnpm docker:relay` 下载 Release bundle 并 scp，服务器用 `deploy/deploy-docker.sh`
+- 离线 Docker 部署入口以 `README.md` 为准：默认发布版本使用上海时区时间戳；本地可用 `pnpm docker:publish` 一键打包单文件 deployment bundle 并上传 Release（底层仍为 `docker:package` + `docker:release`），无法访问 Release 时可将 bundle 经 IM / scp 转发，无 Docker 的中转机用 `pnpm docker:relay` 下载 Release bundle 并 scp，服务器用 `deploy/deploy-docker.sh`
 
 ## 过程文档存放规则（硬性约束）
 
