@@ -17,6 +17,7 @@ import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { IngestHealthService } from './ingest-health.service';
 import { IngestReceiveService } from './ingest-receive.service';
+import { extractHeaderHints } from './otel-payload-inspector';
 
 @Controller('/api/ingest')
 export class IngestController {
@@ -35,6 +36,7 @@ export class IngestController {
     const data: IngestLogsResponse = await this.ingestReceiveService.receiveLogs({
       payload,
       contentType: this.ctx.get('content-type') ?? null,
+      headerHints: extractHeaderHints(this.ctx.headers),
     });
     return ok(parseWithSchema(IngestLogsResponseSchema, data));
   }

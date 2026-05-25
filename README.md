@@ -207,10 +207,26 @@ export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://127.0.0.1:4318/api/ingest/otlp-lo
 export OTEL_LOG_USER_PROMPTS=1
 export OTEL_LOG_TOOL_DETAILS=1
 export OTEL_LOG_RAW_API_BODIES=1
-export OTEL_RESOURCE_ATTRIBUTES="sdd.install_id=<stable-install-id>,user.name=<your-name>,sdd.requirements_root_path=<absolute-requirements-path>,sdd.wiki_root_path=<absolute-wiki-path>"
+
+# 身份 / 路径配置走 HTTP header（必须）
+export OTEL_EXPORTER_OTLP_HEADERS="sdd-install-id=<stable-install-id>,sdd-user-name=<your-name>,sdd-requirements-root-path=<absolute-requirements-path>,sdd-wiki-root-path=<absolute-wiki-path>"
 ```
 
-说明：每台设备应设置稳定且唯一的 `sdd.install_id`，否则用户维度只能依赖 Claude Code 自带的 `user.id` 兜底；`sdd.requirements_root_path` / `sdd.wiki_root_path` 用于识别工作项路径。`api_request` 默认提供 model / cost / tokens；`OTEL_LOG_RAW_API_BODIES=1` 才会提供完整 LLM response 文本，属于敏感配置，只在明确同意采集 prompt、tool details 和 raw API bodies 的环境开启。
+**为什么走 HTTP header 而不是 `OTEL_RESOURCE_ATTRIBUTES`**：Claude Code 内部有两个 LoggerProvider（启动期模块绑一个、用户交互期模块绑另一个），它们的 OTel resource attributes 是各自启动那一刻的 `process.env` 快照，所以 `settings.json` 注入 env 那条路对 startup 期的 Provider **不可靠**——会导致 `sdd_users.requirements_root_path` 一段时间内是 NULL，连带 work item / artifact 识别失效。HTTP exporter 是进程单例，header 是 exporter 启动时配的一份，**每个 POST 必然带这套 header**，从源头绕开双 Provider 时序问题。
+
+服务端识别的 header（大小写不敏感、可被 URL 编码）：
+
+| Header | 用途 | 必需 |
+| --- | --- | --- |
+| `sdd-install-id` | 安装级别人类可读标签（仅展示用，user_key 由 Claude Code `user.id` 决定） | 推荐 |
+| `sdd-user-name` | dashboard 显示名 | 推荐 |
+| `sdd-requirements-root-path` | work item / artifact 路径识别 | **必需**（不设这个 work item 功能不工作） |
+| `sdd-wiki-root-path` | wiki 路径识别 | 可选 |
+| `sdd-machine-id` / `sdd-machine-name` | 机器维度标签 | 可选 |
+
+`api_request` 默认提供 model / cost / tokens；`OTEL_LOG_RAW_API_BODIES=1` 才会提供完整 LLM response 文本，属于敏感配置，只在明确同意采集 prompt、tool details 和 raw API bodies 的环境开启。
+
+`OTEL_RESOURCE_ATTRIBUTES` 仍然支持作为 header 缺失时的 fallback（向后兼容），但**不推荐再用**。
 
 ## SDD 工作流背景
 

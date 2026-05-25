@@ -3,7 +3,12 @@ import type { IngestLogsResponse } from '@sdd-telemetry/api';
 import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { IngestWriteRepository } from './ingest-write.repository';
-import { createUserKey, summarizeOtlpPayload } from './otel-payload-inspector';
+import {
+  createUserKey,
+  mergeUserHints,
+  summarizeOtlpPayload,
+  type OtlpUserHints,
+} from './otel-payload-inspector';
 
 interface SddMonitorConfig {
   maxOtlpPayloadBytes: number;
@@ -14,6 +19,7 @@ interface SddMonitorConfig {
 export interface ReceiveLogsInput {
   payload: unknown;
   contentType: string | null;
+  headerHints?: Partial<OtlpUserHints>;
 }
 
 @Provide('ingestReceiveService')
@@ -44,9 +50,12 @@ export class IngestReceiveService {
       );
     }
 
+    const mergedHints = input.headerHints
+      ? mergeUserHints(summary.userHints, input.headerHints)
+      : summary.userHints;
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const unitOfWork = new TypeOrmUnitOfWork(dataSource);
-    const userKey = createUserKey(summary.userHints, summary.payloadHash);
+    const userKey = createUserKey(mergedHints, summary.payloadHash);
 
     return unitOfWork.run(context => {
       if (!context.manager) {
@@ -54,7 +63,7 @@ export class IngestReceiveService {
       }
 
       return this.ingestWriteRepository.recordReceive(context.manager, {
-        summary,
+        summary: { ...summary, userHints: mergedHints },
         userKey,
         rawRetentionDays: this.sddMonitorConfig.rawRetentionDays,
         contentType: input.contentType,

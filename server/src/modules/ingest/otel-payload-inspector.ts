@@ -85,6 +85,59 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
   };
 }
 
+// HTTP header name → OtlpUserHints field name.
+// 因为 Claude Code OTel SDK 双 LoggerProvider 时序问题会导致 resource attributes
+// 在启动期事件里缺失，HTTP exporter 是进程单例所以 header 一定会带——把身份/路径
+// 信息走 header 是绕过 resource 不稳定性的唯一可靠路径。
+const HEADER_HINT_MAP: ReadonlyArray<[string, keyof OtlpUserHints]> = [
+  ['sdd-install-id', 'installId'],
+  ['sdd-user-name', 'userName'],
+  ['sdd-machine-id', 'machineId'],
+  ['sdd-machine-name', 'machineName'],
+  ['sdd-requirements-root-path', 'requirementsRootPath'],
+  ['sdd-wiki-root-path', 'wikiRootPath'],
+];
+
+export function extractHeaderHints(
+  headers: Record<string, string | string[] | undefined>,
+): Partial<OtlpUserHints> {
+  const result: Partial<OtlpUserHints> = {};
+  for (const [headerName, hintField] of HEADER_HINT_MAP) {
+    const raw = headers[headerName];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof value !== 'string' || value.length === 0) {
+      continue;
+    }
+    result[hintField] = decodeHeaderValue(value);
+  }
+  return result;
+}
+
+export function mergeUserHints(
+  base: OtlpUserHints,
+  override: Partial<OtlpUserHints>,
+): OtlpUserHints {
+  const result: OtlpUserHints = { ...base };
+  for (const [key, value] of Object.entries(override) as Array<
+    [keyof OtlpUserHints, string | null | undefined]
+  >) {
+    if (value !== null && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function decodeHeaderValue(value: string): string {
+  // 客户端用 OTEL_EXPORTER_OTLP_HEADERS 设非 ASCII 值时通常会 percent-encode；
+  // ASCII 值 decodeURIComponent 也是幂等的，所以无脑 try 一下，解码失败 fallback 原值。
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export function createUserKey(hints: OtlpUserHints, payloadHash: string): string {
   if (hints.otelUserId) {
     return sha256(`otel-user:${hints.otelUserId}`);
