@@ -77,9 +77,15 @@ install_id 存在：
 install_id 缺失但 machine_id 存在：
   user_key = sha256("machine:" + machine_id)
 
-都缺失：
+install_id 和 machine_id 缺失，但日志 attribute 中 user.id 存在：
+  user_key = sha256("otel-user:" + user.id)
+
+以上稳定身份都缺失：
   user_key = sha256("unknown:" + payload_hash)
 ```
+
+`user.id` 是 Claude Code 日志记录自带的稳定兜底身份，仅用于生成 `user_key`；
+客户端能够配置资源属性时仍应优先上报 `sdd.install_id`，以区分不同安装实例。
 
 ### 3.2 sdd_skill_semantics
 

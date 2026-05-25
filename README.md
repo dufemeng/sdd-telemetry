@@ -140,9 +140,10 @@ export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://127.0.0.1:4318/api/ingest/otlp-lo
 export OTEL_LOG_USER_PROMPTS=1
 export OTEL_LOG_TOOL_DETAILS=1
 export OTEL_LOG_RAW_API_BODIES=1
+export OTEL_RESOURCE_ATTRIBUTES="sdd.install_id=<stable-install-id>,user.name=<your-name>,sdd.requirements_root_path=<absolute-requirements-path>,sdd.wiki_root_path=<absolute-wiki-path>"
 ```
 
-说明：`api_request` 默认提供 model / cost / tokens；`OTEL_LOG_RAW_API_BODIES=1` 才会提供完整 LLM response 文本，属于敏感配置，只在明确同意采集 prompt、tool details 和 raw API bodies 的环境开启。
+说明：每台设备应设置稳定且唯一的 `sdd.install_id`，否则用户维度只能依赖 Claude Code 自带的 `user.id` 兜底；`sdd.requirements_root_path` / `sdd.wiki_root_path` 用于识别工作项路径。`api_request` 默认提供 model / cost / tokens；`OTEL_LOG_RAW_API_BODIES=1` 才会提供完整 LLM response 文本，属于敏感配置，只在明确同意采集 prompt、tool details 和 raw API bodies 的环境开启。
 
 ## SDD 工作流背景
 

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 export interface OtlpUserHints {
   installId: string | null;
+  otelUserId: string | null;
   userName: string | null;
   machineId: string | null;
   machineName: string | null;
@@ -25,7 +26,7 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
   const payloadJson = JSON.stringify(payload);
   const payloadHash = sha256(payloadJson);
   const payloadBytes = Buffer.byteLength(payloadJson);
-  const attributes = collectResourceAttributes(payload);
+  const resourceAttributes = collectResourceAttributes(payload);
 
   return {
     payloadJson,
@@ -33,32 +34,48 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
     payloadBytes,
     rawLogCount: countLogRecords(payload),
     userHints: {
-      installId: pickAttribute(attributes, [
+      installId: pickAttribute(resourceAttributes, [
         'install_id',
         'install.id',
         'installId',
         'claude.install_id',
         'sdd.install_id',
       ]),
-      userName: pickAttribute(attributes, ['user.name', 'user_name', 'username', 'account.name']),
-      machineId: pickAttribute(attributes, ['machine.id', 'machine_id', 'host.id', 'device.id']),
-      machineName: pickAttribute(attributes, [
+      otelUserId:
+        pickAttribute(resourceAttributes, ['user.id', 'user_id', 'userId']) ??
+        pickLogAttribute(payload, ['user.id', 'user_id', 'userId']),
+      userName: pickAttribute(resourceAttributes, [
+        'user.name',
+        'user_name',
+        'username',
+        'account.name',
+      ]),
+      machineId: pickAttribute(resourceAttributes, [
+        'machine.id',
+        'machine_id',
+        'host.id',
+        'device.id',
+      ]),
+      machineName: pickAttribute(resourceAttributes, [
         'machine.name',
         'machine_name',
         'host.name',
         'device.name',
       ]),
-      osName: pickAttribute(attributes, ['os.name', 'os.type']),
-      osVersion: pickAttribute(attributes, ['os.version', 'os.description']),
-      clientName: pickAttribute(attributes, ['service.name', 'telemetry.sdk.name']),
-      clientVersion: pickAttribute(attributes, ['service.version', 'telemetry.sdk.version']),
-      requirementsRootPath: pickAttribute(attributes, [
+      osName: pickAttribute(resourceAttributes, ['os.name', 'os.type']),
+      osVersion: pickAttribute(resourceAttributes, ['os.version', 'os.description']),
+      clientName: pickAttribute(resourceAttributes, ['service.name', 'telemetry.sdk.name']),
+      clientVersion: pickAttribute(resourceAttributes, [
+        'service.version',
+        'telemetry.sdk.version',
+      ]),
+      requirementsRootPath: pickAttribute(resourceAttributes, [
         'requirements_root_path',
         'requirements.root_path',
         'sdd.requirements_root_path',
         'sdd.requirements.path',
       ]),
-      wikiRootPath: pickAttribute(attributes, [
+      wikiRootPath: pickAttribute(resourceAttributes, [
         'wiki_root_path',
         'wiki.root_path',
         'sdd.wiki_root_path',
@@ -75,6 +92,10 @@ export function createUserKey(hints: OtlpUserHints, payloadHash: string): string
 
   if (hints.machineId) {
     return sha256(`machine:${hints.machineId}`);
+  }
+
+  if (hints.otelUserId) {
+    return sha256(`otel-user:${hints.otelUserId}`);
   }
 
   return sha256(`unknown:${payloadHash}`);
@@ -138,6 +159,53 @@ function collectResourceAttributes(payload: unknown): Map<string, string> {
   }
 
   return attributes;
+}
+
+function pickLogAttribute(payload: unknown, keys: string[]): string | null {
+  const attributes = new Map<string, string>();
+  const normalizedTargets = new Set(keys.map(normalizeKey));
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const resourceLogs = Array.isArray(payload.resourceLogs) ? payload.resourceLogs : [];
+  for (const resourceLog of resourceLogs) {
+    if (!isRecord(resourceLog)) {
+      continue;
+    }
+
+    const scopeLogs = Array.isArray(resourceLog.scopeLogs) ? resourceLog.scopeLogs : [];
+    for (const scopeLog of scopeLogs) {
+      if (!isRecord(scopeLog)) {
+        continue;
+      }
+
+      const logRecords = Array.isArray(scopeLog.logRecords) ? scopeLog.logRecords : [];
+      for (const logRecord of logRecords) {
+        if (!isRecord(logRecord) || !Array.isArray(logRecord.attributes)) {
+          continue;
+        }
+
+        for (const attribute of logRecord.attributes) {
+          if (
+            !isRecord(attribute) ||
+            typeof attribute.key !== 'string' ||
+            !normalizedTargets.has(normalizeKey(attribute.key))
+          ) {
+            continue;
+          }
+
+          const value = readOtelAttributeValue(attribute.value);
+          if (value !== null && !attributes.has(attribute.key)) {
+            attributes.set(attribute.key, value);
+          }
+        }
+      }
+    }
+  }
+
+  return pickAttribute(attributes, keys);
 }
 
 function readOtelAttributeValue(value: unknown): string | null {

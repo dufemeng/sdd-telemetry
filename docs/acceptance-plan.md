@@ -116,7 +116,7 @@ POST /api/ingest/otlp-logs basic-otlp.json
 6. `sdd_errors` 对 strong error 生效。
 7. `sdd_work_items` 和 `sdd_work_item_artifacts` 能从 requirements 路径生成。
 
-### 6.2 P0 修复链路验收（case 1 / 2 / 5）
+### 6.2 P0 修复链路验收（case 1 / 2 / 5 / 9）
 
 **case 1：requirements_root_path 上报闭环**
 
@@ -135,6 +135,12 @@ POST /api/ingest/otlp-logs basic-otlp.json
 1. strong error 事件清洗后，`sdd_errors.usage_id` 命中同 session 内 `event_time ≤ error.event_time` 的最近一条 usage。
 2. `sdd_errors.work_item_id` 等于该 usage 的 `work_item_id`（若 usage 未关联 work_item 则为 NULL）。
 3. `GET /api/sdd/work-items/:id` 返回的 `errorCount` 等于 `SELECT COUNT(*) FROM sdd_errors WHERE work_item_id = ?`，**不再恒为 0**。
+
+**case 9：缺失资源身份时 `user.id` 稳定兜底**
+
+1. 两个内容不同的 OTLP payload 均不含 `sdd.install_id` / `machine.id`，但 log record 均含相同 `user.id` 时，生成同一个 `user_key`。
+2. 同一 payload 同时含 `sdd.install_id` 和 `user.id` 时，`sdd.install_id` 仍优先生成 `user_key`。
+3. 只有上述稳定身份全缺失时，才按 `payload_hash` 生成 `unknown` 用户。
 
 ### 6.3 work_item 识别细则
 
@@ -286,6 +292,7 @@ P0 不做复杂压测，但要证明 100 人团队 MVP 规模不会立刻崩。
 | 3    | `SddFunnelQuerySchema.groupBy` 暴露 `user` / `work_item` 但实现固定按 `semantic` 分组                 | enum 收紧为 `['semantic']`；同步 `docs/frontend-gap-analysis.md`                                                                   | §3 第 5 项                              |
 | 4    | `docs/api-contract.md` 列出 `/usages.rawSkillName`、`/interactions.hasError` 但 contract 和实现都没有 | 文档移除上述未实现字段                                                                                                             | §7 API 列表（保持文档与 contract 一致） |
 | 5    | `sdd_errors.usage_id` / `work_item_id` 始终写 NULL，`workItem.errorCount` 恒为 0                      | `upsertErrors` 通过 `(session_id, event_time ≤ error.event_time)` 关联最近 usage 回填两字段；调用顺序调整到 `upsertWorkItems` 之后 | §6.2 case 5                             |
+| 9    | 缺少自定义资源身份时每个变化 payload 都按 `unknown:<payload_hash>` 新增用户                           | 从 Claude Code log record 提取稳定 `user.id` 作为 `otel-user:` 兜底，并在 README 补充 `sdd.install_id` 配置                        | §6.2 case 9                             |
 
 待修复（不在本次 commit 范围）：
 
