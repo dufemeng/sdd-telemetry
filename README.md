@@ -39,29 +39,70 @@ pnpm dev
 
 ## 离线 Docker 部署
 
-在当前 Mac 上构建 Linux amd64 镜像包：
+推荐使用脚本打包和部署。默认只打 `app/web` 镜像，MySQL 镜像只在服务器首次缺失时需要单独导入；需要一起打包可加 `INCLUDE_MYSQL=1`。
+
+Mac 本地构建 Linux amd64 离线包：
 
 ```bash
-docker buildx build --platform linux/amd64 --target app -t sdd-telemetry-app:local --load .
-docker buildx build --platform linux/amd64 --target web -t sdd-telemetry-web:local --load .
-docker pull --platform linux/amd64 mysql:8.4
-docker image ls --tree sdd-telemetry-app:local
-docker image ls --tree sdd-telemetry-web:local
-docker image ls --tree mysql:8.4
-docker save --platform linux/amd64 sdd-telemetry-app:local sdd-telemetry-web:local mysql:8.4 | gzip > sdd-telemetry-images.tar.gz
+pnpm docker:package
+# 等价：./scripts/package-docker.sh
 ```
 
-把 `sdd-telemetry-images.tar.gz`、`compose.prod.yml` 传到 Linux 服务器后：
+脚本默认使用当前 git 短 hash 作为版本号，产物在 `dist/docker/`：
+
+```text
+dist/docker/sdd-telemetry-images-<VERSION>.tar.gz
+dist/docker/sdd-telemetry-images-<VERSION>.tar.gz.sha256
+```
+
+如果工作区有未提交改动，脚本会拒绝复用当前 commit hash；临时测试可显式允许：
 
 ```bash
-gunzip -c sdd-telemetry-images.tar.gz | docker load
-docker compose -f compose.prod.yml up -d mysql
-docker compose -f compose.prod.yml --profile setup run --rm migrate
-docker compose -f compose.prod.yml --profile setup run --rm seed
-docker compose -f compose.prod.yml up -d server worker web
+ALLOW_DIRTY=1 pnpm docker:package
 ```
 
-默认端口：API `4318`，Web `8080`，MySQL `3306`。可通过 `API_PUBLISHED_PORT`、`WEB_PUBLISHED_PORT`、`MYSQL_PUBLISHED_PORT` 和 `MYSQL_*` 环境变量覆盖。
+### GitHub Release 推荐流程
+
+上传 Release 需要本机安装并登录 `gh`：
+
+```bash
+REPO=<owner>/<repo> pnpm docker:release
+# 等价：REPO=<owner>/<repo> ./scripts/upload-release.sh
+```
+
+服务器可访问 GitHub Release asset 时，在服务器部署目录执行：
+
+```bash
+git clone https://github.com/<owner>/<repo>.git ~/project/sdd-telemetry-deploy # 首次
+cd ~/project/sdd-telemetry-deploy
+git pull
+REPO=<owner>/<repo> VERSION=<VERSION> ./deploy/deploy-docker.sh
+```
+
+`REPO` 指向存放 Release asset 的仓库，可以是当前代码仓库，也可以是单独的部署仓库。脚本会下载 Release 里的镜像包和 `compose.prod.yml`，执行 `docker load`，更新 `.env` 中的镜像版本和端口，然后启动 `mysql/server/worker/web`。默认 Web 端口为 `18080`，API 端口为 `4318`；覆盖方式：
+
+```bash
+WEB_PUBLISHED_PORT=18081 API_PUBLISHED_PORT=4319 REPO=<owner>/<repo> VERSION=<VERSION> ./deploy/deploy-docker.sh
+```
+
+私有 Release 下载需要在服务器设置 `GITHUB_TOKEN`。首次初始化需要写种子数据时加 `RUN_SEED=1`；平时默认只跑 migration。
+
+### scp 兜底流程
+
+如果 Release asset 访问不通，仍可传 tar：
+
+```bash
+SERVER=<user>@<server> VERSION=<VERSION> ./scripts/scp-package.sh
+```
+
+服务器上执行：
+
+```bash
+cd ~/project/sdd-telemetry-deploy
+VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
+```
+
+默认端口：API `4318`，Web `18080`，MySQL `3306`。可通过 `API_PUBLISHED_PORT`、`WEB_PUBLISHED_PORT`、`MYSQL_PUBLISHED_PORT` 和 `MYSQL_*` 环境变量覆盖。
 
 ## 常用命令
 
@@ -70,6 +111,8 @@ pnpm dev:web / dev:server / dev:worker   # 单独启动某个服务
 pnpm restart:server                      # 强制重启 server（改 .env 或 tsconfig 后用）
 pnpm typecheck                           # 全量类型检查
 pnpm build                               # 全量构建
+pnpm docker:package                      # 构建 linux/amd64 离线镜像包
+pnpm docker:release                      # 上传离线镜像包到 GitHub Release
 pnpm db:migrate                          # 跑迁移
 pnpm db:seed                             # 写入种子数据
 pnpm db:verify                           # 验证 schema

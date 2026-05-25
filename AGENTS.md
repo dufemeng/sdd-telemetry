@@ -10,6 +10,8 @@ sdd-telemetry/
   server/    # MidwayJS HTTP API
   worker/    # 本地清洗运行时 / outbox cleaner
   packages/  # api contract、共享配置、可选共享包
+  deploy/    # Docker 运行时配置和服务器部署脚本
+  scripts/   # 本地开发、打包、发布辅助脚本
   docs/      # 方案、数据库、API contract、验收文档
 ```
 

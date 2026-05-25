@@ -9,6 +9,8 @@ coverage
 *.tsbuildinfo
 .DS_Store
 sdd-telemetry-images.tar.gz
+sdd-telemetry-images-*.tar.gz
+sdd-telemetry-images-*.tar.gz.sha256
 .superpowers/
 .agents
 references/

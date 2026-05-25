@@ -20,6 +20,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "test:api": "pnpm --filter @sdd-telemetry/server test:api",
+    "docker:package": "scripts/package-docker.sh",
+    "docker:release": "scripts/upload-release.sh",
     "lint": "turbo lint",
     "format": "prettier --write .",
     "db:migrate": "pnpm --filter @sdd-telemetry/server db:migrate",
