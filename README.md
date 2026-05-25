@@ -61,6 +61,43 @@ dist/docker/sdd-telemetry-images-<VERSION>.tar.gz.sha256
 ALLOW_DIRTY=1 pnpm docker:package
 ```
 
+### 三台机器发布流程
+
+有 Docker 的 Mac 同时完成打包和 GitHub Release 上传：
+
+```bash
+gh auth login # 首次执行
+REPO=<owner>/<repo> pnpm docker:publish
+```
+
+`docker:publish` 使用当前 commit 短 hash 作为 `VERSION`，输出的版本号用于后续两步。它要求已跟踪文件没有未提交改动，未跟踪的本地草稿不参与发布判断。
+
+公司电脑不需要 Docker。先在本机配置一次转发目标，配置文件只保存在本机，不提交到仓库：
+
+```bash
+mkdir -p ~/.config/sdd-telemetry
+cat > ~/.config/sdd-telemetry/relay.env <<'EOF'
+REPO=<owner>/<repo>
+SERVER=<ssh-user>@<server-host>
+REMOTE_DIR=project/sdd-telemetry-deploy
+EOF
+```
+
+之后按版本一键从 GitHub Release 下载、校验并上传服务器：
+
+```bash
+VERSION=<VERSION> pnpm docker:relay
+```
+
+私有 Release 可在运行前设置 `GITHUB_TOKEN`；下载需走代理时可设置 `HTTPS_PROXY` / `ALL_PROXY`，或设置 `RELEASE_BASE_URL` 使用内部制品代理。
+
+服务器执行转发脚本打印出的命令即可完成部署，例如：
+
+```bash
+cd ~/project/sdd-telemetry-deploy
+VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
+```
+
 ### GitHub Release 推荐流程
 
 上传 Release 需要本机安装并登录 `gh`：
@@ -113,6 +150,8 @@ pnpm typecheck                           # 全量类型检查
 pnpm build                               # 全量构建
 pnpm docker:package                      # 构建 linux/amd64 离线镜像包
 pnpm docker:release                      # 上传离线镜像包到 GitHub Release
+pnpm docker:publish                      # 有 Docker 的机器一键打包并发布 Release
+pnpm docker:relay                        # 无 Docker 的机器下载 Release 并转传服务器
 pnpm db:migrate                          # 跑迁移
 pnpm db:seed                             # 写入种子数据
 pnpm db:verify                           # 验证 schema
