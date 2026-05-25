@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ─── 分发前改这里 ──────────────────────────────────────────────
 # 部署好 server 后，把下面的 URL 替换为实际地址，然后再分发给团队成员
-OTEL_SERVER_URL="__REPLACE_WITH_DEPLOYED_URL__"
+OTEL_SERVER_URL="${OTEL_SERVER_URL:-__REPLACE_WITH_DEPLOYED_URL__}"
 # 示例：OTEL_SERVER_URL="https://sdd-monitor.your-company.com"
 # ──────────────────────────────────────────────────────────────
 
@@ -36,10 +36,13 @@ echo "  · 工具调用参数（bash 命令、skill 名等）"
 echo "  · 完整 API 请求和响应体（含完整对话历史）"
 echo ""
 read -rp "了解以上内容，继续配置？(y/N): " CONSENT
-if [[ "${CONSENT,,}" != "y" ]]; then
-  echo "已取消。"
-  exit 0
-fi
+case "$CONSENT" in
+  y | Y) ;;
+  *)
+    echo "已取消。"
+    exit 0
+    ;;
+esac
 
 echo ""
 
@@ -47,23 +50,35 @@ echo ""
 
 while true; do
   read -rp "请输入你的姓名或工号（用于日志归因，例如 zhangsan）: " USER_NAME
-  USER_NAME="${USER_NAME// /_}"   # 空格转下划线
-  USER_NAME="${USER_NAME//[^a-zA-Z0-9._-]/}"   # 移除非法字符
-  if [[ -n "$USER_NAME" ]]; then
+  if [[ -n "${USER_NAME//[[:space:]]/}" ]]; then
     break
   fi
-  echo "不能为空或全为特殊字符，请重新输入。"
+  echo "不能为空，请重新输入。"
 done
 
 # ── 自动采集机器信息 ────────────────────────────────────────────
 
 HOSTNAME_SHORT=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "unknown")
 HOSTNAME_SHORT="${HOSTNAME_SHORT//[^a-zA-Z0-9._-]/}"   # 移除非法字符
-INSTALL_ID="${USER_NAME}-${HOSTNAME_SHORT}"
+INSTALL_ID="${USER_NAME// /_}-${HOSTNAME_SHORT}"
 
 MACHINE_NAME=$(hostname 2>/dev/null || echo "unknown")
-OS_NAME=$(uname -s 2>/dev/null || echo "unknown")
-OS_VERSION=$(uname -r 2>/dev/null || echo "unknown")
+
+# ── 采集 SDD 路径 ────────────────────────────────────────────────
+
+while true; do
+  read -rp "请输入 @requirements 绝对路径（用于识别 work item，必填）: " REQUIREMENTS_ROOT_PATH
+  if [[ "$REQUIREMENTS_ROOT_PATH" == /* ]]; then
+    break
+  fi
+  echo "请输入以 / 开头的绝对路径。"
+done
+
+read -rp "请输入 @wiki 绝对路径（可选，直接回车跳过）: " WIKI_ROOT_PATH
+if [[ -n "$WIKI_ROOT_PATH" && "$WIKI_ROOT_PATH" != /* ]]; then
+  echo "错误：@wiki 路径必须是以 / 开头的绝对路径。" >&2
+  exit 1
+fi
 
 # ── 预览 ────────────────────────────────────────────────────────
 
@@ -73,20 +88,34 @@ echo "  server       = ${OTEL_SERVER_URL}"
 echo "  user.name    = ${USER_NAME}"
 echo "  install_id   = ${INSTALL_ID}  （自动生成，全局唯一）"
 echo "  machine.name = ${MACHINE_NAME}"
-echo "  os.name      = ${OS_NAME} ${OS_VERSION}"
+echo "  requirements = ${REQUIREMENTS_ROOT_PATH}"
+echo "  wiki         = ${WIKI_ROOT_PATH:-<未设置>}"
 echo ""
 read -rp "确认写入 ${SETTINGS_FILE}？(y/N): " CONFIRM
-if [[ "${CONFIRM,,}" != "y" ]]; then
-  echo "已取消。"
-  exit 0
-fi
+case "$CONFIRM" in
+  y | Y) ;;
+  *)
+    echo "已取消。"
+    exit 0
+    ;;
+esac
 
 # ── 写入 settings.json（合并，不覆盖其他已有配置）──────────────
 
-python3 - <<PYEOF
-import json, os, sys
+SETTINGS_FILE="$SETTINGS_FILE" \
+OTEL_ENDPOINT="$OTEL_ENDPOINT" \
+USER_NAME="$USER_NAME" \
+INSTALL_ID="$INSTALL_ID" \
+MACHINE_NAME="$MACHINE_NAME" \
+REQUIREMENTS_ROOT_PATH="$REQUIREMENTS_ROOT_PATH" \
+WIKI_ROOT_PATH="$WIKI_ROOT_PATH" \
+python3 - <<'PYEOF'
+import json
+import os
+import sys
+from urllib.parse import quote
 
-settings_file = os.path.expanduser("${SETTINGS_FILE}")
+settings_file = os.path.expanduser(os.environ["SETTINGS_FILE"])
 os.makedirs(os.path.dirname(settings_file), exist_ok=True)
 
 if os.path.exists(settings_file):
@@ -105,17 +134,28 @@ env = settings.setdefault("env", {})
 env["CLAUDE_CODE_ENABLE_TELEMETRY"] = "1"
 env["OTEL_LOGS_EXPORTER"] = "otlp"
 env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/json"
-env["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = "${OTEL_ENDPOINT}"
+env["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = os.environ["OTEL_ENDPOINT"]
 env["OTEL_LOG_USER_PROMPTS"] = "1"
 env["OTEL_LOG_TOOL_DETAILS"] = "1"
 env["OTEL_LOG_RAW_API_BODIES"] = "1"
 env["OTEL_LOGS_EXPORT_INTERVAL"] = "5000"
-env["OTEL_RESOURCE_ATTRIBUTES"] = (
-    f"sdd.install_id=${INSTALL_ID},"
-    f"user.name=${USER_NAME},"
-    f"machine.name=${MACHINE_NAME},"
-    f"os.name=${OS_NAME},"
-    f"os.version=${OS_VERSION}"
+env.pop("OTEL_LOG_TOOL_CONTENT", None)
+env.pop("OTEL_RESOURCE_ATTRIBUTES", None)
+env.pop("OTEL_EXPORTER_OTLP_LOGS_HEADERS", None)
+
+def header_value(value):
+    # Equivalent safe characters to JavaScript encodeURIComponent().
+    return quote(value, safe="-_.!~*'()")
+
+sdd_headers = [
+    ("sdd-install-id", os.environ["INSTALL_ID"]),
+    ("sdd-user-name", os.environ["USER_NAME"]),
+    ("sdd-machine-name", os.environ["MACHINE_NAME"]),
+    ("sdd-requirements-root-path", os.environ["REQUIREMENTS_ROOT_PATH"]),
+    ("sdd-wiki-root-path", os.environ["WIKI_ROOT_PATH"]),
+]
+env["OTEL_EXPORTER_OTLP_HEADERS"] = ",".join(
+    f"{name}={header_value(value)}" for name, value in sdd_headers if value
 )
 
 with open(settings_file, "w", encoding="utf-8") as f:
@@ -133,6 +173,7 @@ echo ""
 echo "请重启 Claude Code，之后使用 bk-fe 系列 skill 时，"
 echo "操作日志将自动上报到："
 echo "  ${OTEL_ENDPOINT}"
+echo "SDD 身份配置已写入 OTEL_EXPORTER_OTLP_HEADERS。"
 echo ""
 echo "可在以下地址查看你的日志："
 echo "  ${OTEL_SERVER_URL}"

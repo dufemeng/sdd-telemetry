@@ -228,6 +228,8 @@ export OTEL_EXPORTER_OTLP_HEADERS="sdd-install-id=<stable-install-id>,sdd-user-n
 
 `OTEL_RESOURCE_ATTRIBUTES` 仍然支持作为 header 缺失时的 fallback（向后兼容），但**不推荐再用**。
 
+在当前办公网部署的 Claude Code `2.1.150` 实测中，只配置上面的 `OTEL_EXPORTER_OTLP_HEADERS`；不要另设 `OTEL_EXPORTER_OTLP_LOGS_HEADERS`，否则 logs 不入库。
+
 ## SDD 工作流背景
 
 本平台服务于以下完整的 SDD（Skill-Driven Development）链路：
