@@ -824,6 +824,10 @@ function toNullableBoolean(value: unknown): boolean | null {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
+// TODO: reportUserSettings 接口 (POST /api/sdd/user-settings) 前端无任何调用方，
+// 仅 integration test 引用。计划整体删除接口、controller、service 方法、repository
+// 方法和这个本地 createUserKey。删除时一并移除 sdd.contract.ts 里的
+// ReportUserSettingsRequestSchema 和 ReportUserSettingsRequest 类型。
 function createUserKey(input: ReportUserSettingsRequest): string {
   if (input.installId) {
     return sha256(`install:${input.installId}`);

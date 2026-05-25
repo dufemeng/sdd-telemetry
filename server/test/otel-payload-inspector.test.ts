@@ -40,7 +40,7 @@ function payload(input: {
 }
 
 describe('OTLP ingest user identity', () => {
-  it('keeps configured install identity ahead of Claude Code user.id', () => {
+  it('prefers Claude Code user.id over configured install identity', () => {
     const summary = summarizeOtlpPayload(
       payload({
         installId: 'configured-install',
@@ -50,9 +50,10 @@ describe('OTLP ingest user identity', () => {
       }),
     );
 
+    expect(summary.userHints.installId).toBe('configured-install');
     expect(summary.userHints.otelUserId).toBe('claude-user');
     expect(createUserKey(summary.userHints, summary.payloadHash)).toBe(
-      sha256('install:configured-install'),
+      sha256('otel-user:claude-user'),
     );
   });
 
@@ -78,6 +79,30 @@ describe('OTLP ingest user identity', () => {
     );
     expect(createUserKey(second.userHints, second.payloadHash)).toBe(
       sha256('otel-user:stable-claude-user'),
+    );
+  });
+
+  // Claude Code 同一进程内会发两种 payload：A 路无 install_id，B 路有 install_id。
+  // 这里断言两路必须落到同一 user_key（按 user.id 收敛），不能因为 B 路带 install_id 就分裂出新用户。
+  it('merges payloads from same Claude Code install regardless of whether resource carries install_id', () => {
+    const withInstall = summarizeOtlpPayload(
+      payload({
+        installId: 'sdd-yjr8zq',
+        otelUserId: 'shared-claude-user',
+        body: 'channel B event',
+        timeUnixNano: '1779689210646000000',
+      }),
+    );
+    const withoutInstall = summarizeOtlpPayload(
+      payload({
+        otelUserId: 'shared-claude-user',
+        body: 'channel A event',
+        timeUnixNano: '1779689210647000000',
+      }),
+    );
+
+    expect(createUserKey(withInstall.userHints, withInstall.payloadHash)).toBe(
+      createUserKey(withoutInstall.userHints, withoutInstall.payloadHash),
     );
   });
 

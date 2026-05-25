@@ -86,16 +86,16 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
 }
 
 export function createUserKey(hints: OtlpUserHints, payloadHash: string): string {
+  if (hints.otelUserId) {
+    return sha256(`otel-user:${hints.otelUserId}`);
+  }
+
   if (hints.installId) {
     return sha256(`install:${hints.installId}`);
   }
 
   if (hints.machineId) {
     return sha256(`machine:${hints.machineId}`);
-  }
-
-  if (hints.otelUserId) {
-    return sha256(`otel-user:${hints.otelUserId}`);
   }
 
   return sha256(`unknown:${payloadHash}`);
