@@ -21,6 +21,7 @@
     "test": "turbo test",
     "test:api": "pnpm --filter @sdd-telemetry/server test:api",
     "docker:package": "scripts/package-docker.sh",
+    "docker:bundle": "scripts/bundle-docker-release.sh",
     "docker:release": "scripts/upload-release.sh",
     "docker:publish": "scripts/publish-docker-release.sh",
     "docker:relay": "scripts/relay-release-to-server.sh",

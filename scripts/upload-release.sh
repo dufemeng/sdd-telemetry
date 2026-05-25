@@ -39,6 +39,7 @@ fi
 
 ARTIFACT="${ARTIFACT:-$ROOT_DIR/dist/docker/sdd-telemetry-images-${VERSION}.tar.gz}"
 CHECKSUM="${CHECKSUM:-${ARTIFACT}.sha256}"
+BUNDLE="${BUNDLE:-$ROOT_DIR/dist/docker/sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
 
 [[ -f "$ARTIFACT" ]] || die "镜像包不存在：$ARTIFACT。请先运行 ./scripts/package-docker.sh。"
 if [[ ! -f "$CHECKSUM" ]]; then
@@ -46,12 +47,12 @@ if [[ ! -f "$CHECKSUM" ]]; then
   printf '%s  %s\n' "$checksum_value" "$(basename "$ARTIFACT")" > "$CHECKSUM"
 fi
 
-assets=(
-  "$ARTIFACT"
-  "$CHECKSUM"
-  "$ROOT_DIR/compose.prod.yml"
-  "$ROOT_DIR/deploy/deploy-docker.sh"
-)
+if [[ ! -f "$BUNDLE" ]]; then
+  VERSION="$VERSION" ARTIFACT="$ARTIFACT" CHECKSUM="$CHECKSUM" BUNDLE="$BUNDLE" \
+    "$ROOT_DIR/scripts/bundle-docker-release.sh"
+fi
+
+assets=("$BUNDLE")
 
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   printf 'Uploading assets to existing release %s in %s\n' "$TAG" "$REPO"
@@ -68,4 +69,5 @@ printf '\nDone.\n'
 printf 'REPO=%s\n' "$REPO"
 printf 'VERSION=%s\n' "$VERSION"
 printf 'TAG=%s\n' "$TAG"
-printf 'DOWNLOAD_URL=https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$TAG" "$(basename "$ARTIFACT")"
+printf 'BUNDLE=%s\n' "$BUNDLE"
+printf 'DOWNLOAD_URL=https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$TAG" "$(basename "$BUNDLE")"

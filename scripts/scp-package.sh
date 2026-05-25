@@ -22,20 +22,22 @@ SERVER="${SERVER:-}"
 REMOTE_DIR="${REMOTE_DIR:-project/sdd-telemetry-deploy}"
 ARTIFACT="${ARTIFACT:-$ROOT_DIR/dist/docker/sdd-telemetry-images-${VERSION}.tar.gz}"
 CHECKSUM="${CHECKSUM:-${ARTIFACT}.sha256}"
+BUNDLE="${BUNDLE:-$ROOT_DIR/dist/docker/sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
 
 [[ -n "$SERVER" ]] || die "请设置 SERVER=user@host"
 [[ -f "$ARTIFACT" ]] || die "镜像包不存在：$ARTIFACT"
 [[ -f "$CHECKSUM" ]] || die "校验文件不存在：$CHECKSUM"
+if [[ ! -f "$BUNDLE" ]]; then
+  VERSION="$VERSION" ARTIFACT="$ARTIFACT" CHECKSUM="$CHECKSUM" BUNDLE="$BUNDLE" \
+    "$ROOT_DIR/scripts/bundle-docker-release.sh"
+fi
 
 ssh "$SERVER" "mkdir -p '$REMOTE_DIR'"
-scp \
-  "$ARTIFACT" \
-  "$CHECKSUM" \
-  "$ROOT_DIR/compose.prod.yml" \
-  "$ROOT_DIR/deploy/deploy-docker.sh" \
-  "$SERVER:$REMOTE_DIR/"
+scp "$BUNDLE" "$SERVER:$REMOTE_DIR/"
 
 printf '\nDone.\n'
 printf 'SERVER=%s\n' "$SERVER"
 printf 'REMOTE_DIR=%s\n' "$REMOTE_DIR"
-printf 'NEXT=cd %s && VERSION=%s ARCHIVE=%s ./deploy-docker.sh\n' "$REMOTE_DIR" "$VERSION" "$(basename "$ARTIFACT")"
+printf 'BUNDLE=%s\n' "$BUNDLE"
+printf 'NEXT=cd %s && tar -xzf %s && chmod +x deploy-docker.sh && VERSION=%s ARCHIVE=%s ./deploy-docker.sh\n' \
+  "$REMOTE_DIR" "$(basename "$BUNDLE")" "$VERSION" "$(basename "$ARTIFACT")"

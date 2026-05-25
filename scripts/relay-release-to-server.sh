@@ -50,31 +50,11 @@ download_file() {
   curl -fL --retry 3 --connect-timeout 10 --max-time 1800 "${args[@]}" -o "$output" "$url"
 }
 
-verify_checksum() {
-  local archive="$1"
-  local checksum="$2"
-  local archive_dir checksum_name
-
-  archive_dir="$(cd "$(dirname "$archive")" && pwd)"
-  checksum_name="$(basename "$checksum")"
-
-  if command -v sha256sum >/dev/null 2>&1; then
-    (cd "$archive_dir" && sha256sum -c "$checksum_name")
-    return
-  fi
-
-  if command -v shasum >/dev/null 2>&1; then
-    (cd "$archive_dir" && shasum -a 256 -c "$checksum_name")
-    return
-  fi
-
-  die "缺少 sha256sum/shasum，无法在转发前校验镜像包。"
-}
-
 require_cmd curl
 require_cmd git
 require_cmd scp
 require_cmd ssh
+require_cmd tar
 
 VERSION="${VERSION:-${1:-}}"
 [[ -n "$VERSION" ]] || die "请设置 VERSION=<版本号>，例如 VERSION=341d59e pnpm docker:relay。"
@@ -89,29 +69,22 @@ REMOTE_DIR="${REMOTE_DIR:-project/sdd-telemetry-deploy}"
 TAG="${TAG:-deploy-${VERSION}}"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$ROOT_DIR/dist/docker/relay-${VERSION}}"
-ASSET_NAME="${ASSET_NAME:-sdd-telemetry-images-${VERSION}.tar.gz}"
-ARTIFACT="$DOWNLOAD_DIR/$ASSET_NAME"
-CHECKSUM="${ARTIFACT}.sha256"
-COMPOSE_FILE="$DOWNLOAD_DIR/compose.prod.yml"
-DEPLOY_SCRIPT="$DOWNLOAD_DIR/deploy-docker.sh"
+BUNDLE_NAME="${BUNDLE_NAME:-sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
+BUNDLE="$DOWNLOAD_DIR/$BUNDLE_NAME"
 
 mkdir -p "$DOWNLOAD_DIR"
 
 printf 'Downloading release %s from %s\n' "$TAG" "$REPO"
-download_file "$RELEASE_BASE_URL/$ASSET_NAME" "$ARTIFACT"
-download_file "$RELEASE_BASE_URL/${ASSET_NAME}.sha256" "$CHECKSUM"
-download_file "$RELEASE_BASE_URL/compose.prod.yml" "$COMPOSE_FILE"
-download_file "$RELEASE_BASE_URL/deploy-docker.sh" "$DEPLOY_SCRIPT"
-
-verify_checksum "$ARTIFACT" "$CHECKSUM"
+download_file "$RELEASE_BASE_URL/$BUNDLE_NAME" "$BUNDLE"
+tar -tzf "$BUNDLE" >/dev/null
 
 printf 'Uploading release assets to %s:%s\n' "$SERVER" "$REMOTE_DIR"
 ssh "$SERVER" "mkdir -p '$REMOTE_DIR'"
-scp "$ARTIFACT" "$CHECKSUM" "$COMPOSE_FILE" "$DEPLOY_SCRIPT" "$SERVER:$REMOTE_DIR/"
-ssh "$SERVER" "chmod +x '$REMOTE_DIR/deploy-docker.sh'"
+scp "$BUNDLE" "$SERVER:$REMOTE_DIR/"
 
 printf '\nRelease assets relayed.\n'
 printf 'SERVER=%s\n' "$SERVER"
 printf 'REMOTE_DIR=%s\n' "$REMOTE_DIR"
-printf 'NEXT=ssh %s \"cd %s && VERSION=%s ARCHIVE=%s ./deploy-docker.sh\"\n' \
-  "$SERVER" "$REMOTE_DIR" "$VERSION" "$ASSET_NAME"
+printf 'BUNDLE=%s\n' "$BUNDLE"
+printf 'NEXT=ssh %s \"cd %s && tar -xzf %s && chmod +x deploy-docker.sh && VERSION=%s ARCHIVE=sdd-telemetry-images-%s.tar.gz ./deploy-docker.sh\"\n' \
+  "$SERVER" "$REMOTE_DIR" "$BUNDLE_NAME" "$VERSION" "$VERSION"

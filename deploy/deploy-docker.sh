@@ -87,6 +87,38 @@ infer_version_from_archive() {
   fi
 }
 
+infer_version_from_bundle() {
+  local bundle_name="$1"
+
+  if [[ "$bundle_name" =~ ^sdd-telemetry-deploy-bundle-(.+)\.tar\.gz$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  fi
+}
+
+extract_bundle() {
+  local bundle="$1"
+  local extract_dir
+
+  if [[ -z "$VERSION" ]]; then
+    VERSION="$(infer_version_from_bundle "$(basename "$bundle")")"
+  fi
+  [[ -n "$VERSION" ]] || die "无法从 bundle 识别 VERSION，请显式设置 VERSION=<版本号>。"
+
+  extract_dir="$ARTIFACT_DIR/bundle-${VERSION}"
+  mkdir -p "$extract_dir"
+  tar -xzf "$bundle" -C "$extract_dir"
+
+  ARCHIVE="$extract_dir/sdd-telemetry-images-${VERSION}.tar.gz"
+  CHECKSUM="${ARCHIVE}.sha256"
+  [[ -f "$ARCHIVE" ]] || die "bundle 中缺少镜像包：$(basename "$ARCHIVE")"
+  [[ -f "$CHECKSUM" ]] || die "bundle 中缺少镜像校验文件：$(basename "$CHECKSUM")"
+
+  if [[ "$DOWNLOAD_COMPOSE" == "auto" || "$DOWNLOAD_COMPOSE" == "1" ]]; then
+    [[ -f "$extract_dir/compose.prod.yml" ]] || die "bundle 中缺少 compose.prod.yml"
+    cp "$extract_dir/compose.prod.yml" "$COMPOSE_FILE"
+  fi
+}
+
 set_env_value() {
   local key="$1"
   local value="$2"
@@ -115,6 +147,7 @@ require_cmd awk
 require_cmd curl
 require_cmd docker
 require_cmd gzip
+require_cmd tar
 
 if ! docker compose version >/dev/null 2>&1; then
   die "当前 Docker 不支持 docker compose v2。"
@@ -123,8 +156,13 @@ fi
 VERSION="${VERSION:-}"
 ARCHIVE="${ARCHIVE:-}"
 CHECKSUM="${CHECKSUM:-}"
+BUNDLE="${BUNDLE:-}"
 
-if [[ -n "$ARCHIVE" ]]; then
+if [[ -n "$BUNDLE" ]]; then
+  [[ -f "$BUNDLE" ]] || die "部署 bundle 不存在：$BUNDLE"
+  BUNDLE="$(cd "$(dirname "$BUNDLE")" && pwd)/$(basename "$BUNDLE")"
+  extract_bundle "$BUNDLE"
+elif [[ -n "$ARCHIVE" ]]; then
   [[ -f "$ARCHIVE" ]] || die "镜像包不存在：$ARCHIVE"
   ARCHIVE="$(cd "$(dirname "$ARCHIVE")" && pwd)/$(basename "$ARCHIVE")"
   CHECKSUM="${CHECKSUM:-${ARCHIVE}.sha256}"
@@ -138,26 +176,35 @@ else
   [[ -n "$VERSION" ]] || die "请设置 VERSION=<git短hash>。"
 
   TAG="${TAG:-deploy-${VERSION}}"
+  BUNDLE_NAME="${BUNDLE_NAME:-sdd-telemetry-deploy-bundle-${VERSION}.tar.gz}"
   ASSET_NAME="${ASSET_NAME:-sdd-telemetry-images-${VERSION}.tar.gz}"
   RELEASE_BASE_URL="${RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download/${TAG}}"
 
   mkdir -p "$ARTIFACT_DIR"
-  ARCHIVE="$ARTIFACT_DIR/$ASSET_NAME"
-  CHECKSUM="${CHECKSUM:-${ARCHIVE}.sha256}"
+  BUNDLE="$ARTIFACT_DIR/$BUNDLE_NAME"
 
-  printf 'Downloading %s\n' "$RELEASE_BASE_URL/$ASSET_NAME"
-  download_file "$RELEASE_BASE_URL/$ASSET_NAME" "$ARCHIVE"
-
-  if download_file "$RELEASE_BASE_URL/${ASSET_NAME}.sha256" "$CHECKSUM"; then
-    printf 'Downloaded checksum %s\n' "$CHECKSUM"
+  printf 'Downloading %s\n' "$RELEASE_BASE_URL/$BUNDLE_NAME"
+  if download_file "$RELEASE_BASE_URL/$BUNDLE_NAME" "$BUNDLE"; then
+    extract_bundle "$BUNDLE"
   else
-    rm -f "$CHECKSUM"
-    printf 'WARNING: 未下载到 checksum，继续部署。\n' >&2
-  fi
+    printf 'Bundle unavailable; falling back to legacy release assets.\n'
+    ARCHIVE="$ARTIFACT_DIR/$ASSET_NAME"
+    CHECKSUM="${CHECKSUM:-${ARCHIVE}.sha256}"
 
-  if [[ "$DOWNLOAD_COMPOSE" == "auto" || "$DOWNLOAD_COMPOSE" == "1" ]]; then
-    printf 'Downloading compose.prod.yml\n'
-    download_file "$RELEASE_BASE_URL/compose.prod.yml" "$COMPOSE_FILE"
+    printf 'Downloading %s\n' "$RELEASE_BASE_URL/$ASSET_NAME"
+    download_file "$RELEASE_BASE_URL/$ASSET_NAME" "$ARCHIVE"
+
+    if download_file "$RELEASE_BASE_URL/${ASSET_NAME}.sha256" "$CHECKSUM"; then
+      printf 'Downloaded checksum %s\n' "$CHECKSUM"
+    else
+      rm -f "$CHECKSUM"
+      printf 'WARNING: 未下载到 checksum，继续部署。\n' >&2
+    fi
+
+    if [[ "$DOWNLOAD_COMPOSE" == "auto" || "$DOWNLOAD_COMPOSE" == "1" ]]; then
+      printf 'Downloading compose.prod.yml\n'
+      download_file "$RELEASE_BASE_URL/compose.prod.yml" "$COMPOSE_FILE"
+    fi
   fi
 fi
 

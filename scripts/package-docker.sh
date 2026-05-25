@@ -94,3 +94,6 @@ printf 'APP_IMAGE=%s\n' "$APP_IMAGE"
 printf 'WEB_IMAGE=%s\n' "$WEB_IMAGE"
 printf 'ARTIFACT=%s\n' "$ARTIFACT"
 printf 'CHECKSUM=%s\n' "$CHECKSUM"
+
+VERSION="$VERSION" OUTPUT_DIR="$OUTPUT_DIR" ARTIFACT="$ARTIFACT" CHECKSUM="$CHECKSUM" \
+  "$ROOT_DIR/scripts/bundle-docker-release.sh"

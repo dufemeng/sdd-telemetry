@@ -48,12 +48,15 @@ pnpm docker:package
 # 等价：./scripts/package-docker.sh
 ```
 
-脚本默认使用当前 git 短 hash 作为版本号，产物在 `dist/docker/`：
+脚本默认使用当前 git 短 hash 作为版本号，产物在 `dist/docker/`。对外传输优先使用单文件 deployment bundle：
 
 ```text
 dist/docker/sdd-telemetry-images-<VERSION>.tar.gz
 dist/docker/sdd-telemetry-images-<VERSION>.tar.gz.sha256
+dist/docker/sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
 ```
+
+bundle 内包含镜像包、镜像 checksum、`compose.prod.yml` 和 `deploy-docker.sh` 四个文件，适合 Release 下载或 IM / scp 中转。
 
 如果工作区有未提交改动，脚本会拒绝复用当前 commit hash；临时测试可显式允许：
 
@@ -63,7 +66,7 @@ ALLOW_DIRTY=1 pnpm docker:package
 
 ### 三台机器发布流程
 
-有 Docker 的 Mac 同时完成打包和 GitHub Release 上传：
+有 Docker 的 Mac 同时完成打包、生成单文件 bundle 和 GitHub Release 上传：
 
 ```bash
 gh auth login # 首次执行
@@ -72,7 +75,7 @@ REPO=<owner>/<repo> pnpm docker:publish
 
 `docker:publish` 使用当前 commit 短 hash 作为 `VERSION`，输出的版本号用于后续两步。它要求已跟踪文件没有未提交改动，未跟踪的本地草稿不参与发布判断。
 
-公司电脑不需要 Docker。先在本机配置一次转发目标，配置文件只保存在本机，不提交到仓库：
+GitHub Release 中只需要下载 `sdd-telemetry-deploy-bundle-<VERSION>.tar.gz`。如果公司电脑可以通过命令行访问 Release，可先在本机配置一次转发目标；配置文件只保存在本机，不提交到仓库：
 
 ```bash
 mkdir -p ~/.config/sdd-telemetry
@@ -83,7 +86,7 @@ REMOTE_DIR=project/sdd-telemetry-deploy
 EOF
 ```
 
-之后按版本一键从 GitHub Release 下载、校验并上传服务器：
+之后按版本一键从 GitHub Release 下载 bundle 并上传服务器：
 
 ```bash
 VERSION=<VERSION> pnpm docker:relay
@@ -91,16 +94,31 @@ VERSION=<VERSION> pnpm docker:relay
 
 私有 Release 可在运行前设置 `GITHUB_TOKEN`；下载需走代理时可设置 `HTTPS_PROXY` / `ALL_PROXY`，或设置 `RELEASE_BASE_URL` 使用内部制品代理。
 
-服务器执行转发脚本打印出的命令即可完成部署，例如：
+如果公司电脑不能通过命令行访问 Release，在 Mac 上将以下单文件通过 IM 发送到公司电脑：
+
+```bash
+dist/docker/sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
+```
+
+公司电脑无需 Docker 或仓库，直接上传该文件：
+
+```bash
+scp ~/Downloads/sdd-telemetry-deploy-bundle-<VERSION>.tar.gz \
+  <ssh-user>@<server-host>:~/project/sdd-telemetry-deploy/
+```
+
+服务器解压 bundle 并执行其中的部署脚本：
 
 ```bash
 cd ~/project/sdd-telemetry-deploy
+tar -xzf sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
+chmod +x deploy-docker.sh
 VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
 ```
 
 ### GitHub Release 推荐流程
 
-上传 Release 需要本机安装并登录 `gh`：
+上传 Release 需要本机安装并登录 `gh`。当前 Release asset 为单个 deployment bundle：
 
 ```bash
 REPO=<owner>/<repo> pnpm docker:release
@@ -116,7 +134,7 @@ git pull
 REPO=<owner>/<repo> VERSION=<VERSION> ./deploy/deploy-docker.sh
 ```
 
-`REPO` 指向存放 Release asset 的仓库，可以是当前代码仓库，也可以是单独的部署仓库。脚本会下载 Release 里的镜像包和 `compose.prod.yml`，执行 `docker load`，更新 `.env` 中的镜像版本和端口，然后启动 `mysql/server/worker/web`。默认 Web 端口为 `18080`，API 端口为 `4318`；覆盖方式：
+`REPO` 指向存放 Release asset 的仓库，可以是当前代码仓库，也可以是单独的部署仓库。脚本优先下载 Release 中的 bundle 并解包；同时兼容历史 Release 的散文件 asset。随后执行 `docker load`，更新 `.env` 中的镜像版本和端口，然后启动 `mysql/server/worker/web`。默认 Web 端口为 `18080`，API 端口为 `4318`；覆盖方式：
 
 ```bash
 WEB_PUBLISHED_PORT=18081 API_PUBLISHED_PORT=4319 REPO=<owner>/<repo> VERSION=<VERSION> ./deploy/deploy-docker.sh
@@ -126,7 +144,7 @@ WEB_PUBLISHED_PORT=18081 API_PUBLISHED_PORT=4319 REPO=<owner>/<repo> VERSION=<VE
 
 ### scp 兜底流程
 
-如果 Release asset 访问不通，仍可传 tar：
+如果 Release asset 访问不通，仍可传单文件 bundle：
 
 ```bash
 SERVER=<user>@<server> VERSION=<VERSION> ./scripts/scp-package.sh
@@ -136,6 +154,7 @@ SERVER=<user>@<server> VERSION=<VERSION> ./scripts/scp-package.sh
 
 ```bash
 cd ~/project/sdd-telemetry-deploy
+tar -xzf sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
 VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
 ```
 
@@ -149,7 +168,8 @@ pnpm restart:server                      # 强制重启 server（改 .env 或 ts
 pnpm typecheck                           # 全量类型检查
 pnpm build                               # 全量构建
 pnpm docker:package                      # 构建 linux/amd64 离线镜像包
-pnpm docker:release                      # 上传离线镜像包到 GitHub Release
+pnpm docker:bundle                       # 从已有镜像包生成单文件部署 bundle
+pnpm docker:release                      # 上传单文件部署 bundle 到 GitHub Release
 pnpm docker:publish                      # 有 Docker 的机器一键打包并发布 Release
 pnpm docker:relay                        # 无 Docker 的机器下载 Release 并转传服务器
 pnpm db:migrate                          # 跑迁移
