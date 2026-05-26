@@ -11,6 +11,7 @@ import {
   SddInteractionItemSchema,
   SddInteractionToolCallListResponseSchema,
   SddListQuerySchema,
+  SddWorkItemListQuerySchema,
   SddOverviewQuerySchema,
   SddOverviewSchema,
   SddSemanticSchema,
@@ -171,7 +172,7 @@ export class SddController {
 
   @Get('/work-items')
   async workItems() {
-    const query = parseWithSchema(SddListQuerySchema, this.ctx.query);
+    const query = parseWithSchema(SddWorkItemListQuerySchema, this.ctx.query);
     const data: SddWorkItem[] = await this.sddQueryService.listWorkItems(query);
     return ok(parseWithSchema(SddWorkItemSchema.array(), data));
   }

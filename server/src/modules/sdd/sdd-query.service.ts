@@ -11,6 +11,7 @@ import type {
   SddInteractionItem,
   SddInteractionToolCallListResponse,
   SddListQuery,
+  SddWorkItemListQuery,
   SddOverview,
   SddOverviewQuery,
   SddSemantic,
@@ -556,16 +557,8 @@ export class SddQueryService {
     }));
   }
 
-  async listWorkItems(query: SddListQuery): Promise<SddWorkItem[]> {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-
-    if (query.cursor) {
-      clauses.push('id < ?');
-      params.push(query.cursor);
-    }
-
-    const rows = await this.sddQueryRepository.listWorkItems(clauses, params, query.limit);
+  async listWorkItems(query: SddWorkItemListQuery): Promise<SddWorkItem[]> {
+    const rows = await this.sddQueryRepository.listWorkItems([], [], query.limit);
 
     return rows.map((row) => this.toWorkItem(row));
   }

@@ -75,6 +75,10 @@ export const SddListQuerySchema = PaginationQuerySchema.merge(TimeRangeQuerySche
   status: z.string().optional(),
 });
 
+export const SddWorkItemListQuerySchema = TimeRangeQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(1000).default(500),
+});
+
 export const SddUsageSummaryQuerySchema = TimeRangeQuerySchema.extend({
   semanticCode: z.string().optional(),
   status: z.string().optional(),
@@ -331,6 +335,7 @@ export type SddOverview = z.infer<typeof SddOverviewSchema>;
 export type SddFunnelQuery = z.infer<typeof SddFunnelQuerySchema>;
 export type SddFunnel = z.infer<typeof SddFunnelSchema>;
 export type SddListQuery = z.infer<typeof SddListQuerySchema>;
+export type SddWorkItemListQuery = z.infer<typeof SddWorkItemListQuerySchema>;
 export type SddUsageSummaryQuery = z.infer<typeof SddUsageSummaryQuerySchema>;
 export type SddUsageSummaryItem = z.infer<typeof SddUsageSummaryItemSchema>;
 export type SddUsageSummaryResponse = z.infer<typeof SddUsageSummaryResponseSchema>;
