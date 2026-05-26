@@ -703,15 +703,10 @@ export class SddQueryService {
   }
 
   private toWorkItem(row: WorkItemRow): SddWorkItem {
-    let coverageStages: string[] = [];
-    try {
-      const parsed: unknown = JSON.parse(row.coverage_stages_json ?? '[]');
-      coverageStages = Array.isArray(parsed)
-        ? parsed.filter((s): s is string => typeof s === 'string')
-        : [];
-    } catch {
-      coverageStages = [];
-    }
+    const raw = row.coverage_stages_json ?? '';
+    const coverageStages: string[] = raw
+      ? raw.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
     return {
       id: toStringId(row.id),
       workItemKey: row.work_item_key,

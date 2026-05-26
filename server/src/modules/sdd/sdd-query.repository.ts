@@ -594,12 +594,12 @@ export class SddQueryRepository {
          COALESCE(a.artifact_count, 0)     AS artifact_count,
          COALESCE(u.usage_count, 0)        AS usage_count,
          COALESCE(e.error_count, 0)        AS error_count,
-         COALESCE(a.coverage_stages, '[]') AS coverage_stages_json
+         COALESCE(a.coverage_stages, '')   AS coverage_stages_json
        FROM sdd_work_items wi
        LEFT JOIN (
          SELECT work_item_id,
-                COUNT(*)                              AS artifact_count,
-                JSON_ARRAYAGG(DISTINCT artifact_type) AS coverage_stages
+                COUNT(*)                                  AS artifact_count,
+                GROUP_CONCAT(DISTINCT artifact_type)      AS coverage_stages
          FROM sdd_work_item_artifacts
          GROUP BY work_item_id
        ) a ON a.work_item_id = wi.id
