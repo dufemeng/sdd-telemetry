@@ -12,7 +12,7 @@ import {
   type RowInspectorField,
   type RowInspectorTextBlock,
 } from '@/components/ui/RowInspectorDrawer';
-import { formatInteger, formatBytes, truncate } from '@/lib/format';
+import { formatInteger, formatBytes, truncate, formatDateTime } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useCursorPagination } from '@/lib/useCursorPagination';
 import { FilterStrip } from './FilterStrip';
@@ -180,7 +180,13 @@ export default function DatabasePage() {
                     headers={cols.map((c) => c.columnName)}
                     rows={data.map((row, ri) => ({
                       key: ri,
-                      cells: cols.map((c) => truncate(row[c.columnName], 160)),
+                      cells: cols.map((c) => {
+                        const val = row[c.columnName];
+                        if (c.dataType.toLowerCase().startsWith('datetime') && val != null) {
+                          return formatDateTime(String(val));
+                        }
+                        return truncate(val, 160);
+                      }),
                     }))}
                     selectedRowKey={selectedRowKey}
                     onRowSelect={(_, ri) => {
@@ -276,6 +282,11 @@ function str(row: Record<string, unknown>, key: string): string | null {
   return row[key] != null ? String(row[key]) : null;
 }
 
+function fmtDt(row: Record<string, unknown>, key: string): string | null {
+  const s = str(row, key);
+  return s == null ? null : formatDateTime(s);
+}
+
 function buildOtelRawPayloadProps(row: Record<string, unknown>): DrawerProps {
   return {
     title: str(row, 'batch_id') ?? '—',
@@ -287,9 +298,9 @@ function buildOtelRawPayloadProps(row: Record<string, unknown>): DrawerProps {
       { label: 'Content Type', value: str(row, 'content_type') ?? '—' },
     ],
     fields: [
-      { label: 'Expires At',  value: str(row, 'expires_at')    },
-      { label: 'Created At',  value: str(row, 'gmt_create')    },
-      { label: 'Modified At', value: str(row, 'gmt_modified')  },
+      { label: 'Expires At',  value: fmtDt(row, 'expires_at')   },
+      { label: 'Created At',  value: fmtDt(row, 'gmt_create')   },
+      { label: 'Modified At', value: fmtDt(row, 'gmt_modified') },
     ],
     textBlocks: [
       { title: 'payload_json', content: prettyJson(str(row, 'payload_json')), copyValue: str(row, 'payload_json') },
@@ -316,7 +327,7 @@ function buildOtelLogEventProps(row: Record<string, unknown>): DrawerProps {
     overview: [
       { label: 'Event Name', value: str(row, 'event_name') },
       { label: 'Severity',   value: str(row, 'severity_text') ?? (str(row, 'severity_number') ? `#${str(row, 'severity_number')}` : '—') },
-      { label: 'Event Time', value: str(row, 'event_time') },
+      { label: 'Event Time', value: fmtDt(row, 'event_time') },
       { label: 'Service',    value: str(row, 'service_name') ?? '—' },
     ],
     fields: [
@@ -329,8 +340,8 @@ function buildOtelLogEventProps(row: Record<string, unknown>): DrawerProps {
       { label: 'Span ID',          value: str(row, 'span_id')          ?? '—', mono: true },
       { label: 'Service Version',  value: str(row, 'service_version')  ?? '—' },
       { label: 'Display Name',     value: str(row, 'display_name')     ?? '—' },
-      { label: 'Observed At',      value: str(row, 'observed_at')      ?? '—' },
-      { label: 'Expires At',       value: str(row, 'expires_at')            },
+      { label: 'Observed At',      value: fmtDt(row, 'observed_at') },
+      { label: 'Expires At',       value: fmtDt(row, 'expires_at')  },
     ],
     textBlocks,
   };
@@ -343,8 +354,8 @@ function buildSddInteractionTextProps(row: Record<string, unknown>): DrawerProps
     overview: [
       { label: 'ID',             value: str(row, 'id'),             mono: true },
       { label: 'Interaction ID', value: str(row, 'interaction_id'), mono: true },
-      { label: 'Expires At',     value: str(row, 'expires_at')                 },
-      { label: 'Created At',     value: str(row, 'gmt_create')                 },
+      { label: 'Expires At',     value: fmtDt(row, 'expires_at') },
+      { label: 'Created At',     value: fmtDt(row, 'gmt_create') },
     ],
     textBlocks: [
       { title: 'prompt_text',   content: str(row, 'prompt_text'),                            copyValue: str(row, 'prompt_text')   },
@@ -362,7 +373,7 @@ function buildSddErrorProps(row: Record<string, unknown>): DrawerProps {
       { label: 'Error Type', value: str(row, 'error_type')                                           },
       { label: 'Severity',   value: str(row, 'severity')                                             },
       { label: 'Retryable',  value: str(row, 'retryable') === '1' ? 'Yes' : 'No'                     },
-      { label: 'Event Time', value: str(row, 'event_time') ?? '—'                                    },
+      { label: 'Event Time', value: fmtDt(row, 'event_time')                                          },
     ],
     fields: [
       { label: 'ID',           value: str(row, 'id'),             mono: true                         },
@@ -375,7 +386,7 @@ function buildSddErrorProps(row: Record<string, unknown>): DrawerProps {
       { label: 'Work Item',    value: str(row, 'work_item_id') ?? '—', mono: true                   },
       { label: 'Msg Hash',     value: str(row, 'error_message_hash') ?? '—', mono: true             },
       { label: 'Stack Hash',   value: str(row, 'stack_hash')   ?? '—', mono: true                   },
-      { label: 'Created At',   value: str(row, 'gmt_create')                                         },
+      { label: 'Created At',   value: fmtDt(row, 'gmt_create')                                        },
     ],
     textBlocks: [
       { title: 'error_message', content: str(row, 'error_message'), copyValue: str(row, 'error_message') },
