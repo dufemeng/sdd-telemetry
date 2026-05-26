@@ -17,7 +17,7 @@ import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { IngestHealthService } from './ingest-health.service';
 import { IngestReceiveService } from './ingest-receive.service';
-import { extractHeaderHints } from './otel-payload-inspector';
+import { extractHeaderHints, extractQueryHints } from './otel-payload-inspector';
 
 @Controller('/api/ingest')
 export class IngestController {
@@ -32,13 +32,12 @@ export class IngestController {
 
   @Post('/otlp-logs')
   async receiveLogs() {
-    // TODO(diag): 临时诊断 sdd-* header 是否真的到达服务端，定位完删掉
-    this.ctx.logger.info('[otlp-header-diag] headers=%j', this.ctx.headers);
     const payload = parseWithSchema(OtlpLogsPayloadSchema, this.ctx.request.body);
     const data: IngestLogsResponse = await this.ingestReceiveService.receiveLogs({
       payload,
       contentType: this.ctx.get('content-type') ?? null,
       headerHints: extractHeaderHints(this.ctx.headers),
+      queryHints: extractQueryHints(this.ctx.query),
     });
     return ok(parseWithSchema(IngestLogsResponseSchema, data));
   }

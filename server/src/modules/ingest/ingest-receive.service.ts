@@ -20,6 +20,7 @@ export interface ReceiveLogsInput {
   payload: unknown;
   contentType: string | null;
   headerHints?: Partial<OtlpUserHints>;
+  queryHints?: Partial<OtlpUserHints>;
 }
 
 @Provide('ingestReceiveService')
@@ -50,9 +51,12 @@ export class IngestReceiveService {
       );
     }
 
-    const mergedHints = input.headerHints
+    const withHeader = input.headerHints
       ? mergeUserHints(summary.userHints, input.headerHints)
       : summary.userHints;
+    const mergedHints = input.queryHints
+      ? mergeUserHints(withHeader, input.queryHints)
+      : withHeader;
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const unitOfWork = new TypeOrmUnitOfWork(dataSource);
     const userKey = createUserKey(mergedHints, summary.payloadHash);
