@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Clipboard, Copy, X } from 'lucide-react';
+import { Check, ChevronDown, Clipboard, Copy, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 export type RowInspectorSize = 'md' | 'lg' | 'xl';
@@ -181,6 +181,8 @@ function DrawerHeader({
   rawText: string;
   onClose: () => void;
 }) {
+  const [copied, copy] = useCopied();
+
   return (
     <div
       className="flex items-center justify-between gap-3 p-4 shrink-0"
@@ -212,8 +214,11 @@ function DrawerHeader({
           <ActionButton key={action.label} action={action} />
         ))}
         {rawText ? (
-          <IconButton title="复制整行 JSON" onClick={() => void copyText(rawText)}>
-            <Copy size={16} />
+          <IconButton
+            title={copied ? '已复制！' : '复制整行 JSON'}
+            onClick={() => copy(rawText)}
+          >
+            {copied ? <Check size={16} /> : <Copy size={16} />}
           </IconButton>
         ) : null}
         <IconButton title="关闭" onClick={onClose}>
@@ -282,6 +287,8 @@ function FieldGrid({
 }
 
 function FieldItem({ field, compact }: { field: RowInspectorField; compact: boolean }) {
+  const [copied, copy] = useCopied();
+
   return (
     <div className="min-w-0">
       <div className="mb-1 flex items-center gap-1.5">
@@ -292,10 +299,10 @@ function FieldItem({ field, compact }: { field: RowInspectorField; compact: bool
           <button
             type="button"
             className="grid h-5 w-5 place-items-center rounded-[3px] text-[var(--color-muted)] hover:bg-[#222] hover:text-[var(--color-primary)]"
-            onClick={() => void copyText(field.copyValue ?? '')}
-            title={`复制 ${field.label}`}
+            onClick={() => copy(field.copyValue ?? '')}
+            title={copied ? '已复制！' : `复制 ${field.label}`}
           >
-            <Clipboard size={12} />
+            {copied ? <Check size={12} /> : <Clipboard size={12} />}
           </button>
         ) : null}
       </div>
@@ -315,6 +322,7 @@ function FieldItem({ field, compact }: { field: RowInspectorField; compact: bool
 
 function TextBlock({ block }: { block: RowInspectorTextBlock }) {
   const content = block.content || block.emptyText || '—';
+  const [copied, copy] = useCopied();
 
   return (
     <section
@@ -330,10 +338,10 @@ function TextBlock({ block }: { block: RowInspectorTextBlock }) {
           <button
             type="button"
             className="flex items-center gap-1 rounded-[3px] px-1.5 py-1 text-[10px] font-bold uppercase text-[var(--color-muted)] hover:text-[var(--color-primary)]"
-            onClick={() => void copyText(block.copyValue ?? block.content ?? '')}
+            onClick={() => copy(block.copyValue ?? block.content ?? '')}
           >
-            <Copy size={12} />
-            Copy
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? '已复制！' : 'Copy'}
           </button>
         ) : null}
       </div>
@@ -455,14 +463,52 @@ function formatRawData(value: unknown): string {
   }
 }
 
-async function copyText(value: string): Promise<void> {
-  if (!value) {
-    return;
+function useCopied(): [boolean, (value: string) => void] {
+  const [copied, setCopied] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copy = React.useCallback((value: string) => {
+    void copyText(value).then((ok) => {
+      if (!ok) return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setCopied(true);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  return [copied, copy];
+}
+
+async function copyText(value: string): Promise<boolean> {
+  if (!value) return false;
+
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // fall through to execCommand fallback
   }
 
   try {
-    await navigator.clipboard?.writeText(value);
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return ok;
   } catch {
-    // Clipboard permission failures should not interrupt row inspection.
+    return false;
   }
 }
