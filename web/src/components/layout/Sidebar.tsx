@@ -16,9 +16,9 @@ const NAV_GROUPS = [
   {
     label: '业务',
     items: [
-      { to: '/sdd/users',      label: '用户与团队', icon: UserRound },
-      { to: '/sdd/skills',     label: '技能使用',   icon: Layers3 },
-      { to: '/sdd/work-items', label: '工作项产出', icon: GitBranch },
+      { to: '/sdd/users',      label: '用户分析', icon: UserRound },
+      { to: '/sdd/skills',     label: '技能分析', icon: Layers3 },
+      { to: '/sdd/work-items', label: '产出分析', icon: GitBranch },
     ],
   },
   {

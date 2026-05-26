@@ -1,4 +1,5 @@
-import { RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { Check, RefreshCw } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
 export type TimeRange = '24h' | '7d' | '30d';
@@ -13,6 +14,19 @@ interface TopBarProps {
 export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
   const isFetching = useIsFetching() > 0;
   const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await qc.refetchQueries();
+      setDone(true);
+      setTimeout(() => setDone(false), 800);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <header
@@ -51,12 +65,16 @@ export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
 
         {/* Refresh */}
         <button
-          onClick={() => void qc.invalidateQueries()}
-          className="grid w-8 h-8 place-items-center rounded-[4px] border-0 cursor-pointer text-[var(--color-secondary)] hover:text-[var(--color-primary)] hover:bg-[#222] transition-colors duration-[120ms]"
+          onClick={() => void handleRefresh()}
+          disabled={refreshing}
+          className="grid w-8 h-8 place-items-center rounded-[4px] border-0 cursor-pointer text-[var(--color-secondary)] hover:text-[var(--color-primary)] hover:bg-[#222] transition-colors duration-[120ms] disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ border: '1px solid var(--color-border)', background: '#171717' }}
           title="刷新"
         >
-          <RefreshCw size={18} className={isFetching ? 'animate-spin' : ''} />
+          {done
+            ? <Check size={18} className="text-emerald-400" />
+            : <RefreshCw size={18} className={(isFetching || refreshing) ? 'animate-spin' : ''} />
+          }
         </button>
       </div>
     </header>
