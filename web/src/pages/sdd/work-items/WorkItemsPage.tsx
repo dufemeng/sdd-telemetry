@@ -323,25 +323,9 @@ export default function WorkItemsPage() {
           </div>
           <div className="flex flex-col justify-between flex-1 min-w-0">
             <span className="text-[12px] text-[var(--color-secondary)]">本月新增需求</span>
-            <div className="flex items-center justify-between">
-              <strong className="text-[24px] font-semibold text-[#60a5fa]" style={{ fontFamily: 'var(--font-mono)' }}>
-                {isLoading ? '—' : newThisMonth.length}
-              </strong>
-              {newThisMonth.length > 0 && (
-                <div className="flex flex-wrap gap-[4px] justify-end max-w-[120px]">
-                  {newThisMonth.slice(0, 3).map((i) => (
-                    <span
-                      key={i.id}
-                      className="text-[10px] px-[5px] py-[1px] rounded-[3px] truncate max-w-[80px]"
-                      style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.15)' }}
-                      title={i.workItemTitle ?? i.workItemSlug}
-                    >
-                      {(i.workItemTitle ?? i.workItemSlug).slice(0, 14)}…
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <strong className="text-[24px] font-semibold text-[#60a5fa]" style={{ fontFamily: 'var(--font-mono)' }}>
+              {isLoading ? '—' : newThisMonth.length}
+            </strong>
             <em className="text-[11px] not-italic text-[var(--color-muted)]">30 天内首次出现</em>
           </div>
         </section>
