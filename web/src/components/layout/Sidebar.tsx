@@ -2,8 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   CheckSquare, Database, Gauge,
-  GitBranch, Layers3, ListFilter, Search, Settings, Table2, TerminalSquare,
-  UserRound,
+  GitBranch, Layers3, ListFilter, Search, Settings, Table2, UserRound, Workflow,
 } from 'lucide-react';
 
 const ACTIVE_NAV_TRANSITION: Transition = { type: 'spring', stiffness: 300, damping: 30 };
@@ -14,11 +13,23 @@ const NAV_GROUPS = [
     items: [{ to: '/', label: '总览', icon: Gauge, end: true }],
   },
   {
-    label: '业务',
+    label: '看板',
     items: [
       { to: '/sdd/users',      label: '用户分析', icon: UserRound },
       { to: '/sdd/skills',     label: '技能分析', icon: Layers3 },
       { to: '/sdd/work-items', label: '产出分析', icon: GitBranch },
+    ],
+  },
+  {
+    label: '配置',
+    items: [{ to: '/sdd/semantics', label: '语义映射', icon: Settings }],
+  },
+  {
+    label: '监控',
+    items: [
+      { to: '/sdd/interactions', label: '交互明细', icon: Workflow },
+      { to: '/ops/database',    label: '数据检索',  icon: Database },
+      { to: '/troubleshoot',    label: '排障明细',  icon: Search },
     ],
   },
   {
@@ -27,18 +38,6 @@ const NAV_GROUPS = [
       { to: '/ingest',  label: '采集健康', icon: CheckSquare },
       { to: '/quality', label: '字段覆盖', icon: ListFilter },
     ],
-  },
-  {
-    label: '系统',
-    items: [
-      { to: '/troubleshoot', label: '排障明细',   icon: Search },
-      { to: '/ops/queue',    label: '任务队列',   icon: TerminalSquare },
-      { to: '/ops/database', label: '数据库浏览', icon: Database },
-    ],
-  },
-  {
-    label: '配置',
-    items: [{ to: '/sdd/semantics', label: '语义映射', icon: Settings }],
   },
 ] as const;
 

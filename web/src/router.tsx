@@ -25,7 +25,6 @@ const InteractionsPage  = lazy(() => import('./pages/sdd/interactions/Interactio
 const UsersPage         = lazy(() => import('./pages/sdd/users/UsersPage'));
 const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPage'));
 const SemanticsPage     = lazy(() => import('./pages/sdd/semantics/SemanticsPage'));
-const QueuePage         = lazy(() => import('./pages/ops/queue/QueuePage'));
 const DatabasePage      = lazy(() => import('./pages/ops/database/DatabasePage'));
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
 
@@ -45,7 +44,6 @@ export const router = createBrowserRouter([
       { path: 'sdd/users',            element: wrap(UsersPage),        errorElement: <RouteError /> },
       { path: 'sdd/work-items',       element: wrap(WorkItemsPage),    errorElement: <RouteError /> },
       { path: 'sdd/semantics',        element: wrap(SemanticsPage),    errorElement: <RouteError /> },
-      { path: 'ops/queue',            element: wrap(QueuePage),        errorElement: <RouteError /> },
       { path: 'ops/database',         element: wrap(DatabasePage),     errorElement: <RouteError /> },
       { path: 'troubleshoot',         element: wrap(TroubleshootPage), errorElement: <RouteError /> },
       { path: '*',                    element: <RouteError /> },

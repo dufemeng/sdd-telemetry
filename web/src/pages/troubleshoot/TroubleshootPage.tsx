@@ -1,23 +1,23 @@
 import { lazy, Suspense, type ComponentType } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileStack, BarChart3, Workflow } from 'lucide-react';
+import { FileStack, BarChart3, TerminalSquare } from 'lucide-react';
 
-const BatchesPage      = lazy(() => import('../batches/BatchesPage'));
-const EventsPage       = lazy(() => import('../events/EventsPage'));
-const InteractionsPage = lazy(() => import('../sdd/interactions/InteractionsPage'));
+const BatchesPage = lazy(() => import('../batches/BatchesPage'));
+const EventsPage  = lazy(() => import('../events/EventsPage'));
+const QueuePage   = lazy(() => import('../ops/queue/QueuePage'));
 
-type TabKey = 'batches' | 'events' | 'interactions';
+type TabKey = 'batches' | 'events' | 'queue';
 
 const TABS: { key: TabKey; label: string; icon: ComponentType<{ size?: number }>; Page: React.LazyExoticComponent<React.ComponentType> }[] = [
-  { key: 'batches',      label: '批次列表', icon: FileStack, Page: BatchesPage },
-  { key: 'events',       label: '事件分布', icon: BarChart3, Page: EventsPage },
-  { key: 'interactions', label: '交互明细', icon: Workflow,  Page: InteractionsPage },
+  { key: 'batches', label: '日志批次', icon: FileStack,      Page: BatchesPage },
+  { key: 'events',  label: '事件分布', icon: BarChart3,      Page: EventsPage },
+  { key: 'queue',   label: '任务队列', icon: TerminalSquare, Page: QueuePage },
 ];
 
 const DEFAULT_TAB: TabKey = 'batches';
 
 function isTabKey(value: string | null): value is TabKey {
-  return value === 'batches' || value === 'events' || value === 'interactions';
+  return value === 'batches' || value === 'events' || value === 'queue';
 }
 
 export default function TroubleshootPage() {
