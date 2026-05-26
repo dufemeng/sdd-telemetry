@@ -1,141 +1,700 @@
-import { Workflow, UserRound, Gauge, BarChart3, Layers3, FileStack, GitBranch, FileText } from 'lucide-react';
-import { useIngestHealth } from '@/pages/ingest/useIngestHealth';
-import { useSddFunnel } from './useSddFunnel';
-import { useEventDistribution } from '@/pages/events/useEventDistribution';
-import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
-import { useBatchList } from '@/pages/batches/useBatchList';
-import { useSddOverview } from './useSddOverview';
-import { StatCard } from '@/components/ui/StatCard';
-import { Panel } from '@/components/ui/Panel';
-import { BarList } from '@/components/ui/BarList';
-import { DataTable } from '@/components/ui/DataTable';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { formatInteger, formatTime, formatBytes } from '@/lib/format';
+import { useMemo } from 'react';
+import {
+  FileText,
+  GitBranch,
+  Layers3,
+  TrendingDown,
+  UserRound,
+  Zap,
+} from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { timeRangeToHours } from '@/lib/timeRange';
+import { useSkillAnalytics } from '@/pages/sdd/skills/hooks/useSkillAnalytics';
+import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
+import { useSddWorkItems } from '@/pages/sdd/work-items/useSddWorkItems';
+import { formatInteger, formatPercent, formatRelativeTime } from '@/lib/format';
+
+// ─── constants ────────────────────────────────────────────────────────────────
+
+const SEVEN_DAYS_MS  = 7  * 86_400_000;
+const FOURTEEN_DAYS_MS = 14 * 86_400_000;
+
+const WI_STAGES = ['proposal', 'design', 'task', 'review'] as const;
+const WI_STAGE_LABEL: Record<typeof WI_STAGES[number], string> = {
+  proposal: '需求撰写',
+  design:   '系统设计',
+  task:     '任务拆分',
+  review:   '代码评审',
+};
+
+const CARD = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
+const ICON_BOX = { background: '#141409', color: 'var(--color-primary)' };
+const AVATAR_COLORS = ['#1a2a1a', '#1a1a2a', '#2a1a1a', '#1a2a2a', '#2a2a1a', '#251a25'];
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+type MetricPair = { current: number | null; previous: number | null };
+
+function deltaLabel(m: MetricPair | undefined): string {
+  if (!m || m.current == null || m.previous == null) return '较上周期 —';
+  if (m.previous === 0) return m.current > 0 ? '较上周期 新增' : '较上周期 —';
+  if (m.previous === m.current) return '较上周期 持平';
+  const d = (m.current - m.previous) / m.previous;
+  return `${d > 0 ? '↑' : '↓'} ${formatPercent(Math.abs(d))}`;
+}
+
+function deltaColor(m: MetricPair | undefined): string {
+  if (!m || m.current == null || m.previous == null || m.previous === m.current) {
+    return 'var(--color-muted)';
+  }
+  if (m.previous === 0 && m.current > 0) return 'var(--color-muted)';
+  return m.current > m.previous ? 'var(--color-good-text)' : 'var(--color-bad-text)';
+}
+
+function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size?: number }) {
+  const idx = (name?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length;
+  return (
+    <div
+      style={{
+        width: size, height: size, fontSize: Math.round(size * 0.42),
+        background: AVATAR_COLORS[idx], color: '#f5f5f5', fontWeight: 600,
+        border: '1px solid rgba(255,255,255,0.08)', borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}
+    >
+      {name ? name.slice(0, 1) : '?'}
+    </div>
+  );
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
   const { timeRange } = useShellContext();
-  const health = useIngestHealth(timeRangeToHours(timeRange));
-  const overview = useSddOverview(timeRange);
-  const funnel = useSddFunnel(timeRange);
-  const dist = useEventDistribution(timeRange);
-  const users = useSddUsers();
-  const batches = useBatchList();
+  const analyticsQuery  = useSkillAnalytics(timeRange);
+  const usersQuery      = useSddUsers();
+  const workItemsQuery  = useSddWorkItems();
 
-  const topUsers = (users.data ?? []).slice(0, 5);
-  const metricHint = `近 ${timeRange}`;
+  const analytics   = analyticsQuery.data;
+  const kpis        = analytics?.kpis;
+  const topSkills   = analytics?.topSemantics.slice(0, 8) ?? [];
+  const skillsMax   = Math.max(topSkills[0]?.usageCount ?? 1, 1);
+
+  const now = Date.now();
+  const users     = usersQuery.data     ?? [];
+  const workItems = workItemsQuery.data ?? [];
+
+  // 成员概况 – sorted by last activity, top 8
+  const recentUsers = useMemo(
+    () =>
+      [...users]
+        .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))
+        .slice(0, 8),
+    [users],
+  );
+
+  // SDD 链路漏斗 – per stage: how many work items have that stage
+  const funnel = useMemo(
+    () => WI_STAGES.map((s) => ({
+      stage: s,
+      label: WI_STAGE_LABEL[s],
+      count: workItems.filter((i) => i.coverageStages.includes(s)).length,
+    })),
+    [workItems],
+  );
+  const funnelMax = Math.max(funnel[0]?.count ?? 0, 1);
+
+  // 最近活跃需求 – sorted by last activity, top 8
+  const recentWorkItems = useMemo(
+    () =>
+      [...workItems]
+        .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))
+        .slice(0, 8),
+    [workItems],
+  );
+
+  // total docs
+  const totalDocs = useMemo(() => workItems.reduce((s, i) => s + i.artifactCount, 0), [workItems]);
 
   return (
-    <div className="grid gap-3">
-      {/* KPI row */}
-      <div className="grid grid-cols-4 gap-3">
-        <StatCard
-          icon={<UserRound size={18} />}
-          label="活跃用户"
-          value={formatInteger(overview.data?.activeUserCount)}
-          hint={metricHint}
-          loading={overview.isLoading}
-        />
-        <StatCard
-          icon={<Workflow size={18} />}
-          label="技能调用"
-          value={formatInteger(overview.data?.skillUsageCount)}
-          hint={metricHint}
-          loading={overview.isLoading}
-        />
-        <StatCard
-          icon={<GitBranch size={18} />}
-          label="覆盖需求"
-          value={formatInteger(overview.data?.coveredWorkItemCount)}
-          hint="真实需求数"
-          loading={overview.isLoading}
-        />
-        <StatCard
-          icon={<FileText size={18} />}
-          label="生成文档"
-          value={formatInteger(overview.data?.generatedDocumentCount)}
-          hint="SDD 过程文档"
-          loading={overview.isLoading}
-        />
-      </div>
+    <>
+      {/* ── keyframes ── */}
+      <style>{`
+        @keyframes ov-fade-up {
+          from { opacity: 0; transform: translateY(7px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes ov-bar-h {
+          from { height: 0 !important; }
+        }
+        @keyframes ov-bar-w {
+          from { width: 0 !important; }
+        }
+      `}</style>
 
-      {/* Row 2 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Panel title="采集健康" icon={<Gauge size={18} />}>
-          <div className="grid gap-2">
-            {(
-              [
-                ['parsed', formatInteger(health.data?.parsedBatches)],
-                ['processing', formatInteger(health.data?.processingBatches)],
-                ['failed', formatInteger(health.data?.failedBatches)],
-                ['duplicate', formatInteger(health.data?.duplicateBatches)],
-              ] as [string, string][]
-            ).map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between min-h-9 px-[10px] rounded-[4px]"
+      <div className="grid gap-3">
+
+        {/* ── Section 1: KPI 卡 ── */}
+        <div className="grid grid-cols-4 gap-3">
+          <KpiCard
+            icon={<Zap size={18} />}
+            label="技能调用量"
+            value={kpis?.skillUsageCount.current ?? null}
+            metric={kpis?.skillUsageCount}
+            loading={analyticsQuery.isLoading}
+          />
+          <KpiCard
+            icon={<UserRound size={18} />}
+            label="活跃用户"
+            value={kpis?.activeUserCount.current ?? null}
+            metric={kpis?.activeUserCount}
+            loading={analyticsQuery.isLoading}
+          />
+          <KpiCard
+            icon={<GitBranch size={18} />}
+            label="覆盖需求"
+            value={kpis?.coveredWorkItemCount.current ?? null}
+            metric={kpis?.coveredWorkItemCount}
+            loading={analyticsQuery.isLoading}
+          />
+          <KpiCard
+            icon={<FileText size={18} />}
+            label="全链路需求"
+            value={kpis?.multiStageWorkItemCount.current ?? null}
+            metric={kpis?.multiStageWorkItemCount}
+            hint="覆盖 ≥ 3 个 SDD 阶段"
+            loading={analyticsQuery.isLoading}
+          />
+        </div>
+
+        {/* ── Section 2: 成员概况 + SDD 漏斗 ── */}
+        <div className="grid grid-cols-12 gap-3">
+
+          {/* 成员概况 */}
+          <section className="col-span-7 rounded-[6px] overflow-hidden" style={CARD}>
+            <SectionHeader icon={<UserRound size={16} />} title="成员概况">
+              <span
+                className="text-[11px] px-[7px] py-[2px] rounded-full"
                 style={{
-                  border: '1px solid var(--color-border)',
-                  background: '#171717',
+                  color: 'var(--color-primary)',
+                  background: 'rgba(250,255,105,0.07)',
+                  border: '1px solid rgba(250,255,105,0.18)',
+                  fontFamily: 'var(--font-mono)',
                 }}
               >
-                <span className="text-[12px] text-[var(--color-muted)]">{label}</span>
-                <strong className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {value}
+                {users.length} 人
+              </span>
+            </SectionHeader>
+
+            <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['成员', '工作项', 'SDD 深度', '最近活跃'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
+                      style={{ background: '#111', borderBottom: '1px solid var(--color-border)' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                      {usersQuery.isLoading ? '加载中…' : '暂无数据'}
+                    </td>
+                  </tr>
+                ) : (
+                  recentUsers.map((u, idx) => {
+                    const active = u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS;
+                    const isNew  = u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS;
+                    const borderColor = isNew ? '#60a5fa' : active ? 'var(--color-good-text)' : 'rgba(255,255,255,0.08)';
+                    const depth = ['proposal','design','task','codereview'].filter((s) => u.semanticStages.includes(s)).length;
+                    return (
+                      <tr
+                        key={u.id}
+                        className="group"
+                        style={{
+                          borderBottom: '1px solid var(--color-border)',
+                          animation: `ov-fade-up 0.22s ease-out ${idx * 0.04}s both`,
+                        }}
+                      >
+                        {/* 成员 */}
+                        <td
+                          className="group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingLeft: 20, paddingRight: 12, paddingTop: 9, paddingBottom: 9, position: 'relative' }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                              background: borderColor,
+                            }}
+                          />
+                          <div className="flex items-center gap-2">
+                            <UserAvatar name={u.userName} size={26} />
+                            <div className="flex flex-col gap-[1px] min-w-0">
+                              <span className="text-[12px] font-medium text-[#f5f5f5] truncate max-w-[130px]">
+                                {u.userName ?? u.userKey}
+                              </span>
+                              {isNew && (
+                                <span
+                                  className="text-[9px] px-[5px] py-[1px] rounded-full w-fit"
+                                  style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.18)' }}
+                                >
+                                  新成员
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        {/* 工作项 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingTop: 9, paddingBottom: 9, width: 80 }}
+                        >
+                          {u.workItemCount > 0 ? (
+                            <div className="flex flex-col gap-[2px]">
+                              <span className="text-[13px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                                {u.workItemCount}
+                              </span>
+                              <div
+                                className="h-[2px] rounded-full overflow-hidden"
+                                style={{ background: 'rgba(255,255,255,0.07)', width: 36 }}
+                              >
+                                <div
+                                  style={{
+                                    height: '100%',
+                                    width: `${Math.min((u.workItemCount / Math.max(...recentUsers.map((x) => x.workItemCount), 1)) * 100, 100)}%`,
+                                    background: 'var(--color-primary)',
+                                    borderRadius: 2,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[12px] text-[var(--color-muted)]">—</span>
+                          )}
+                        </td>
+                        {/* SDD 深度 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingTop: 9, paddingBottom: 9, width: 100 }}
+                        >
+                          <div className="flex items-center gap-[5px]">
+                            {[0,1,2,3].map((i) => (
+                              <div
+                                key={i}
+                                className="rounded-full"
+                                style={{
+                                  width: 7, height: 7,
+                                  background: i < depth ? 'var(--color-primary)' : 'rgba(255,255,255,0.10)',
+                                }}
+                              />
+                            ))}
+                            <span
+                              className="text-[10px] text-[var(--color-muted)] ml-[2px]"
+                              style={{ fontFamily: 'var(--font-mono)' }}
+                            >
+                              {depth}/4
+                            </span>
+                          </div>
+                        </td>
+                        {/* 最近活跃 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingTop: 9, paddingBottom: 9 }}
+                        >
+                          <span className="text-[12px] text-[var(--color-secondary)] whitespace-nowrap">
+                            {formatRelativeTime(u.lastSeenAt)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+
+            <div
+              className="flex items-center justify-between px-[14px] py-[8px]"
+              style={{ borderTop: '1px solid var(--color-border)' }}
+            >
+              <span className="text-[11px] text-[var(--color-muted)]">
+                文档总产出&ensp;
+                <strong className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {workItemsQuery.isLoading ? '—' : formatInteger(totalDocs)}
                 </strong>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="事件排行前 5" icon={<BarChart3 size={18} />}>
-          <BarList
-            items={(dist.data?.items ?? []).slice(0, 5).map((i) => ({
-              label: i.eventName,
-              sub: i.description ?? i.eventName,
-              value: i.count,
-              ratio: i.percentage,
-            }))}
-          />
-        </Panel>
-      </div>
+                &ensp;篇
+              </span>
+              <span className="text-[11px] text-[var(--color-muted)]">
+                近7天活跃&ensp;
+                <strong className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {usersQuery.isLoading ? '—' : users.filter((u) => u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS).length}
+                </strong>
+                &ensp;人
+              </span>
+            </div>
+          </section>
 
-      {/* Row 3 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Panel title="技能语义分布" icon={<Layers3 size={18} />}>
-          <BarList
-            items={(funnel.data?.stages ?? []).slice(0, 6).map((s) => ({
-              label: s.displayName,
-              sub: s.semanticCode,
-              value: s.usageCount,
-              ratio: s.conversionRate ?? 0,
-            }))}
-          />
-        </Panel>
-        <Panel title="活跃用户" icon={<UserRound size={18} />}>
-          <DataTable
-            headers={['用户', '技能调用', '最近活跃']}
-            rows={topUsers.map((u) => [u.userName ?? u.userKey, formatInteger(u.skillUsageCount), formatTime(u.lastSeenAt)])}
-          />
-        </Panel>
-      </div>
+          {/* SDD 链路覆盖 */}
+          <section className="col-span-5 p-[14px] rounded-[6px]" style={CARD}>
+            <SectionHeader icon={<TrendingDown size={16} />} title="SDD 链路覆盖">
+              <span className="text-[11px] text-[var(--color-muted)]">包含该阶段的需求数</span>
+            </SectionHeader>
 
-      {/* Recent batches */}
-      <Panel title="最近批次" icon={<FileStack size={18} />}>
-        <DataTable
-          headers={['状态', 'id', '接收时间', 'payload', '事件数', '错误']}
-          rows={(batches.data?.items ?? [])
-            .slice(0, 8)
-            .map((b) => [
-              <StatusBadge key="s" status={b.status} />,
-              b.id,
-              formatTime(b.receivedAt),
-              formatBytes(b.payloadBytes),
-              formatInteger(b.eventCount),
-              b.lastError ?? '—',
-            ])}
-        />
-      </Panel>
+            <div className="flex items-end gap-[10px] mt-4" style={{ height: 100 }}>
+              {funnel.map((item, i) => {
+                const barH = workItemsQuery.isLoading || item.count === 0
+                  ? 3
+                  : Math.max((item.count / funnelMax) * 76, 4);
+                return (
+                  <div key={item.stage} className="flex-1 flex flex-col items-center gap-[5px]">
+                    <span
+                      className="text-[13px] font-semibold text-[#f5f5f5]"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    >
+                      {workItemsQuery.isLoading ? '—' : item.count}
+                    </span>
+                    <div className="w-full flex flex-col justify-end" style={{ height: 76 }}>
+                      <div
+                        style={{
+                          height: barH,
+                          background: `rgba(250,255,105,${1 - i * 0.22})`,
+                          borderRadius: 3,
+                          animation: workItemsQuery.data
+                            ? `ov-bar-h 0.55s cubic-bezier(.22,.68,0,1.2) ${i * 0.09}s both`
+                            : 'none',
+                        }}
+                      />
+                    </div>
+                    <span
+                      className="text-[10px] text-[var(--color-muted)] text-center whitespace-nowrap"
+                      style={{ lineHeight: 1.3 }}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              className="grid grid-cols-2 gap-x-4 gap-y-[6px] mt-4 pt-[12px]"
+              style={{ borderTop: '1px solid var(--color-border)' }}
+            >
+              {[
+                { label: '总需求数', value: workItems.length },
+                { label: '活跃需求', value: workItems.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
+                { label: '全阶段覆盖', value: workItems.filter((i) => WI_STAGES.every((s) => i.coverageStages.includes(s))).length },
+                { label: '有错误', value: workItems.filter((i) => i.errorCount > 0).length },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span className="text-[11px] text-[var(--color-muted)]">{label}</span>
+                  <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                    {workItemsQuery.isLoading ? '—' : value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* ── Section 3: 热门技能 + 最近活跃需求 ── */}
+        <div className="grid grid-cols-2 gap-3">
+
+          {/* 热门技能 */}
+          <section className="rounded-[6px] overflow-hidden" style={CARD}>
+            <SectionHeader icon={<Layers3 size={16} />} title="热门技能">
+              <span className="text-[11px] text-[var(--color-muted)]">近 {timeRange}</span>
+            </SectionHeader>
+
+            <div className="px-[14px] pt-[10px] pb-[12px] grid gap-[7px]">
+              {analyticsQuery.isLoading ? (
+                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">加载中…</div>
+              ) : topSkills.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">暂无数据</div>
+              ) : (
+                topSkills.map((skill, idx) => {
+                  const barPct = (skill.usageCount / skillsMax) * 100;
+                  return (
+                    <div
+                      key={skill.semanticCode}
+                      className="flex items-center gap-[10px]"
+                      style={{ animation: `ov-fade-up 0.2s ease-out ${idx * 0.045}s both` }}
+                    >
+                      <span
+                        className="text-[10px] font-bold w-[16px] text-right shrink-0"
+                        style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-muted)' }}
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-[4px]">
+                          <span
+                            className="text-[12px] font-medium text-[#f5f5f5] truncate max-w-[180px]"
+                            title={skill.displayName}
+                          >
+                            {skill.displayName}
+                          </span>
+                          <div className="flex items-center gap-[8px] shrink-0 ml-2">
+                            <span
+                              className="text-[11px] text-[var(--color-secondary)]"
+                              style={{ fontFamily: 'var(--font-mono)' }}
+                            >
+                              {formatInteger(skill.usageCount)} 次
+                            </span>
+                            <span className="text-[10px] text-[var(--color-muted)]">
+                              {skill.userCount} 人
+                            </span>
+                          </div>
+                        </div>
+                        <div
+                          className="h-[3px] rounded-full overflow-hidden"
+                          style={{ background: 'rgba(255,255,255,0.07)' }}
+                        >
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${barPct}%`,
+                              background: idx === 0
+                                ? 'var(--color-primary)'
+                                : idx <= 2
+                                  ? 'rgba(250,255,105,0.55)'
+                                  : 'rgba(250,255,105,0.28)',
+                              borderRadius: 2,
+                              animation: analyticsQuery.data
+                                ? `ov-bar-w 0.5s cubic-bezier(.22,.68,0,1.1) ${idx * 0.06}s both`
+                                : 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* 最近活跃需求 */}
+          <section className="rounded-[6px] overflow-hidden" style={CARD}>
+            <SectionHeader icon={<GitBranch size={16} />} title="最近活跃需求" />
+
+            <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['需求', '阶段覆盖', '文档', '最近更新'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
+                      style={{ background: '#111', borderBottom: '1px solid var(--color-border)' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentWorkItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                      {workItemsQuery.isLoading ? '加载中…' : '暂无数据'}
+                    </td>
+                  </tr>
+                ) : (
+                  recentWorkItems.map((item, idx) => {
+                    const isActive = item.lastSeenAt && now - new Date(item.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS;
+                    const hasError = item.errorCount > 0;
+                    const leftColor = hasError
+                      ? 'var(--color-bad-text)'
+                      : isActive
+                        ? 'var(--color-good-text)'
+                        : 'rgba(255,255,255,0.08)';
+                    const depth = WI_STAGES.filter((s) => item.coverageStages.includes(s)).length;
+                    return (
+                      <tr
+                        key={item.id}
+                        className="group"
+                        style={{
+                          borderBottom: '1px solid var(--color-border)',
+                          animation: `ov-fade-up 0.22s ease-out ${idx * 0.04}s both`,
+                        }}
+                      >
+                        {/* 需求 */}
+                        <td
+                          className="group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingLeft: 20, paddingRight: 12, paddingTop: 8, paddingBottom: 8, position: 'relative', maxWidth: 0 }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                              background: leftColor,
+                            }}
+                          />
+                          <div className="flex flex-col gap-[1px]">
+                            <span
+                              className="text-[12px] font-medium text-[#f5f5f5] truncate"
+                              style={{ maxWidth: 160 }}
+                              title={item.workItemTitle ?? item.workItemSlug}
+                            >
+                              {item.workItemTitle ?? item.workItemSlug}
+                            </span>
+                            {item.businessDomain && (
+                              <span
+                                className="text-[9px] px-[5px] py-[1px] rounded-[3px] w-fit truncate"
+                                style={{
+                                  color: 'var(--color-secondary)',
+                                  background: 'rgba(255,255,255,0.05)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  maxWidth: 130,
+                                }}
+                              >
+                                {item.businessDomain}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {/* 阶段覆盖 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingTop: 8, paddingBottom: 8, width: 80 }}
+                        >
+                          <div className="flex items-center gap-[4px]">
+                            {WI_STAGES.map((s) => (
+                              <div
+                                key={s}
+                                title={WI_STAGE_LABEL[s]}
+                                style={{
+                                  width: 6, height: 6, borderRadius: '50%',
+                                  background: item.coverageStages.includes(s)
+                                    ? 'var(--color-primary)'
+                                    : 'rgba(255,255,255,0.10)',
+                                }}
+                              />
+                            ))}
+                            <span
+                              className="text-[10px] text-[var(--color-muted)] ml-[2px]"
+                              style={{ fontFamily: 'var(--font-mono)' }}
+                            >
+                              {depth}/4
+                            </span>
+                          </div>
+                        </td>
+                        {/* 文档数 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors text-right"
+                          style={{ paddingTop: 8, paddingBottom: 8, width: 56 }}
+                        >
+                          {item.artifactCount > 0 ? (
+                            <span
+                              className="text-[13px] font-semibold text-[#f5f5f5]"
+                              style={{ fontFamily: 'var(--font-mono)' }}
+                            >
+                              {item.artifactCount}
+                            </span>
+                          ) : (
+                            <span className="text-[12px] text-[var(--color-muted)]">—</span>
+                          )}
+                        </td>
+                        {/* 最近更新 */}
+                        <td
+                          className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
+                          style={{ paddingTop: 8, paddingBottom: 8 }}
+                        >
+                          <span className="text-[12px] text-[var(--color-secondary)] whitespace-nowrap">
+                            {formatRelativeTime(item.lastSeenAt)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+        </div>
+
+      </div>
+    </>
+  );
+}
+
+// ─── KpiCard ──────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  icon,
+  label,
+  value,
+  metric,
+  hint,
+  loading,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | null;
+  metric: MetricPair | undefined;
+  hint?: string;
+  loading: boolean;
+}) {
+  const color  = deltaColor(metric);
+  const dl     = hint ?? deltaLabel(metric);
+  const isUp   = metric && metric.current != null && metric.previous != null && metric.current > metric.previous;
+  const isDown = metric && metric.current != null && metric.previous != null && metric.current < metric.previous;
+
+  return (
+    <section
+      className="flex gap-3 min-h-[100px] p-[14px] rounded-[6px] cursor-default transition-transform duration-150 hover:-translate-y-[1px]"
+      style={{
+        border: isUp
+          ? '1px solid rgba(34,197,94,0.20)'
+          : isDown
+            ? '1px solid rgba(255,180,171,0.18)'
+            : '1px solid var(--color-border)',
+        background: 'var(--color-surface)',
+      }}
+    >
+      <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX}>
+        {icon}
+      </div>
+      <div className="flex flex-col justify-between flex-1 min-w-0">
+        <span className="text-[12px] text-[var(--color-secondary)]">{label}</span>
+        <strong
+          className="text-[28px] font-semibold text-[#f5f5f5] leading-none"
+          style={{ fontFamily: 'var(--font-mono)' }}
+        >
+          {loading || value == null ? '—' : formatInteger(value)}
+        </strong>
+        <em className="text-[11px] not-italic" style={{ color }}>
+          {dl}
+        </em>
+      </div>
+    </section>
+  );
+}
+
+// ─── SectionHeader ────────────────────────────────────────────────────────────
+
+function SectionHeader({
+  icon,
+  title,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between px-[14px] py-[10px]"
+      style={{ borderBottom: '1px solid var(--color-border)' }}
+    >
+      <div className="flex items-center gap-[7px]" style={{ color: 'var(--color-primary)' }}>
+        {icon}
+        <h3 className="text-[13px] font-semibold text-[#f5f5f5]">{title}</h3>
+      </div>
+      {children}
     </div>
   );
 }
