@@ -293,6 +293,10 @@ export const SddWorkItemSchema = z.object({
   relativeDir: z.string(),
   firstSeenAt: ISODateTimeSchema.nullable(),
   lastSeenAt: ISODateTimeSchema.nullable(),
+  artifactCount: z.number(),
+  usageCount: z.number(),
+  errorCount: z.number(),
+  coverageStages: z.array(z.string()),
 });
 
 export const SddWorkItemDetailSchema = SddWorkItemSchema.extend({
