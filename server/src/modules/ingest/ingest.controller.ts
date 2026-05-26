@@ -32,6 +32,8 @@ export class IngestController {
 
   @Post('/otlp-logs')
   async receiveLogs() {
+    // TODO(diag): 临时诊断 sdd-* header 是否真的到达服务端，定位完删掉
+    this.ctx.logger.info('[otlp-header-diag] headers=%j', this.ctx.headers);
     const payload = parseWithSchema(OtlpLogsPayloadSchema, this.ctx.request.body);
     const data: IngestLogsResponse = await this.ingestReceiveService.receiveLogs({
       payload,
