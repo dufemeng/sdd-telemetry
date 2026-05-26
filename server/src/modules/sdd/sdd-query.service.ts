@@ -534,9 +534,14 @@ export class SddQueryService {
       machineName: row.machine_name,
       requirementsRootPath: row.requirements_root_path,
       wikiRootPath: row.wiki_root_path,
+      firstSeenAt: toIsoDate(row.first_seen_at),
       lastSeenAt: toIsoDate(row.last_seen_at),
       skillUsageCount: toNumber(row.skill_usage_count),
       interactionCount: toNumber(row.interaction_count),
+      workItemCount: toNumber(row.work_item_count),
+      semanticStages: row.semantic_stages_csv
+        ? row.semantic_stages_csv.split(',').filter(Boolean)
+        : [],
     }));
   }
 

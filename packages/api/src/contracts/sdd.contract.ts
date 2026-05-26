@@ -268,9 +268,12 @@ export const SddUserItemSchema = z.object({
   machineName: z.string().nullable(),
   requirementsRootPath: z.string().nullable(),
   wikiRootPath: z.string().nullable(),
+  firstSeenAt: ISODateTimeSchema.nullable(),
   lastSeenAt: ISODateTimeSchema.nullable(),
   skillUsageCount: z.number(),
   interactionCount: z.number(),
+  workItemCount: z.number(),
+  semanticStages: z.array(z.string()),
 });
 
 export const SddVersionItemSchema = z.object({

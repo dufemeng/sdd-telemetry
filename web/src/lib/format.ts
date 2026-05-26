@@ -73,3 +73,32 @@ export function statusVariant(status: string | null | undefined): StatusVariant 
   if (WARN.has(s)) return 'warn';
   return 'neutral';
 }
+
+export function formatRelativeTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const ms = Date.now() - new Date(value).getTime();
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  return `${days}天前`;
+}
+
+export function lastTwoPathSegments(path: string | null | undefined): string {
+  if (!path) return '—';
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  if (parts.length === 0) return path;
+  return parts.slice(-2).join(' / ');
+}
+
+export function truncateId(
+  id: string | null | undefined,
+  prefix = 5,
+  suffix = 4,
+): string {
+  if (!id) return '—';
+  if (id.length <= prefix + suffix + 3) return id;
+  return `${id.slice(0, prefix)}…${id.slice(-suffix)}`;
+}

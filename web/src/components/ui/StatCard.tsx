@@ -3,7 +3,7 @@ import React from 'react';
 interface StatCardProps {
   icon: React.ReactNode;
   label: string;
-  value: string | number | null | undefined;
+  value: React.ReactNode;
   hint?: string;
   loading?: boolean;
 }
@@ -26,7 +26,7 @@ export function StatCard({ icon, label, value, hint, loading }: StatCardProps) {
           className="block mt-2 text-[24px] font-semibold leading-7 text-[#f5f5f5]"
           style={{ fontFamily: 'var(--font-mono)' }}
         >
-          {loading ? '—' : (value ?? '—')}
+          {loading ? '—' : (value ?? '—') }
         </strong>
         {hint && (
           <em className="block mt-2 text-[11px] not-italic text-[var(--color-muted)]">{hint}</em>

@@ -178,9 +178,12 @@ export interface UserRow {
   machine_name: string | null;
   requirements_root_path: string | null;
   wiki_root_path: string | null;
+  first_seen_at: Date | string | null;
   last_seen_at: Date | string | null;
   skill_usage_count: string | number;
   interaction_count: string | number;
+  work_item_count: string | number;
+  semantic_stages_csv: string | null;
 }
 
 export interface VersionRow {
@@ -542,14 +545,18 @@ export class SddQueryRepository {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
-              u.requirements_root_path, u.wiki_root_path, u.last_seen_at,
-              COUNT(DISTINCT su.id) AS skill_usage_count,
-              COUNT(DISTINCT i.id) AS interaction_count
+              u.requirements_root_path, u.wiki_root_path,
+              u.first_seen_at, u.last_seen_at,
+              COUNT(DISTINCT su.id)                    AS skill_usage_count,
+              COUNT(DISTINCT i.id)                     AS interaction_count,
+              COUNT(DISTINCT su.work_item_id)          AS work_item_count,
+              GROUP_CONCAT(DISTINCT ss.semantic_code)  AS semantic_stages_csv
        FROM sdd_users u
-       LEFT JOIN sdd_skill_usages su ON su.user_id = u.id
-       LEFT JOIN sdd_interactions i ON i.user_id = u.id
+       LEFT JOIN sdd_skill_usages su   ON su.user_id   = u.id
+       LEFT JOIN sdd_interactions i    ON i.user_id    = u.id
+       LEFT JOIN sdd_skill_semantics ss ON ss.id       = su.semantic_id
        GROUP BY u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
-                u.requirements_root_path, u.wiki_root_path, u.last_seen_at
+                u.requirements_root_path, u.wiki_root_path, u.first_seen_at, u.last_seen_at
        ORDER BY u.last_seen_at DESC, u.id DESC
        LIMIT 200`,
     )) as UserRow[];
