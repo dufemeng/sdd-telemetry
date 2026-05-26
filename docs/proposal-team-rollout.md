@@ -1,42 +1,44 @@
 # SDD 观测平台 · 团队推广汇报
 
-更新时间：2026-05-25
+更新时间：2026-05-26
 作者：limengdufe
+核验说明：本文已按当前代码和本地真实 dashboard 页面保鲜；截图数据来自个人 dogfood，只用于展示能力，不作为团队推广结果。
 
 ## 一、为什么要做这件事
 
-公司前端团队在试点 SDD（Spec-Driven Development，规格驱动开发，源自 openspec 方法论）工作流。核心理念是把"需求规格 / 系统设计 / 任务清单"作为可评审的一等工程产出前置，代码实现严格收敛到规格上，而不是边写边补、需求漂在脑子里。bk-fe-proposal / bk-fe-design / bk-fe-task / bk-fe-code 这套 Claude Code skill 是这个方法论在团队里的工具化落地。
+公司前端团队在试点 SDD（Spec-Driven Development，规格驱动开发，源自 openspec 方法论）工作流。核心理念是把“需求规格 / 系统设计 / 任务清单”作为可评审的一等工程产出前置，代码实现严格收敛到规格上，而不是边写边补、需求漂在脑子里。bk-fe-proposal / bk-fe-design / bk-fe-task / bk-fe-code 这套 Claude Code skill，是这个方法论在团队里的工具化落地。
 
-但规格是不是真的有人写、design 是不是覆盖了关键决策、用户是不是真的按规格在走、skill 改了之后产出质量是变好还是变坏——这些问题之前只能靠抽样和感觉。
+但规格是不是真的有人写、design 是否覆盖了关键决策、用户是否按链路推进、skill 改版之后产出有没有变好，这些问题之前只能靠抽样和感觉。
 
-传统观测系统看的是"接口有没有返回 200"，对 AI 工作流这种"人 + AI + 流程"的新形态毫无用处。这块空白就是 sdd-telemetry 要补的位置。
+传统观测系统能告诉我们接口是否成功、请求是否报错，却回答不了 AI 工作流里“人是否采用方法、流程是否落地产出”这类管理问题。sdd-telemetry 要补的是这一层：把实际使用、文档沉淀和链路健康变成可检查的证据。
 
 ## 二、当前到哪一步，下一步往哪走
 
-平台规划了四个递进的能力，当前已上线第一个，后面三个的演进路径都是清晰可见、不需要架构重写的。
+平台规划了四个递进能力。目前看板已经上线，采集健康和基础排查入口也已经可以使用；主动告警、完整调用树和文档质量评测仍属于后续建设范围。
 
 ```plantuml
 @startuml
 !theme plain
 skinparam defaultFontName "PingFang SC"
 skinparam defaultFontSize 12
+skinparam shadowing false
 
-rectangle "📊 看板 Dashboard · ✅ 已上线\n回答：发生了什么？\n输出：4 大业务 KPI · SDD 漏斗 · 用户活跃 · 批次健康 · 事件分布\n价值：让 SDD 工作流第一次可被看见" as F1 #E8F5E9
+rectangle "看板 Dashboard · 已上线\n回答：发生了什么？\n输出：业务 KPI · 用户分析 · 技能分析 · 产出分析\n价值：SDD 采用和产出第一次可以被看见" as F1 #E8F5E9
 
-rectangle "🚨 监控 Monitor · 🚧 下一阶段\n回答：现在哪里出问题了？\n输出：异常告警 · 用户活跃突降 · 数据质量退化 · 清洗积压预警\n价值：从我去看 dashboard，升级为 dashboard 主动找我" as F2 #FFF3E0
+rectangle "监控 Monitor · 基础健康已上线，主动提醒待建设\n回答：数据链路是否稳定？\n已有：批次状态 · 解析成功/失败 · 字段覆盖\n下一步：异常告警 · 活跃突降 · 清洗积压提醒" as F2 #FFF3E0
 
-rectangle "🔍 排查 Diagnose · 🚧 后续\n回答：为什么会这样？\n输出：批次详情下钻 · trace tree · subagent 调用链 · 失败重放\n价值：从知道有问题，升级为知道根因" as F3 #FFF3E0
+rectangle "排查 Diagnose · 已有明细下钻，继续增强\n回答：问题落在哪一次数据或交互？\n已有：交互明细 · 日志批次 · 任务队列 · 数据检索\n下一步：完整 trace tree · subagent 链路 · 失败重放" as F3 #FFF3E0
 
-rectangle "⭐ 评测 Evaluate · 🚧 路线终点\n回答：SDD 文档质量到底好不好？skill 改了是变好还是变坏？\n输出：design / tasks / proposal LLM-as-judge 自动评分\n          人工 review 队列 · skill 版本回归测试 · Dataset / Experiment 对比\n价值：从采集观测，升级为质量监控 + 自动改进闭环\n          也是 sdd-telemetry 区别于通用 LLM 观测平台（Langfuse 等）\n          的差异化定位——SDD 工作流维度独有" as F4 #F3E5F5
+rectangle "评测 Evaluate · 路线终点\n回答：SDD 文档质量好不好，skill 改版是否变好？\n规划：文档评分 · 人工 review 队列 · 回归对比\n价值：从观察采用，走向改进质量" as F4 #F3E5F5
 
-F1 -down-> F2 : 数据沉淀使之可能
-F2 -down-> F3 : 历史基线使之可能
-F3 -down-> F4 : 调用链建模使之可能
+F1 -down-> F2 : 数据沉淀后能持续监控
+F2 -down-> F3 : 异常需要证据下钻
+F3 -down-> F4 : 可靠链路支撑质量评测
 
 @enduml
 ```
 
-这个阶梯类比 Gartner 的 Observability Maturity 模型，或者 DataDog 把可观测性拆成 Logs → Metrics → Traces → APM 的演进路径。当前我们落在第一格（看板），但底座决定了上面三步都能往上长，不会卡在某一格就走不动了。
+当前进度不是一张静态 dashboard 原型：业务看板、采集健康、排障下钻以及离线部署链路已经贯通。下一阶段的重点，是在真实灰度数据上建立告警基线，再判断质量评测值得投入到什么深度。
 
 ## 三、技术架构
 
@@ -45,18 +47,19 @@ F3 -down-> F4 : 调用链建模使之可能
 !theme plain
 skinparam defaultFontName "PingFang SC"
 skinparam defaultFontSize 11
+skinparam shadowing false
 
-rectangle "①接入层 · Claude Code 客户端（零侵入）\nOTel logs（21 种 event）· http/json POST\n接入门槛 = bk-fe-sdd init / upgrade 一行 CLI" as L1 #E8F5E9
+rectangle "① 接入层 · Claude Code 客户端\nOTel logs · http/json POST\n身份和需求路径通过 exporter header 稳定传递\n配套配置脚本包含采集内容告知" as L1 #E8F5E9
 
-rectangle "②采集层 · MidwayJS HTTP API（:4318）\nController + Pipe（Zod 校验）+ Service + Repository\npayload_hash 幂等 + 事务写入 raw + outbox\npino 结构化日志 + X-Request-ID 全链路" as L2 #E8F5E9
+rectangle "② 采集层 · MidwayJS HTTP API（:4318）\nZod 校验 · payload / records 保护阈值\npayload hash 去重\n事务写入 raw payload 与 outbox" as L2 #E8F5E9
 
-rectangle "③调度层 · Outbox Pattern（演进 BullMQ + Redis）\n当前：MySQL outbox + 定时扫描 + SELECT FOR UPDATE 行锁\n           retryable / terminal 状态机 + 指数退避\n🚧 演进：BullMQ + Redis 分布式锁 + Bull Board + Pub/Sub" as L3 #E8F5E9
+rectangle "③ 调度层 · MySQL Outbox\n当前：定时扫描 + 行锁 claim\nretryable / terminal 状态 + 指数退避\n适合先验证业务链路和灰度规模" as L3 #E8F5E9
 
-rectangle "④清洗层 · worker 进程 · cleanBatch 唯一入口\nOTel extractor · 21 种 event 强类型展开\n跨 batch prompt_id 配对 + trace anchor 回填\n6 个 stable key 保证幂等（重试零污染）\n🚧 演进：parent_span_id → 嵌套 observation 树（subagent 可视化）" as L4 #E8F5E9
+rectangle "④ 清洗层 · Worker\nOTel event 展开\n跨 batch prompt 配对 + trace / session anchor 回填\n稳定 key + upsert 保证重复处理不重复计数\n写文件事件识别 work item 与 artifact" as L4 #E8F5E9
 
-rectangle "⑤存储层 · MySQL 8 · 五层领域模型\n配置层 / 原始层 / 交互层 / 业务层\n🚧 评估层：sdd_scores · annotation_queue · model_pricings\nTypeORM Data Mapper + Migration（禁 synchronize / cascade / BaseEntity）\nRepository + UnitOfWork（事务上下文不泄漏 · ORM 可整体替换）\nTTL 分级：raw 7d · event/text 30d · 业务表 6m+" as L5 #E8F5E9
+rectangle "⑤ 存储层 · MySQL 8\n原始事实层 / 事件层 / 交互层 / SDD 业务层\nMigration 管理结构变化 · Repository 隔离查询和写入\nraw、event、文本已记录过期时间，自动清理待补" as L5 #E8F5E9
 
-rectangle "⑥Dashboard · React 19 + Vite + Tailwind v4 + TanStack Query + RR v7\nZod contract 反推类型（前后端单一 source of truth）\nViewModel adapter（隔离 schema 演进）\nFeature-based pages · 异步状态自适应\n🚧 演进：Redis 缓存重查询 + SSE 实时推送" as L6 #E8F5E9
+rectangle "⑥ Dashboard · React + Vite\n共享 Zod contract 约束前后端数据口径\n用户 / 技能 / 产出管理视角看板\n交互、批次、队列和字段覆盖下钻" as L6 #E8F5E9
 
 L1 -down-> L2
 L2 -down-> L3
@@ -65,87 +68,116 @@ L4 -down-> L5
 L5 -down-> L6
 
 note right of L3
-横切关注点（贯穿全栈）
-  🛡 保护阈值：payload / records 上限 + 清洗预算
-  🔁 幂等性：6 stable key + upsert + reprocess
-  🎯 Contract-first：Zod 一份 schema 喂前后端
-  📊 自观测：dashboard 即自身可观测出口
-  🧪 渐进演进：🚧 都挂在已有抽象层之上
+贯穿链路的设计原则
+  接入不要求人工填报数据
+  原始数据可保留并重新清洗
+  数据口径由共享 contract 约束
+  已实现能力与后续路线分开表述
 end note
 
 @enduml
 ```
 
-整张图最关键的是 🚧 标记的位置——那些不是"还没做的功能"，是已经为下一步留好接口的演进位。比如调度层从 outbox 切到 BullMQ，业务代码一行不用改，因为 service 不依赖具体调度实现；评估层挂到第⑤层，因为 Repository + UnitOfWork 让新表能复用现有事务上下文。
+这里最重要的不是技术名词，而是两件事。第一，原始上报与业务派生分开存，清洗规则调整后可以基于原始事实重算，不必向使用者重新采数据。第二，从入口身份、异步清洗到页面展示都保留了可检查证据，看到的数字能够继续往下追。
 
 ## 四、三个我反复推敲过的判断
 
 这套架构里有几个地方做过取舍，这里讲三个最关键的。
 
-### 1. 先 outbox 跑通业务，再升级 BullMQ
+### 1. 先 outbox 跑通业务，再考虑更重的队列设施
 
-Outbox + 定时扫描在工程上"够用但不优雅"。一开始就上 BullMQ + Redis 也技术可行，但意味着两件事一起做，风险翻倍。我选了先把"raw → 清洗 → 派生 → dashboard"这条主线跑通，把调度抽成一个明确的接口，BullMQ 改造只需要换掉这一层适配器。
+一开始就上 Redis 和独立消息队列并不难，但它解决的是并发和调度规模问题，不是 SDD 指标是否有价值的问题。当前使用 MySQL outbox、锁领取、失败重试和终止状态，已经足够支撑个人 dogfood 与小规模灰度，也让 raw 到派生数据的主链路先得到验证。
 
-这背后的判断是：先有 right thing，再有 right thing done right。工程升级和业务验证要拆开做。
+后面如果真实推广出现处理延迟、积压或多实例调度需求，再升级队列设施会更有依据。当前阶段先证明数据能支持判断，比提前堆运维组件更重要。
 
-### 2. ORM 不让它泛滥，Repository + UnitOfWork 隔离
+### 2. ORM 能用，但不能让数据口径藏在魔法里
 
-TypeORM 用了，但禁掉了 cascade / synchronize / BaseEntity / lazy relation 这些"魔法功能"，所有表结构走 migration，service 层不直接看到 ORM API，一切走 Repository 接口。事务上下文用 UnitOfWork 显式传递，不依赖框架隐式注入。
+服务端使用 TypeORM 和显式 UnitOfWork，结构变更通过 migration 管理；查询和写入落在 Repository 中。worker 的清洗路径同样把持久化访问收拢到 repository，而不是让配对、幂等、需求识别逻辑散落在各处。
 
-代价是写代码多写几行，收益是：未来引入 Redis 缓存层、BullMQ、甚至直接把 MySQL 换成 ClickHouse（Langfuse 用的列存方案），业务代码都不用动。可演进性不是事后补的，是 day-one 的解耦决定的。
+这项取舍的收益很直接：一条指标被质疑时，可以沿着 contract、查询、派生写入和原始 payload 找回依据；清洗层修正后，也能有边界地重算业务数据。对于要拿去汇报和推广的数据，这比少写几行代码更重要。
 
-### 3. 系统性对标 Langfuse，找到差异化定位
+### 3. 对标 Langfuse，但不把 SDD 做成通用 trace 看板
 
-LLM 可观测领域已经有开源标杆 Langfuse，一开始我就有"是不是该直接用 Langfuse"的疑问。花了两周把 Langfuse 的数据模型 / Trace 树 / Score / Dataset / Annotation queue 全部读了一遍，输出了两万五千字的对标分析（docs/proposal-langfuse-comparison.md）。
+LLM 可观测领域已经有开源标杆 Langfuse，所以一开始就需要回答“为什么不直接用现成方案”。详细对标分析已经沉淀在 `docs/proposal-langfuse-comparison.md`。
 
-结论是：Langfuse 走 traces 通路，适合通用 LLM 应用；但 SDD 工作流维度（skill / work_item / artifact / SDD 漏斗）是业务字段，traces 给不了这种灵活性，必须走 logs 通路。同时我从对标里识别出当前实现的 10 个改进点，排成 P0 / P1 / P2 路线图，已经修完 P0 的 5 个（B1 到 B5）。
+结论是：通用 trace 方案擅长模型调用、成本和调用树；SDD 要识别的却是 skill 激活方式、需求目录、proposal / design / task 等文档写入，以及阶段是否走完整。Claude Code 的 logs 通路包含这些业务信号，因此当前继续走 logs，并在清洗层重建 SDD 关系，是贴合目标的选型。
 
-这不是"我做了个工具"，是"我在行业图谱里给自己定了位"。
+这并不排斥后续平行接入通用 trace 工具。通用观测可用于看模型调用表现，sdd-telemetry 继续负责看方法是否真正形成工程产出，两者关注点不同。
 
 ## 五、现在能看到什么
 
-平台跑起来之后，dashboard 已经把 SDD 工作流的几个关键维度立起来了：四个业务 KPI（活跃用户 / 技能调用次数 / 覆盖需求数 / 生成文档数）、SDD 漏斗（哪些 skill 用得多、哪些环节人会断掉）、用户维度（按人看技能调用分布和活跃度）、批次健康（parsed / processing / failed / duplicate 状态）、事件分布（21 种 OTel event 的命中比例）、数据质量（字段覆盖率 / 跨 batch 配对成功率）。
+最近一轮迭代已将总览、用户分析、技能分析、产出分析统一到面向管理者的展示视角，同时保留交互明细、排障明细、采集健康和字段覆盖作为证据下钻入口。
 
-我自己机器上 dogfood 了几周，修了一批清洗层 bug（B1 到 B5），数据从"看着挺多"变成"敢拿数据下结论"。下午会现场拉一份真实 dashboard 给你看，比文字描述直观。
+下面四张核心画面和一张链路健康补充画面，是 2026-05-26 从本地真实页面截取的 dogfood 数据。它们说明平台已经具备可演示能力，不代表团队推广效果；页面时间按北京时间展示。
 
-种子用户灰度的核心目标之一，就是产出"通过 dashboard 发现了 X，我们做了 Y"这样的具体案例，把"能力底座已就绪"转化成"可被引用的价值故事"。
+### 总览：一屏看到采用、产出和阶段掉档
+
+![总览页面：技能调用、成员概况、链路覆盖与近期需求](assets/proposal-team-rollout/dashboard-overview-20260526.jpg)
+
+总览页适合作为现场演示第一屏：老板不需要先理解采集链路，就可以直接看到技能调用、活跃用户、覆盖需求、文档产出和 SDD 阶段覆盖。当前画面同时显示了接入身份噪声，这部分会在灰度前清理，不将其包装为推广成绩。
+
+### 用户分析：谁在用，使用深度到哪一层
+
+![用户分析页面：活跃成员、使用深度、链路覆盖与接入健康](assets/proposal-team-rollout/dashboard-users-20260526.jpg)
+
+用户分析页能按成员观察使用深度、覆盖需求和活跃状态，并将未完成接入配置的成员单独提示出来。当前截图中的未知用户是历史接入口径问题的真实表现，说明平台已经能发现这类治理问题；对外报告应从口径清理后的灰度周期重新起算。
+
+### 技能分析：先看采用规模，再看链路是否健康
+
+![技能分析页面：调用规模、趋势、配对健康与标杆技能](assets/proposal-team-rollout/dashboard-skills-20260526.jpg)
+
+当前页面可同时看到技能调用量、活跃用户、覆盖工作项、调用趋势和标杆技能。图中的“有效配对率”口径是采集与清洗链路健康，不是 design 或 task 内容质量评分；汇报时需要把这个边界讲清楚。
+
+### 产出分析：从用了多少次，走到留下了什么
+
+![产出分析页面：需求数量、文档总产出与阶段覆盖漏斗](assets/proposal-team-rollout/dashboard-work-items-20260526.jpg)
+
+当前 dogfood 画面已经识别出 7 个需求目录、18 篇过程文档，并按 proposal、design、task、review 展示阶段覆盖。这个页面是 SDD 与普通工具调用统计的分界线：真正需要推广的不是按钮点击次数，而是能被评审和复用的工程产出。
+
+### 采集健康：管理数字背后有持续运行的链路
+
+![采集健康页面：批次解析、失败数和处理数据量](assets/proposal-team-rollout/dashboard-ingest-health-20260526.jpg)
+
+截图时系统已有 940 个批次成功解析、失败批次为 0、累计处理 60.74 MiB payload。这说明本机真实流量下采集、异步清洗和页面查询链路持续可用；多人环境的稳定性仍应由灰度阶段验证。
 
 ## 六、推广节奏
 
-接入门槛极低是这次推广的最大杠杆。用户不需要懂 OTel，不需要手动配环境变量，跑一行命令就完事：
+接入门槛低是这次推广的重要杠杆。面向使用者的入口仍应保持为一行命令：
 
 ```bash
 bk-fe-sdd upgrade
 ```
 
-这条命令是 bk-fe-sdd CLI 工具的一部分，init 和 upgrade 都会自动写入 OTel 配置，用户对底层无感知。
+最近已经修正了 Claude Code 身份和需求路径上报方式：不再依赖容易受初始化时机影响的 resource 配置，而是通过稳定 header 传递。灰度包发出前，需要确认 `upgrade` 入口已经带上这一版配置和明确的数据采集告知。
 
-基于这个低门槛，推广节奏压到两周：
+基于这个低门槛，推广节奏仍按两周安排：
 
-第一周，在 5 个核心同学的电脑上启用，主要目的是把数据通路验证一遍，把上报场景里的边角问题修掉，同时在 dashboard 上沉淀第一批可讲的案例。
+第一周，在 5 个核心同学的电脑上启用，主要验证身份归因、需求路径识别、清洗稳定性和敏感数据告知流程，同时沉淀第一批可讲的 dashboard 案例。
 
-第二周，在前端团队全员铺开（几十人，本质上也是灰度规模）。这一步的支撑是接入门槛低 + 第一周已经把潜在问题暴露过一轮。
+第二周，在第一周准入条件满足后，再向前端团队铺开。如果数据或运维基线没有闭合，则延后或缩小范围，不用覆盖人数掩盖数据质量问题。
 
-为了让"什么时候推全员"不是拍脑袋，我给自己定了三类准入条件——不是要资源，是我自己的判断标尺，让推广这件事的可控性透明出来：
+全员推广前的三类准入条件保持不变，但口径更具体：
 
-- 数据通路验证：5 个用户连续 7 天稳定上报，batch parsed 率高于 95%，worker 没有积压。
-- 业务价值显现：dashboard 上能讲出至少一个"通过数据发现的具体问题"。
-- 运维基线闭合：默认密码强化、MySQL 端口不对外、Docker 日志 rotate、磁盘容量巡检，都是一周内能做完的项目。
-
-如果第二周这三类没全部达到，我会延后，或者缩限场景（比如只覆盖前端不跨域），不会强推。
+- 数据通路验证：5 个用户连续 7 天稳定上报，身份和需求目录归因正确，批次解析成功率高于 95%，worker 没有持续积压。
+- 业务价值显现：dashboard 上能讲出至少一个“通过数据发现的问题，以及采取的改进动作”。
+- 运维和合规基线闭合：强密码、MySQL 端口收口、日志轮转、磁盘巡检、访问范围和敏感数据告知均完成。
 
 ## 七、已识别的风险与处理思路
 
-部署在多人共用服务器上，基础 Docker 跑得起来，但生产级保障还有几块没补完。我做过一次完整核验，把风险分了两类。
+部署在多人共用服务器上，基础 Docker 运行和离线交付链路已经具备，但生产级保障仍有几块必须正视。
 
-一类是一周内能闭合的：默认密码 / MySQL 端口暴露 / Docker 日志膨胀 / 磁盘巡检 / 误删 volume 的流程防护。这些跟随推广节奏做掉。
+一类是灰度前应闭合的风险：生产 Compose 目前仍提供默认数据库密码并默认发布 MySQL 端口；采集控制器还留有用于排查 header 接入问题的临时诊断日志，可能记录身份和路径信息。这几项应在种子用户接入前完成强密码、端口收口和日志移除或脱敏。
 
-另一类需要更长周期：自动备份 + 异地存档、监控告警平台对接、灰度回滚机制。这些放在全员推广后两周内补齐，期间靠手动回退兜底。
+另一类是灰度后继续补齐的保障：自动备份与异地存档、主动告警、自动清理过期数据、灰度回退流程。目前库表已经写入 raw、event 和交互文本的过期时间，但不能把“记录了过期时间”表述成“已经完成自动销毁”。
 
-单独要标记一下 PII 风险：上报数据里包含用户的 prompt 原文和 Claude 响应原文，当前明文落库。短期内由于全是公司同事、数据不出公司，风险可控；但长期需要立项做对话脱敏、加密落库、访问审计。这一项不挡推广，但我希望它在你那里挂个号——哪天合规找过来时，我们是"早看到了、按节奏推进"，不是"出事了才发现"。
+单独需要标记 PII 风险：当前接入会采集用户 prompt、工具参数和完整响应体，相关原文会入库。这里不能只用“内部使用”带过，需要在灰度接入前明确告知采集范围、限定访问人员，并为后续脱敏、访问审计和保存期限落实方案。
+
+还有一个口径风险：页面中的“有效配对率”反映链路解析健康，不是文档质量分。design 是否完整、task 是否可执行，仍需要后续的人工 review 或自动评测能力回答。
 
 ## 八、下一步
 
-第一周内：写出一份接入指南（一段命令 + 五行环境变量说明 + dashboard 链接），让任何同学都能 5 分钟接入；同步推送给 5 个种子用户，跟进数据通路问题修复；完成运维 P0 闭合项。
+第一周内：确认 `bk-fe-sdd upgrade` 携带最新接入配置与采集告知；完成服务器强密码、MySQL 端口收口和临时诊断日志处理；清理或冻结个人历史身份口径；将 5 位种子用户接入并跟进数据问题。
 
-第二周内：在前端团队全员推广，用接入指南直接发周会和群；启动监控能力开发（能力阶梯图第二阶段），给推广后的数据加一层主动告警；把"灰度首周发现的问题案例"整理成第二份汇报，供你后续给团队站会引用。
+第二周内：基于首周真实数据形成一次复盘，内容包括链路稳定性、文档产出覆盖和至少一个可引用的改进案例；满足准入条件后再向前端团队推广，并启动主动告警能力建设。
+
+本次现场展示建议按“总览 → 技能分析 → 产出分析 → 用户分析 → 采集健康”的顺序展开：先用总览给出一句话结论，再展开采用和产出价值，用用户页说明灰度治理意义，最后用健康页证明底层可靠性。交互明细页包含 prompt 和 response 原文，不建议直接截图或录屏流转；如需制作现场录屏或展示下钻能力，应提前清理身份噪声并准备脱敏样例。
