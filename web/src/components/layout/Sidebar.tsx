@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
-  BarChart3, CheckSquare, Database, FileStack, Gauge,
-  GitBranch, Layers3, ListFilter, Settings, Table2, TerminalSquare,
-  UserRound, Workflow,
+  CheckSquare, Database, Gauge,
+  GitBranch, Layers3, ListFilter, Search, Settings, Table2, TerminalSquare,
+  UserRound,
 } from 'lucide-react';
 
 const ACTIVE_NAV_TRANSITION: Transition = { type: 'spring', stiffness: 300, damping: 30 };
@@ -14,33 +14,31 @@ const NAV_GROUPS = [
     items: [{ to: '/', label: '总览', icon: Gauge, end: true }],
   },
   {
-    label: '观测',
+    label: '业务',
     items: [
-      { to: '/events',           label: '事件分布', icon: BarChart3 },
-      { to: '/sdd/skills',       label: '技能分析', icon: Layers3 },
-      { to: '/sdd/users',        label: '用户维度', icon: UserRound },
-      { to: '/sdd/work-items',   label: '工作项',   icon: GitBranch },
+      { to: '/sdd/users',      label: '用户与团队', icon: UserRound },
+      { to: '/sdd/skills',     label: '技能使用',   icon: Layers3 },
+      { to: '/sdd/work-items', label: '工作项产出', icon: GitBranch },
     ],
   },
   {
-    label: '质检',
+    label: '数据质量',
     items: [
-      { to: '/ingest',           label: '采集健康', icon: CheckSquare },
-      { to: '/batches',          label: '批次列表', icon: FileStack },
-      { to: '/quality',          label: '数据质量', icon: ListFilter },
-      { to: '/sdd/interactions', label: '交互明细', icon: Workflow },
+      { to: '/ingest',  label: '采集健康', icon: CheckSquare },
+      { to: '/quality', label: '字段覆盖', icon: ListFilter },
+    ],
+  },
+  {
+    label: '系统',
+    items: [
+      { to: '/troubleshoot', label: '排障明细',   icon: Search },
+      { to: '/ops/queue',    label: '任务队列',   icon: TerminalSquare },
+      { to: '/ops/database', label: '数据库浏览', icon: Database },
     ],
   },
   {
     label: '配置',
-    items: [{ to: '/sdd/semantics', label: '语义配置', icon: Settings }],
-  },
-  {
-    label: '运维',
-    items: [
-      { to: '/ops/queue',    label: '任务队列',   icon: TerminalSquare },
-      { to: '/ops/database', label: '数据库浏览', icon: Database },
-    ],
+    items: [{ to: '/sdd/semantics', label: '语义映射', icon: Settings }],
   },
 ] as const;
 
