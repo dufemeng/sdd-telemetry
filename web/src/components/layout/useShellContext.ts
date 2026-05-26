@@ -3,7 +3,6 @@ import type { TimeRange } from './TopBar';
 
 export interface ShellContext {
   timeRange: TimeRange;
-  search: string;
 }
 
 export const ShellContext = createContext<ShellContext>(null!);

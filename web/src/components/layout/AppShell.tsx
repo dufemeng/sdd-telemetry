@@ -7,7 +7,6 @@ import { ShellContext } from './useShellContext';
 
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
-  const [search,    setSearch]    = useState('');
   const { pathname } = useLocation();
   const prefersReducedMotion = useReducedMotion();
 
@@ -25,14 +24,12 @@ export function AppShell() {
       <TopBar
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
-        search={search}
-        onSearchChange={setSearch}
       />
       <main
         className="overflow-hidden"
         style={{ background: 'var(--color-base)', gridColumn: 2, gridRow: 2 }}
       >
-        <ShellContext.Provider value={{ timeRange, search }}>
+        <ShellContext.Provider value={{ timeRange }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}

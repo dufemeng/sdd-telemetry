@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftCircle, ArrowRightCircle, TerminalSquare, Wrench, Workflow } from 'lucide-react';
+import { ArrowLeftCircle, ArrowRightCircle, Search, TerminalSquare, Wrench, Workflow } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
 import {
   useSddInteractionDetail,
@@ -32,8 +32,9 @@ import type {
 const PAGE_SIZE = 20;
 
 export default function InteractionsPage() {
-  const { timeRange, search } = useShellContext();
+  const { timeRange } = useShellContext();
   const { data } = useSddInteractions(timeRange);
+  const [search, setSearch] = useState('');
   const [selectedInteractionId, setSelectedInteractionId] = useState<string | null>(null);
   const detailQuery = useSddInteractionDetail(selectedInteractionId);
   const toolCallsQuery = useSddInteractionToolCalls(selectedInteractionId);
@@ -73,6 +74,18 @@ export default function InteractionsPage() {
     <>
       <Panel title="交互明细" icon={<Workflow size={18} />}>
         <div className="grid gap-3">
+          <div
+            className="flex items-center gap-2 h-[28px] px-[10px] w-[260px] rounded-[4px]"
+            style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'var(--color-base)' }}
+          >
+            <Search size={13} className="text-[var(--color-muted)] shrink-0" />
+            <input
+              className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
+              placeholder="搜索会话 / 提示词 / 用户 / 技能"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <DataTable
             headers={[
               '时间',

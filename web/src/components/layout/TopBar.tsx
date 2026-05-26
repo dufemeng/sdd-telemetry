@@ -1,4 +1,4 @@
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 
 export type TimeRange = '24h' | '7d' | '30d';
@@ -8,11 +8,9 @@ export const TIME_RANGES: readonly TimeRange[] = ['24h', '7d', '30d'] as const;
 interface TopBarProps {
   timeRange: TimeRange;
   onTimeRangeChange: (range: TimeRange) => void;
-  search: string;
-  onSearchChange: (value: string) => void;
 }
 
-export function TopBar({ timeRange, onTimeRangeChange, search, onSearchChange }: TopBarProps) {
+export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
   const isFetching = useIsFetching() > 0;
   const qc = useQueryClient();
 
@@ -26,19 +24,7 @@ export function TopBar({ timeRange, onTimeRangeChange, search, onSearchChange }:
         background: 'var(--color-panel)',
       }}
     >
-      {/* Search */}
-      <div
-        className="flex items-center gap-2 h-8 px-[10px] w-[min(520px,46vw)] rounded-[4px] text-[var(--color-muted)]"
-        style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'var(--color-base)' }}
-      >
-        <Search size={16} />
-        <input
-          className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
-          placeholder="搜索批次 / 会话 / 提示词 / 用户 / 技能"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
-      </div>
+      <div />
 
       {/* Actions */}
       <div className="flex items-center gap-2">
