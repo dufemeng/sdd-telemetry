@@ -203,6 +203,10 @@ export interface WorkItemRow {
   relative_dir: string;
   first_seen_at: Date | string | null;
   last_seen_at: Date | string | null;
+  artifact_count: number | string;
+  usage_count: number | string;
+  error_count: number | string;
+  coverage_stages_json: string;
 }
 
 export interface ArtifactRow {
@@ -583,11 +587,34 @@ export class SddQueryRepository {
   ): Promise<WorkItemRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
-      `SELECT id, work_item_key, requirements_repo_name, business_domain,
-              work_item_slug, work_item_title, relative_dir, first_seen_at, last_seen_at
-       FROM sdd_work_items
+      `SELECT
+         wi.id, wi.work_item_key, wi.requirements_repo_name, wi.business_domain,
+         wi.work_item_slug, wi.work_item_title, wi.relative_dir,
+         wi.first_seen_at, wi.last_seen_at,
+         COALESCE(a.artifact_count, 0)     AS artifact_count,
+         COALESCE(u.usage_count, 0)        AS usage_count,
+         COALESCE(e.error_count, 0)        AS error_count,
+         COALESCE(a.coverage_stages, '[]') AS coverage_stages_json
+       FROM sdd_work_items wi
+       LEFT JOIN (
+         SELECT work_item_id,
+                COUNT(*)                              AS artifact_count,
+                JSON_ARRAYAGG(DISTINCT artifact_type) AS coverage_stages
+         FROM sdd_work_item_artifacts
+         GROUP BY work_item_id
+       ) a ON a.work_item_id = wi.id
+       LEFT JOIN (
+         SELECT work_item_id, COUNT(*) AS usage_count
+         FROM sdd_skill_usages
+         GROUP BY work_item_id
+       ) u ON u.work_item_id = wi.id
+       LEFT JOIN (
+         SELECT work_item_id, COUNT(*) AS error_count
+         FROM sdd_errors
+         GROUP BY work_item_id
+       ) e ON e.work_item_id = wi.id
        ${whereSql(clauses)}
-       ORDER BY id DESC
+       ORDER BY wi.id DESC
        LIMIT ?`,
       [...params, limit],
     )) as WorkItemRow[];

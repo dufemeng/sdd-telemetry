@@ -703,6 +703,15 @@ export class SddQueryService {
   }
 
   private toWorkItem(row: WorkItemRow): SddWorkItem {
+    let coverageStages: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(row.coverage_stages_json ?? '[]');
+      coverageStages = Array.isArray(parsed)
+        ? parsed.filter((s): s is string => typeof s === 'string')
+        : [];
+    } catch {
+      coverageStages = [];
+    }
     return {
       id: toStringId(row.id),
       workItemKey: row.work_item_key,
@@ -713,6 +722,10 @@ export class SddQueryService {
       relativeDir: row.relative_dir,
       firstSeenAt: toIsoDate(row.first_seen_at),
       lastSeenAt: toIsoDate(row.last_seen_at),
+      artifactCount: Number(row.artifact_count ?? 0),
+      usageCount: Number(row.usage_count ?? 0),
+      errorCount: Number(row.error_count ?? 0),
+      coverageStages,
     };
   }
 }
