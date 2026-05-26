@@ -180,8 +180,9 @@ Batch 详情，包括 raw 摘要、清洗错误、状态流转。
 本地开发环境如果需要从 raw payload 重建派生数据，使用：
 
 ```bash
-pnpm db:reset-derived
-pnpm --filter @sdd-telemetry/worker once
+pnpm db:reclean         # 推荐：一键 reset + 循环重清洗，带 prod 锁 / 丢失率检查
+# 或者：
+pnpm db:reset-derived && pnpm --filter @sdd-telemetry/worker once
 ```
 
 规则：

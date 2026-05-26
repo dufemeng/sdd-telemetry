@@ -183,7 +183,8 @@ pnpm docker:relay                        # 无 Docker 的机器下载 Release �
 pnpm db:migrate                          # 跑迁移
 pnpm db:seed                             # 写入种子数据
 pnpm db:verify                           # 验证 schema
-pnpm db:reset-derived                    # 保留 raw payload，清空并重排派生清洗任务
+pnpm db:reclean                          # 一键重置派生层 + 用最新语义映射重清洗（推荐）
+pnpm db:reset-derived                    # 低层：只清空派生表 + 重排队列，不跑 worker
 pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
 ```
 

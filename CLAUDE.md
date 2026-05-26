@@ -138,7 +138,7 @@
 rg --hidden "ap""ps/(web|server|worker)|\\.\\/ap""ps/(web|server|worker)|ap""ps/" . -g '!node_modules/**' -g '!.git/**'
 ```
 
-- 基础验证固定跑 `pnpm typecheck` 和 `pnpm build`；影响运行链路时补跑 `docker compose up -d mysql`、`pnpm db:migrate`、`pnpm db:seed`、`pnpm db:verify`、`pnpm --filter @sdd-telemetry/worker once` 和至少一个 HTTP health 请求。需要保留 raw payload 并重建事件层 / SDD 派生表时，使用 `pnpm db:reset-derived` 后再跑 worker once。
+- 基础验证固定跑 `pnpm typecheck` 和 `pnpm build`；影响运行链路时补跑 `docker compose up -d mysql`、`pnpm db:migrate`、`pnpm db:seed`、`pnpm db:verify`、`pnpm --filter @sdd-telemetry/worker once` 和至少一个 HTTP health 请求。需要保留 raw payload 并按最新语义映射重建事件层 / SDD 派生表时，跑 `pnpm db:reclean`（一键脚本，带 prod 锁 + 5% raw 丢失率阈值 + 交互确认 + 自动 build + 循环跑 worker once 直到 outbox 清空）。仅做"清派生表 + 重排队"用底层 `pnpm db:reset-derived`，需要自己再追加 worker once。
 - Claude Code 客户端 OTel 推荐配置以 `README.md` 为准；当前服务只接 logs 通路 `/api/ingest/otlp-logs`，不要在无 traces ingest 的情况下要求开启 `OTEL_LOG_TOOL_CONTENT`。
 
 ## 后端验证

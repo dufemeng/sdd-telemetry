@@ -1,3 +1,4 @@
+import type { DataSource } from 'typeorm';
 import { createAppDataSource } from './data-source';
 
 const derivedTables = [
@@ -11,14 +12,7 @@ const derivedTables = [
   'otel_log_events',
 ];
 
-async function main(): Promise<void> {
-  if (process.env.CONFIRM_RESET_DERIVED !== '1') {
-    throw new Error('Refusing to reset derived data without CONFIRM_RESET_DERIVED=1');
-  }
-
-  const dataSource = createAppDataSource();
-  await dataSource.initialize();
-
+export async function resetDerivedData(dataSource: DataSource): Promise<void> {
   try {
     await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
     for (const tableName of derivedTables) {
@@ -61,10 +55,26 @@ async function main(): Promise<void> {
     );
   } finally {
     await dataSource.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => undefined);
+  }
+}
+
+async function main(): Promise<void> {
+  if (process.env.CONFIRM_RESET_DERIVED !== '1') {
+    throw new Error('Refusing to reset derived data without CONFIRM_RESET_DERIVED=1');
+  }
+
+  const dataSource = createAppDataSource();
+  await dataSource.initialize();
+
+  try {
+    await resetDerivedData(dataSource);
+  } finally {
     await dataSource.destroy();
   }
 
   console.info('[sdd-telemetry] derived data reset; raw payload batches queued for cleaning');
 }
 
-void main();
+if (require.main === module) {
+  void main();
+}

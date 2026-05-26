@@ -32,6 +32,7 @@
     "db:verify": "pnpm --filter @sdd-telemetry/server db:verify",
     "db:reset-local": "pnpm --filter @sdd-telemetry/server db:reset-local",
     "db:reset-derived": "pnpm --filter @sdd-telemetry/server db:reset-derived",
+    "db:reclean": "pnpm --filter @sdd-telemetry/server db:reclean",
     "db:import-legacy-sqlite": "pnpm --filter @sdd-telemetry/server db:import-legacy-sqlite"
   },
   "devDependencies": {

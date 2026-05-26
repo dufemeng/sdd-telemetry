@@ -73,12 +73,16 @@ prompt_id 缺失 -> sha256("session:" + session_id)
 新增脚本：
 
 ```bash
+pnpm db:reclean         # 推荐：一键 reset + 循环跑 worker，带 prod 锁 / 丢失率检查 / 自动 build
+# 或者底层两步：
 pnpm db:reset-derived
 pnpm --filter @sdd-telemetry/worker once
 ```
 
 `db:reset-derived` 会保留 `otel_raw_payloads` 和 `otel_ingest_batches`，清空
 `otel_log_events` 与 SDD 派生表，重置 batch 状态，并重新写入 `clean_batch` outbox。
+`db:reclean` 在它之上又封了一层：执行前打印目标 DB、校验 raw 丢失率、要求 TTY
+输入 `RESET` 确认；执行后循环跑 worker 直到 outbox 清空并打印 status 分布。
 
 ## 5. 验收
 
@@ -623,7 +627,7 @@ WHERE parse_completed_at > NOW() - INTERVAL 1 DAY;
 
 1. 不新增 `session_window_legacy` migration，不提供 `includeLegacy` 查询参数。
 2. `pairing_method` 只保留 `prompt_id` / `anchored_by_user_prompt`。
-3. 存量开发数据通过 `pnpm db:reset-derived` 保留 raw payload、清空事件层和 SDD 派生表，再跑 worker 重清洗。
+3. 存量开发数据通过 `pnpm db:reclean` 保留 raw payload、清空事件层和 SDD 派生表，并循环跑 worker 重清洗（底层等价于 `db:reset-derived` + `worker once`）。
 4. 本节之前恢复的原文保留为评审上下文，不再删除或改写。
 
 ---

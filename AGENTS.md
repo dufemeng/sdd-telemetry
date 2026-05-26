@@ -73,7 +73,7 @@ pnpm --filter @sdd-telemetry/worker once
 curl -sS http://127.0.0.1:4318/api/ingest/health
 ```
 
-需要保留 `otel_raw_payloads` 并重建事件层 / SDD 派生表时，可先执行 `pnpm db:reset-derived`，再执行 `pnpm --filter @sdd-telemetry/worker once`。
+需要保留 `otel_raw_payloads` 并按最新语义映射重建事件层 / SDD 派生表时，推荐执行 `pnpm db:reclean`（带 prod 锁、丢失率检查、自动 build、自动循环跑 worker 直到 outbox 清空、postflight 校验）。底层 `pnpm db:reset-derived` 只做"清派生表+排队"这一步，要单独跑的话再追加 `pnpm --filter @sdd-telemetry/worker once`。
 
 Claude Code 客户端 OTel 推荐配置以 `README.md` 为准；当前服务只接 logs 通路 `/api/ingest/otlp-logs`，不要在无 traces ingest 的情况下要求开启 `OTEL_LOG_TOOL_CONTENT`。
 
