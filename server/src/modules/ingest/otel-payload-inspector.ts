@@ -86,6 +86,9 @@ export function summarizeOtlpPayload(payload: unknown): OtlpPayloadSummary {
 }
 
 // HTTP header name → OtlpUserHints field name.
+// 因为 Claude Code OTel SDK 双 LoggerProvider 时序问题会导致 resource attributes
+// 在启动期事件里缺失，HTTP exporter 是进程单例所以 header 一定会带——把身份/路径
+// 信息走 header 是绕过 resource 不稳定性的唯一可靠路径。
 const HEADER_HINT_MAP: ReadonlyArray<[string, keyof OtlpUserHints]> = [
   ['sdd-install-id', 'installId'],
   ['sdd-user-name', 'userName'],
@@ -93,19 +96,6 @@ const HEADER_HINT_MAP: ReadonlyArray<[string, keyof OtlpUserHints]> = [
   ['sdd-machine-name', 'machineName'],
   ['sdd-requirements-root-path', 'requirementsRootPath'],
   ['sdd-wiki-root-path', 'wikiRootPath'],
-];
-
-// URL query param name → OtlpUserHints field name.
-// OTEL_EXPORTER_OTLP_LOGS_ENDPOINT 是经过验证的 env 注入路径（Claude Code 必须读它
-// 才能知道往哪里发数据），把身份信息编码进 query string 可绕开 resource / header
-// 两条路径共有的 env 注入时序问题。
-const QUERY_HINT_MAP: ReadonlyArray<[string, keyof OtlpUserHints]> = [
-  ['install_id', 'installId'],
-  ['user_name', 'userName'],
-  ['machine_id', 'machineId'],
-  ['machine_name', 'machineName'],
-  ['requirements_root_path', 'requirementsRootPath'],
-  ['wiki_root_path', 'wikiRootPath'],
 ];
 
 export function extractHeaderHints(
@@ -119,23 +109,6 @@ export function extractHeaderHints(
       continue;
     }
     result[hintField] = decodeHeaderValue(value);
-  }
-  return result;
-}
-
-export function extractQueryHints(
-  query: Record<string, string | string[] | undefined>,
-): Partial<OtlpUserHints> {
-  const result: Partial<OtlpUserHints> = {};
-  for (const [paramName, hintField] of QUERY_HINT_MAP) {
-    const raw = query[paramName];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    if (typeof value !== 'string' || value.length === 0) {
-      continue;
-    }
-    // Koa already percent-decodes ctx.query values; no additional decoding here.
-    // Calling decodeURIComponent again would corrupt values like "50%" (throws URIError).
-    result[hintField] = value;
   }
   return result;
 }

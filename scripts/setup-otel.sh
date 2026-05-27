@@ -134,6 +134,7 @@ env = settings.setdefault("env", {})
 env["CLAUDE_CODE_ENABLE_TELEMETRY"] = "1"
 env["OTEL_LOGS_EXPORTER"] = "otlp"
 env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/json"
+env["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = os.environ["OTEL_ENDPOINT"]
 env["OTEL_LOG_USER_PROMPTS"] = "1"
 env["OTEL_LOG_TOOL_DETAILS"] = "1"
 env["OTEL_LOG_RAW_API_BODIES"] = "1"
@@ -146,31 +147,12 @@ def header_value(value):
     # Equivalent safe characters to JavaScript encodeURIComponent().
     return quote(value, safe="-_.!~*'()")
 
-# ------ 主通道：身份信息编码进 endpoint URL query string ------
-# OTEL_EXPORTER_OTLP_LOGS_ENDPOINT 是 OTel logs exporter 必须读取的 env var，
-# 比 OTEL_EXPORTER_OTLP_HEADERS 更早被 SDK 解析，不受 Claude Code 双 LoggerProvider
-# 时序影响；URL query 也不会被任何反代/网关剥掉。
-sdd_query_params = [
-    ("install_id", os.environ["INSTALL_ID"]),
-    ("user_name", os.environ["USER_NAME"]),
-    ("machine_name", os.environ["MACHINE_NAME"]),
-    ("requirements_root_path", os.environ["REQUIREMENTS_ROOT_PATH"]),
-]
-wiki_root_path = os.environ["WIKI_ROOT_PATH"]
-if wiki_root_path:
-    sdd_query_params.append(("wiki_root_path", wiki_root_path))
-
-query_string = "&".join(f"{k}={quote(v, safe='')}" for k, v in sdd_query_params)
-env["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = f"{os.environ['OTEL_ENDPOINT']}?{query_string}"
-
-# ------ 备用通道：OTEL_EXPORTER_OTLP_HEADERS（向后兼容已有客户端）------
-# 对于已配置但未重新运行 setup 的旧客户端，server 仍可从 header 读到身份信息。
 sdd_headers = [
     ("sdd-install-id", os.environ["INSTALL_ID"]),
     ("sdd-user-name", os.environ["USER_NAME"]),
     ("sdd-machine-name", os.environ["MACHINE_NAME"]),
     ("sdd-requirements-root-path", os.environ["REQUIREMENTS_ROOT_PATH"]),
-    ("sdd-wiki-root-path", wiki_root_path),
+    ("sdd-wiki-root-path", os.environ["WIKI_ROOT_PATH"]),
 ]
 env["OTEL_EXPORTER_OTLP_HEADERS"] = ",".join(
     f"{name}={header_value(value)}" for name, value in sdd_headers if value
