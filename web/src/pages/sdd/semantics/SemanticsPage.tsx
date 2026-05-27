@@ -6,6 +6,7 @@ import { Panel } from '@/components/ui/Panel';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import type { SddSemantic } from '@sdd-telemetry/api';
+import { useAuth } from '@/components/auth/useAuth';
 
 const PAGE_SIZE = 20;
 
@@ -16,6 +17,7 @@ function formatArtifactFilenamePatterns(patterns: string[] | null) {
 }
 
 export default function SemanticsPage() {
+  const { user } = useAuth();
   const { data } = useSddSemantics();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -32,8 +34,13 @@ export default function SemanticsPage() {
     setSelectedId(null);
   };
 
+  const canEdit = user.role === 'super_admin';
+
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0,1.5fr) minmax(320px,0.75fr)' }}>
+    <div
+      className="grid gap-3"
+      style={{ gridTemplateColumns: canEdit ? 'minmax(0,1.5fr) minmax(320px,0.75fr)' : '1fr' }}
+    >
       <Panel title="语义列表" icon={<Settings size={18} />}>
         <div className="grid gap-3">
           <div className="w-full overflow-x-auto">
@@ -85,7 +92,7 @@ export default function SemanticsPage() {
         </div>
       </Panel>
 
-      <SemanticForm selected={selected} onDeleteSuccess={handleDeleteSuccess} />
+      {canEdit ? <SemanticForm selected={selected} onDeleteSuccess={handleDeleteSuccess} /> : null}
     </div>
   );
 }

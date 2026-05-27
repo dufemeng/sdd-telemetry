@@ -1,6 +1,6 @@
 # P0 验收计划
 
-更新时间：2026-05-18
+更新时间：2026-05-27
 
 ## 1. 验收原则
 
@@ -57,7 +57,7 @@ pnpm test:api          # 命中现有 server/test/integration/api-contract.test.
 检查项：
 
 1. migration 可从空库执行成功。
-2. P0 表全部存在：`otel_ingest_batches`、`otel_raw_payloads`、`otel_log_events`、`ingest_outbox`、`sdd_users`、`sdd_skill_semantics`、`sdd_skill_aliases`、`sdd_interactions`、`sdd_interaction_texts`、`sdd_interaction_tool_calls`、`sdd_skill_usages`、`sdd_errors`、`sdd_work_items`、`sdd_work_item_artifacts`。
+2. P0 表和登录表全部存在：`auth_users`、`otel_ingest_batches`、`otel_raw_payloads`、`otel_log_events`、`ingest_outbox`、`sdd_users`、`sdd_skill_semantics`、`sdd_skill_aliases`、`sdd_interactions`、`sdd_interaction_texts`、`sdd_interaction_tool_calls`、`sdd_skill_usages`、`sdd_errors`、`sdd_work_items`、`sdd_work_item_artifacts`。
 3. 主键均为 `id`。
 4. 唯一键存在：`payload_hash`、`event_id`、`interaction_key`、`usage_key`、`error_key`、`work_item_key`、`artifact_key`。
 5. 关键索引存在：时间、状态、用户、session、prompt、semantic。
@@ -166,7 +166,25 @@ POST /api/ingest/otlp-logs basic-otlp.json
 
 目标：证明页面所需数据都能从新 API 获取，且每个端点 response 通过 zod schema。
 
-完整 P0 API 列表（26 个）：
+Dashboard contract 测试在执行受保护接口前，必须创建并登录一个 `super_admin` 测试账号；同时断言匿名请求返回 `401`，`viewer` 请求管理员写接口与 `/api/ops/*` 返回 `403`。
+
+**Auth / Health**
+
+```text
+GET  /api/healthz
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/password
+POST /api/auth/logout
+GET  /api/auth/users
+POST /api/auth/users
+PUT  /api/auth/users/:id
+POST /api/auth/users/:id/reset-password
+POST /api/auth/users/:id/disable
+POST /api/auth/users/:id/enable
+```
+
+Dashboard API 列表：
 
 **Ingest（4）**
 
@@ -231,17 +249,19 @@ GET /api/ops/queue
 
 浏览器验收：
 
-1. 页面不白屏。
-2. 所有 tab 可切换。
-3. 空数据状态正常。
-4. 上传 fixture 后采集健康页能看到 batch。
-5. 清洗完成后事件分布有数据。
-6. Skill 调用漏斗有数据，且**含"未匹配 Skill"节点**（case 2 验收点）。
-7. 用户 / 机器维度有数据，`requirementsRootPath` 字段显示来自 OTel 的真实值（case 1 验收点）。
-8. Raw 批次详情能看到 batch 状态。
-9. Skill 使用概览能看到按 skill / semantic 聚合后的调用统计。
-10. Ops 数据库浏览能查看 MySQL 表结构、字段最大 size 估算、字段筛选和表数据。
-11. Work item 详情页 `errorCount` 在有错误时显示非 0（case 5 验收点）。
+1. 未登录访问页面时跳转 `/login`，匿名请求受保护 API 得到 `401`。
+2. `viewer` 可查看 dashboard，但不可进入成员管理、数据库检索或编辑语义映射。
+3. `super_admin` 可创建/禁用成员并重置密码；禁用或改密后旧 session 失效。
+4. 页面不白屏，允许角色可见的 tab 均可切换。
+5. 空数据状态正常。
+6. 上传 fixture 后采集健康页能看到 batch。
+7. 清洗完成后事件分布有数据。
+8. Skill 调用漏斗有数据，且**含"未匹配 Skill"节点**（case 2 验收点）。
+9. 用户 / 机器维度有数据，`requirementsRootPath` 字段显示来自 OTel 的真实值（case 1 验收点）。
+10. Raw 批次详情能看到 batch 状态。
+11. Skill 使用概览能看到按 skill / semantic 聚合后的调用统计。
+12. `super_admin` 的 Ops 数据库浏览能查看 MySQL 表结构、字段最大 size 估算、字段筛选和表数据。
+13. Work item 详情页 `errorCount` 在有错误时显示非 0（case 5 验收点）。
 
 今日 MVP 暂不验收：
 

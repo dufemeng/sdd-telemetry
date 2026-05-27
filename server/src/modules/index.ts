@@ -1,3 +1,6 @@
+import './auth/auth.controller';
+import './auth/auth.repository';
+import './auth/auth.service';
 import './events/events.controller';
 import './events/events-query.repository';
 import './events/events-query.service';
@@ -7,6 +10,7 @@ import './ingest/ingest-health.service';
 import './ingest/ingest-receive.service';
 import './ingest/ingest-write.repository';
 import './ingest/ingest.controller';
+import './health/health.controller';
 import './ops/ops.controller';
 import './ops/ops-query.repository';
 import './ops/ops-query.service';

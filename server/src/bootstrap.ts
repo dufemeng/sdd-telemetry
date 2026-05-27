@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Bootstrap } from '@midwayjs/bootstrap';
 import { ApiErrorFilter } from './common/filter/api-error.filter';
+import { AuthMiddleware } from './common/auth/auth.middleware';
 import { MysqlDataSourceManager } from './infrastructure/mysql/data-source-manager';
 import { IngestHealthRepository } from './modules/ingest/ingest-health.repository';
 import { IngestHealthService } from './modules/ingest/ingest-health.service';
@@ -13,11 +14,16 @@ import { OpsQueryService } from './modules/ops/ops-query.service';
 import { SddQueryRepository } from './modules/sdd/sdd-query.repository';
 import { SddQueryService } from './modules/sdd/sdd-query.service';
 import { SddWriteRepository } from './modules/sdd/sdd-write.repository';
+import { AuthRepository } from './modules/auth/auth.repository';
+import { AuthService } from './modules/auth/auth.service';
 
 void Bootstrap.configure({
   preloadModules: [
     ApiErrorFilter,
+    AuthMiddleware,
     MysqlDataSourceManager,
+    AuthRepository,
+    AuthService,
     IngestHealthRepository,
     IngestHealthService,
     IngestReceiveService,

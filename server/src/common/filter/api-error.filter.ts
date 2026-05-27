@@ -1,6 +1,7 @@
 import { Catch, MidwayHttpError } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import { ZodError } from 'zod';
+import { ApiHttpError } from '../auth/api-http-error';
 import { fail } from '../response/api-response';
 
 @Catch()
@@ -14,6 +15,11 @@ export class ApiErrorFilter {
         .join('; ');
       ctx.status = 400;
       return fail('VALIDATION_FAILED', message, requestId);
+    }
+
+    if (err instanceof ApiHttpError) {
+      ctx.status = err.status;
+      return fail(err.code, err.message, requestId);
     }
 
     if (err instanceof MidwayHttpError) {

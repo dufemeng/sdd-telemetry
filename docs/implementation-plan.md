@@ -146,22 +146,24 @@ worker/src/
 
 后端 API 不向旧项目做兼容。旧前端只作为页面能力参考，前端请求层适配新 API。
 
-API 分为 4 个域：
+API 分为 5 个域：
 
 ```text
 /api/ingest   采集链路
 /api/events   通用 OTel 事件分析
 /api/sdd      SDD 业务分析
 /api/ops      运维 / 排障 / 数据库观察
+/api/auth     Dashboard 登录与成员管理
 ```
 
 详见 [api-contract.md](./api-contract.md)。
 
 ## 7. 数据库模型
 
-数据库分 5 层：
+数据库分 6 层：
 
 ```text
+访问控制层：auth_users
 配置层：sdd_users / sdd_skill_semantics / sdd_skill_aliases
 原始层：otel_ingest_batches / otel_raw_payloads / otel_log_events / ingest_outbox
 交互层：sdd_interactions / sdd_interaction_texts
@@ -509,6 +511,7 @@ pnpm test:api
 4. 用 `packages/api` contract 改造请求层。
 5. 前端 ViewModel adapter 适配新 response。
 6. 接入 `VITE_API_BASE_URL`。
+7. 接入 `/api/auth/*` session 登录、`super_admin` / `viewer` 两角色与成员管理页面。
 
 验收：
 

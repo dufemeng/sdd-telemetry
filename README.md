@@ -37,6 +37,33 @@ pnpm dev
 
 服务地址：API `http://localhost:4318`，Web `http://localhost:5173`
 
+## 登录与权限
+
+Dashboard 使用独立的 `auth_users` 登录成员表，不复用遥测侧的 `sdd_users`。角色只有两种：
+
+| 角色 | 权限 |
+| --- | --- |
+| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面 |
+| `viewer` | 登录后查看 dashboard 只读数据 |
+
+首次 migration 后初始化唯一的首位超级管理员：
+
+```bash
+pnpm db:migrate
+pnpm auth:bootstrap-admin -- --username admin --display-name 管理员
+```
+
+命令会隐藏输入初始密码；密码至少 12 位。之后由超级管理员在页面 `/admin/users` 中创建、禁用、改密和调整其他成员角色。禁用成员、重置密码或变更角色都会使该成员已有登录状态立即失效。
+
+开发环境会使用仅限本地的 session secret。生产环境必须配置随机密钥，并通过 HTTPS 提供 Web 服务：
+
+```bash
+export AUTH_SESSION_SECRET="$(openssl rand -base64 48)"
+export AUTH_SESSION_MAX_AGE_SECONDS=604800 # 可选，默认 7 天
+```
+
+网页登录只保护 dashboard 与其 API；Claude Code 的 `POST /api/ingest/otlp-logs` 自动上报入口不依赖浏览器 session。
+
 ## 离线 Docker 部署
 
 推荐使用脚本打包和部署。默认只打 `app/web` 镜像，MySQL 镜像只在服务器首次缺失时需要单独导入；需要一起打包可加 `INCLUDE_MYSQL=1`。
@@ -115,8 +142,13 @@ scp ~/Downloads/sdd-telemetry-deploy-bundle-<VERSION>.tar.gz \
 cd ~/project/sdd-telemetry-deploy
 tar -xzf sdd-telemetry-deploy-bundle-<VERSION>.tar.gz
 chmod +x deploy-docker.sh
-VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
+AUTH_SESSION_SECRET="$(openssl rand -base64 48)" \
+  VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
+docker compose --env-file .env -f compose.prod.yml run --rm server \
+  node dist/infrastructure/mysql/bootstrap-auth-admin.js --username admin --display-name 管理员
 ```
+
+`AUTH_SESSION_SECRET` 在第一次部署时传入即可，部署脚本会保存到服务器部署目录的 `.env`；已有部署继续复用已有值，切勿随版本发布轮换，否则全部登录状态会失效。初始化管理员命令也可在代码仓库中连接同一 MySQL 执行。
 
 ### GitHub Release 推荐流程
 
@@ -186,6 +218,7 @@ pnpm db:verify                           # 验证 schema
 pnpm db:reclean                          # 一键重置派生层 + 用最新语义映射重清洗（推荐）
 pnpm db:reset-derived                    # 低层：只清空派生表 + 重排队列，不跑 worker
 pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
+pnpm auth:bootstrap-admin -- --username admin --display-name 管理员 # 首位超级管理员
 ```
 
 ## 数据链路

@@ -1,3 +1,5 @@
+const isProduction = process.env.NODE_ENV === 'production';
+
 export default {
   keys: 'sdd-telemetry-local-secret',
   midwayLogger: {
@@ -29,6 +31,15 @@ export default {
     rawRetentionDays: Number(process.env.RAW_RETENTION_DAYS ?? 7),
     eventRetentionDays: Number(process.env.EVENT_RETENTION_DAYS ?? 30),
     textRetentionDays: Number(process.env.TEXT_RETENTION_DAYS ?? 30),
+  },
+  auth: {
+    sessionSecret:
+      process.env.AUTH_SESSION_SECRET ??
+      (isProduction ? '' : 'sdd-telemetry-development-session-secret-only'),
+    sessionMaxAgeSeconds: Number(process.env.AUTH_SESSION_MAX_AGE_SECONDS ?? 7 * 24 * 60 * 60),
+    cookieSecure: process.env.AUTH_COOKIE_SECURE
+      ? process.env.AUTH_COOKIE_SECURE === '1'
+      : isProduction,
   },
   mysql: {
     host: process.env.MYSQL_HOST ?? '127.0.0.1',

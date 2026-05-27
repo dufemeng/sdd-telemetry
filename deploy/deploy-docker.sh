@@ -224,6 +224,12 @@ set_env_value SDD_TELEMETRY_WEB_IMAGE "$SDD_TELEMETRY_WEB_IMAGE"
 set_env_value WEB_PUBLISHED_PORT "$WEB_PUBLISHED_PORT"
 set_env_value API_PUBLISHED_PORT "$API_PUBLISHED_PORT"
 set_env_value DEPLOY_VERSION "$VERSION"
+if [[ -n "${AUTH_SESSION_SECRET:-}" ]]; then
+  set_env_value AUTH_SESSION_SECRET "$AUTH_SESSION_SECRET"
+fi
+if [[ -n "${AUTH_SESSION_MAX_AGE_SECONDS:-}" ]]; then
+  set_env_value AUTH_SESSION_MAX_AGE_SECONDS "$AUTH_SESSION_MAX_AGE_SECONDS"
+fi
 if [[ -n "${MYSQL_PUBLISHED_PORT:-}" ]]; then
   set_env_value MYSQL_PUBLISHED_PORT "$MYSQL_PUBLISHED_PORT"
 fi
@@ -247,7 +253,7 @@ printf 'Starting application services\n'
 "${compose[@]}" up -d server worker web
 "${compose[@]}" ps
 
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${API_PUBLISHED_PORT}/api/ingest/health}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${API_PUBLISHED_PORT}/api/healthz}"
 printf 'Checking health: %s\n' "$HEALTH_URL"
 for _ in {1..30}; do
   if curl -fsS "$HEALTH_URL" >/dev/null; then

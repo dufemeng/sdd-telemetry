@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, RefreshCw } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { AccountMenu } from './AccountMenu';
 
 export type TimeRange = '24h' | '7d' | '30d';
 
@@ -76,6 +77,7 @@ export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
             : <RefreshCw size={18} className={(isFetching || refreshing) ? 'animate-spin' : ''} />
           }
         </button>
+        <AccountMenu />
       </div>
     </header>
   );

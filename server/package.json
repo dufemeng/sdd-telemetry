@@ -18,7 +18,8 @@
     "db:reset-local": "CONFIRM_RESET=1 tsx src/infrastructure/mysql/reset-local-data.ts",
     "db:reset-derived": "CONFIRM_RESET_DERIVED=1 tsx src/infrastructure/mysql/reset-derived-data.ts",
     "db:reclean": "tsx src/infrastructure/mysql/reset-and-reclean.ts",
-    "db:import-legacy-sqlite": "tsx src/infrastructure/mysql/import-legacy-sqlite-raw.ts"
+    "db:import-legacy-sqlite": "tsx src/infrastructure/mysql/import-legacy-sqlite-raw.ts",
+    "auth:bootstrap-admin": "tsx src/infrastructure/mysql/bootstrap-auth-admin.ts"
   },
   "dependencies": {
     "@midwayjs/bootstrap": "^4.1.0",

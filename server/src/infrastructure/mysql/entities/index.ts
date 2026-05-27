@@ -1,3 +1,4 @@
+export * from './auth-user.entity';
 export * from './ingest-outbox.entity';
 export * from './otel-ingest-batch.entity';
 export * from './otel-log-event.entity';
@@ -13,6 +14,7 @@ export * from './sdd-user.entity';
 export * from './sdd-work-item-artifact.entity';
 export * from './sdd-work-item.entity';
 
+import { AuthUserEntity } from './auth-user.entity';
 import { IngestOutboxEntity } from './ingest-outbox.entity';
 import { OtelIngestBatchEntity } from './otel-ingest-batch.entity';
 import { OtelLogEventEntity } from './otel-log-event.entity';
@@ -29,6 +31,7 @@ import { SddWorkItemArtifactEntity } from './sdd-work-item-artifact.entity';
 import { SddWorkItemEntity } from './sdd-work-item.entity';
 
 export const appEntities = [
+  AuthUserEntity,
   SddUserEntity,
   SddSkillSemanticEntity,
   SddSkillAliasEntity,

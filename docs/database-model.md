@@ -1,6 +1,6 @@
 # 数据库模型设计
 
-更新时间：2026-05-19  
+更新时间：2026-05-27
 数据库：MySQL / InnoDB / `utf8mb4`  
 时间约定：所有时间按 UTC 写入，类型使用 `DATETIME(3)`
 
@@ -18,6 +18,9 @@
 ## 2. 表分层
 
 ```text
+访问控制层
+  auth_users
+
 配置层
   sdd_users
   sdd_skill_semantics
@@ -41,9 +44,29 @@ SDD 业务层
   sdd_errors
 ```
 
-## 3. 配置层
+## 3. 访问控制与配置层
 
-### 3.1 sdd_users
+### 3.1 auth_users
+
+Dashboard 登录成员表，与遥测维度表 `sdd_users` 严格分离。密码保存 Node `scrypt` 版本化散列，不保存明文。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 登录成员主键 |
+| `username` | VARCHAR(64) | NOT NULL, UNIQUE | 登录名 |
+| `display_name` | VARCHAR(64) | NOT NULL | 页面显示名 |
+| `password_hash` | VARCHAR(255) | NOT NULL | 密码散列 |
+| `role` | VARCHAR(32) | NOT NULL | `super_admin` / `viewer` |
+| `status` | VARCHAR(32) | NOT NULL | `active` / `disabled` |
+| `session_version` | INT UNSIGNED | NOT NULL | 禁用、改密或改角色时递增，使旧 session 失效 |
+| `last_login_at` | DATETIME(3) | NULL | 最近成功登录时间 |
+| `created_by` | BIGINT UNSIGNED | NULL | 创建该成员的管理员 id；首位管理员为空 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
+
+业务约束：系统始终保留至少一个 `active` 状态的 `super_admin`；成员“删除”采用禁用而非物理删除。
+
+### 3.2 sdd_users
 
 用户表和用户维度 setting 表合并。`setting.json` 是用户维度的，所以不再单独建 `sdd_user_settings`。
 
@@ -87,7 +110,7 @@ install_id 和 machine_id 缺失，但日志 attribute 中 user.id 存在：
 `user.id` 是 Claude Code 日志记录自带的稳定兜底身份，仅用于生成 `user_key`；
 客户端能够配置资源属性时仍应优先上报 `sdd.install_id`，以区分不同安装实例。
 
-### 3.2 sdd_skill_semantics
+### 3.3 sdd_skill_semantics
 
 SDD 语义配置表。语义是页面展示、归类、评测、故障排查的稳定概念。
 
@@ -103,7 +126,7 @@ SDD 语义配置表。语义是页面展示、归类、评测、故障排查的�
 
 不设计 `stage_order` 和 `enabled`。配置存在即生效，流程顺序不在配置层强行定义。
 
-### 3.3 sdd_skill_aliases
+### 3.4 sdd_skill_aliases
 
 一个语义可以匹配多个 raw skill name。
 
@@ -494,4 +517,6 @@ MAX_OTLP_PAYLOAD_BYTES=16777216
 RAW_RETENTION_DAYS=7
 EVENT_RETENTION_DAYS=30
 TEXT_RETENTION_DAYS=30
+AUTH_SESSION_SECRET=<至少 32 字符随机密钥>
+AUTH_SESSION_MAX_AGE_SECONDS=604800
 ```

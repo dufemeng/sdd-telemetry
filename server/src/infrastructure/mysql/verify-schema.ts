@@ -1,6 +1,7 @@
 import { createAppDataSource } from './data-source';
 
 const expectedTables = [
+  'auth_users',
   'sdd_users',
   'sdd_skill_semantics',
   'sdd_skill_aliases',
@@ -17,6 +18,7 @@ const expectedTables = [
 ];
 
 const expectedUniqueIndexes = [
+  'uk_auth_users_username',
   'uk_sdd_users_user_key',
   'uk_sdd_skill_semantics_code',
   'uk_sdd_skill_aliases_skill_name',
@@ -33,6 +35,7 @@ const expectedUniqueIndexes = [
 ];
 
 const expectedColumns: Record<string, string[]> = {
+  auth_users: ['password_hash', 'role', 'status', 'session_version'],
   sdd_users: ['requirements_root_path'],
   sdd_skill_semantics: ['artifact_filename_patterns'],
 };

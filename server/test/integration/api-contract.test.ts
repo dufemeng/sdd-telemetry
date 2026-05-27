@@ -27,8 +27,12 @@ import {
   OpsTableRowsResponseSchema,
   OpsJobsResponseSchema,
   OpsQueueSchema,
+  AuthSessionUserSchema,
+  AuthUserSchema,
+  HealthzSchema,
   createApiResponseSchema,
 } from '@sdd-telemetry/api';
+import { hashPassword } from '../../src/modules/auth/auth-crypto';
 
 const BASE = process.env.API_BASE_URL ?? 'http://127.0.0.1:4318';
 const CONTRACT_SEMANTIC_CODE = 'contract_test_smoke';
@@ -36,15 +40,26 @@ const CONTRACT_SKILL_ALIAS = 'contract:test-smoke';
 const CONTRACT_SETTINGS_INSTALL_ID = 'contract-test-settings-install';
 const CONTRACT_INGEST_INSTALL_ID = 'contract-test-ingest-install';
 const CONTRACT_REQUIREMENTS_ROOT = '/tmp/sdd-telemetry-contract-test/requirements';
+const CONTRACT_ADMIN_USERNAME = 'contract-test-admin';
+const CONTRACT_ADMIN_PASSWORD = 'contract-test-password-2026';
+const CONTRACT_VIEWER_USERNAME = 'contract-test-viewer';
+const CONTRACT_VIEWER_PASSWORD = 'contract-viewer-password-2026';
 
 let contractBatchId: string | null = null;
 let didReachServer = false;
+let authCookie: string | undefined;
+let adminId: string | undefined;
+let viewerId: string | undefined;
+let viewerCookie: string | undefined;
 
-async function api(method: string, path: string, body?: unknown) {
+async function api(method: string, path: string, body?: unknown, authenticated = true) {
   const url = `${BASE}${path}`;
   const init: RequestInit = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authenticated && authCookie ? { Cookie: authCookie } : {}),
+    },
   };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
@@ -144,6 +159,8 @@ async function cleanupContractData() {
       CONTRACT_SETTINGS_INSTALL_ID,
       CONTRACT_INGEST_INSTALL_ID,
     ]);
+    await connection.execute('DELETE FROM auth_users WHERE username = ?', [CONTRACT_ADMIN_USERNAME]);
+    await connection.execute('DELETE FROM auth_users WHERE username = ?', [CONTRACT_VIEWER_USERNAME]);
   } finally {
     await connection.end();
   }
@@ -151,7 +168,7 @@ async function cleanupContractData() {
 
 describe('API Contract Tests', () => {
   beforeAll(async () => {
-    const res = await fetch(`${BASE}/api/ingest/health`, {
+    const res = await fetch(`${BASE}/api/healthz`, {
       signal: AbortSignal.timeout(3000),
     }).catch(() => null);
     if (!res?.ok) {
@@ -161,6 +178,108 @@ describe('API Contract Tests', () => {
     }
     didReachServer = true;
     await cleanupContractData();
+    const connection = await createConnection({
+      host: process.env.MYSQL_HOST ?? '127.0.0.1',
+      port: Number(process.env.MYSQL_PORT ?? 3306),
+      user: process.env.MYSQL_USER ?? 'sdd-telemetry',
+      password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
+      database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
+    });
+    try {
+      await connection.execute(
+        `INSERT INTO auth_users
+          (username, display_name, password_hash, role, status, session_version,
+           gmt_create, gmt_modified)
+         VALUES (?, 'Contract Admin', ?, 'super_admin', 'active', 1,
+                 CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
+        [CONTRACT_ADMIN_USERNAME, await hashPassword(CONTRACT_ADMIN_PASSWORD)],
+      );
+    } finally {
+      await connection.end();
+    }
+    const login = await fetch(`${BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: CONTRACT_ADMIN_USERNAME,
+        password: CONTRACT_ADMIN_PASSWORD,
+      }),
+    });
+    authCookie = login.headers.get('set-cookie')?.split(';')[0];
+    if (!login.ok || !authCookie) {
+      throw new Error('Unable to authenticate contract test administrator');
+    }
+  });
+
+  describe('Auth API', () => {
+    it('GET /api/healthz — is available without login', async () => {
+      const { status, body } = await api('GET', '/api/healthz', undefined, false);
+      expect(status).toBe(200);
+      validateContract('Healthz', body, HealthzSchema);
+    });
+
+    it('GET /api/ingest/health — rejects anonymous access', async () => {
+      const { status } = await api('GET', '/api/ingest/health', undefined, false);
+      expect(status).toBe(401);
+    });
+
+    it('GET /api/auth/me — returns logged in member', async () => {
+      const { status, body } = await api('GET', '/api/auth/me');
+      expect(status).toBe(200);
+      const user = validateContract('AuthSessionUser', body, AuthSessionUserSchema);
+      expect(user.role).toBe('super_admin');
+      adminId = user.id;
+    });
+
+    it('super_admin creates a viewer member', async () => {
+      const { status, body } = await api('POST', '/api/auth/users', {
+        username: CONTRACT_VIEWER_USERNAME,
+        displayName: 'Contract Viewer',
+        password: CONTRACT_VIEWER_PASSWORD,
+        role: 'viewer',
+      });
+      expect(status).toBe(200);
+      const user = validateContract('AuthUser', body, AuthUserSchema);
+      viewerId = user.id;
+      expect(user.role).toBe('viewer');
+    });
+
+    it('viewer can log in but cannot access administrator endpoints', async () => {
+      const login = await fetch(`${BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: CONTRACT_VIEWER_USERNAME,
+          password: CONTRACT_VIEWER_PASSWORD,
+        }),
+      });
+      viewerCookie = login.headers.get('set-cookie')?.split(';')[0];
+      expect(login.status).toBe(200);
+      expect(viewerCookie).toBeTruthy();
+
+      const ops = await fetch(`${BASE}/api/ops/tables`, {
+        headers: { Cookie: viewerCookie! },
+      });
+      expect(ops.status).toBe(403);
+    });
+
+    it('does not allow disabling the last active super_admin', async () => {
+      expect(adminId).toBeTruthy();
+      const { status } = await api('POST', `/api/auth/users/${adminId}/disable`);
+      expect(status).toBe(409);
+    });
+
+    it('disabling a viewer invalidates its session eligibility', async () => {
+      expect(viewerId).toBeTruthy();
+      const { status, body } = await api('POST', `/api/auth/users/${viewerId}/disable`);
+      expect(status).toBe(200);
+      const user = validateContract('AuthUser', body, AuthUserSchema);
+      expect(user.status).toBe('disabled');
+      const me = await fetch(`${BASE}/api/auth/me`, {
+        headers: { Cookie: viewerCookie! },
+      });
+      expect(me.status).toBe(401);
+    });
   });
 
   afterAll(async () => {

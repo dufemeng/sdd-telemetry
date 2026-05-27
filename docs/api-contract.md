@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-05-19  
+更新时间：2026-05-27
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -38,6 +38,7 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
 /api/events   通用 OTel 事件分析
 /api/sdd      SDD 业务分析
 /api/ops      运维 / 排障 / 数据库观察
+/api/auth     Dashboard 登录与成员管理
 ```
 
 ## 3. 统一响应
@@ -67,6 +68,62 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
   "timestamp": "2026-05-14T12:00:00.000Z"
 }
 ```
+
+## 3.1 登录与授权
+
+Dashboard 用户通过签名 `HttpOnly` cookie `sdd_session` 维持登录态。cookie 默认有效期为 7 天，生产环境使用 `Secure; SameSite=Lax`。用户角色：
+
+| 角色 | 权限 |
+| --- | --- |
+| `viewer` | 访问 dashboard 只读查询 |
+| `super_admin` | `viewer` 权限，以及成员管理、语义映射写入和 `/api/ops/*` |
+
+公开端点：
+
+```text
+GET  /api/healthz
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/ingest/otlp-logs
+```
+
+其余 `/api/*` 均要求有效 session；未登录返回 `401 UNAUTHORIZED`。`viewer` 请求管理员端点返回 `403 FORBIDDEN`。
+
+### Auth endpoints
+
+```text
+POST /api/auth/login
+  body: { username: string, password: string }
+  data: AuthSessionUser
+
+GET /api/auth/me
+  data: AuthSessionUser
+
+POST /api/auth/password
+  body: { currentPassword: string, newPassword: string(min 12) }
+  data: AuthSessionUser
+
+POST /api/auth/logout
+  data: { loggedOut: true }
+```
+
+仅 `super_admin`：
+
+```text
+GET  /api/auth/users
+POST /api/auth/users
+  body: { username, displayName, password, role }
+PUT  /api/auth/users/:id
+  body: { displayName?, role? }
+POST /api/auth/users/:id/reset-password
+  body: { password }
+POST /api/auth/users/:id/disable
+POST /api/auth/users/:id/enable
+```
+
+`AuthSessionUser` 仅包含 `id / username / displayName / role`。管理员列表中的 `AuthUser` 另外包含 `status / lastLoginAt / createdAt / updatedAt`，绝不返回 `password_hash`。
+
+修改角色、禁用或重置密码会增加 `session_version`，使目标用户现有 session 立即失效。最后一个启用状态的 `super_admin` 不允许被禁用或降级。
 
 ## 4. ingest API
 

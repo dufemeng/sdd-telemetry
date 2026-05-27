@@ -100,7 +100,7 @@ describe('case 1: requirements_root_path 上报闭环', () => {
   let didReachServer = false;
 
   beforeAll(async () => {
-    const res = await fetch(`${BASE}/api/ingest/health`, {
+    const res = await fetch(`${BASE}/api/healthz`, {
       signal: AbortSignal.timeout(3000),
     }).catch(() => null);
     if (!res?.ok) {

@@ -2,8 +2,9 @@ import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   CheckSquare, Database, Gauge,
-  GitBranch, Layers3, ListFilter, Search, Settings, Table2, UserRound, Workflow,
+  GitBranch, Layers3, ListFilter, Search, Settings, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
+import { useAuth } from '@/components/auth/useAuth';
 
 const ACTIVE_NAV_TRANSITION: Transition = { type: 'spring', stiffness: 300, damping: 30 };
 
@@ -28,7 +29,6 @@ const NAV_GROUPS = [
     label: '监控',
     items: [
       { to: '/sdd/interactions', label: '交互明细', icon: Workflow },
-      { to: '/ops/database',    label: '数据检索',  icon: Database },
       { to: '/troubleshoot',    label: '排障明细',  icon: Search },
     ],
   },
@@ -41,7 +41,18 @@ const NAV_GROUPS = [
   },
 ] as const;
 
+const ADMIN_NAV_GROUP = {
+  label: '管理',
+  items: [
+    { to: '/ops/database', label: '数据检索', icon: Database },
+    { to: '/admin/users', label: '成员管理', icon: ShieldCheck },
+  ],
+} as const;
+
 export function Sidebar() {
+  const { user } = useAuth();
+  const groups = user.role === 'super_admin' ? [...NAV_GROUPS, ADMIN_NAV_GROUP] : NAV_GROUPS;
+
   return (
     <aside
       className="flex flex-col"
@@ -71,7 +82,7 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-[10px]">
         <LayoutGroup id="sidebar-nav">
-          {NAV_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.label} className="mt-[10px]">
               <div className="px-[18px] pb-[6px] pt-[8px] text-[10px] font-bold tracking-[0.05em] text-[var(--color-muted)] uppercase">
                 {group.label}
