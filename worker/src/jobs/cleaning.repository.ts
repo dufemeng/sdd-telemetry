@@ -1073,16 +1073,28 @@ export class CleaningRepository {
     }>;
   }
 
-  async getWorkItemIdBySkillUsage(
+  async loadWorkItemIdsBySkillUsageIds(
     connection: PoolConnection,
-    skillUsageId: string,
-  ): Promise<string | null> {
-    const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT work_item_id FROM sdd_skill_usages WHERE id = ?`,
-      [skillUsageId],
+    skillUsageIds: string[],
+  ): Promise<Map<string, string | null>> {
+    if (skillUsageIds.length === 0) return new Map();
+
+    const [rows] = await connection.query<UsageWorkItemRow[]>(
+      `SELECT id, work_item_id
+       FROM sdd_skill_usages
+       WHERE id IN (${skillUsageIds.map(() => '?').join(',')})`,
+      skillUsageIds,
     );
-    const r = (rows as Array<{ work_item_id: string | null }>)[0];
-    return r?.work_item_id ?? null;
+
+    const m = new Map<string, string | null>();
+    for (const row of rows) {
+      if (row.id == null) continue;
+      m.set(
+        String(row.id),
+        row.work_item_id == null ? null : String(row.work_item_id),
+      );
+    }
+    return m;
   }
 
   private greatestNullableSql(columnName: string): string {

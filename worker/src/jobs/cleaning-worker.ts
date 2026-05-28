@@ -766,6 +766,13 @@ async function upsertWikiRecalls(
     interactionIds,
   );
   if (toolCalls.length === 0) return 0;
+  const skillUsageIds = unique(
+    toolCalls.map((tc) => tc.skillUsageId).filter(isNonEmptyString),
+  );
+  const skillUsageToWorkItem = await cleaningRepository.loadWorkItemIdsBySkillUsageIds(
+    connection,
+    skillUsageIds,
+  );
 
   // 通过 sdd_interactions 表查每个 interaction 的 user_id
   const [userRows] = await connection.query<RowDataPacket[]>(
@@ -816,7 +823,7 @@ async function upsertWikiRecalls(
     }
 
     const workItemId = tc.skillUsageId
-      ? await cleaningRepository.getWorkItemIdBySkillUsage(connection, tc.skillUsageId)
+      ? (skillUsageToWorkItem.get(tc.skillUsageId) ?? null)
       : null;
 
     const recallKey = createHash('sha256')
