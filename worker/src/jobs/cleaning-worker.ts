@@ -237,6 +237,7 @@ async function persistCleanedData(
       assignments.eventToKey,
     );
     const toolCallAttachments = await attachSkillUsageToToolCalls(connection, interactions);
+    const subagentAttachments = await attachParentSkillUsageToAgentToolCalls(connection, interactions);
     const artifacts = await upsertWorkItems(connection, scopedEvents);
     const errors = await upsertErrors(
       connection,
@@ -245,7 +246,7 @@ async function persistCleanedData(
       assignments.eventToKey,
     );
 
-    return interactions.size + toolCalls + usages + errors + artifacts + toolCallAttachments;
+    return interactions.size + toolCalls + usages + errors + artifacts + toolCallAttachments + subagentAttachments;
   });
 }
 
@@ -621,6 +622,58 @@ async function attachSkillUsageToToolCalls(
         .map((u) => ({ id: u.id, eventSequence: u.eventSequence as number })),
     );
     updated += await cleaningRepository.bulkUpdateToolCallSkillUsages(connection, assignments);
+  }
+  return updated;
+}
+
+// 纯函数版本，便于单测
+export function findParentSkillUsageForSubagent(
+  parentUsages: Array<{ id: string; eventTime: Date | null }>,
+  subagentStartedAt: Date,
+): string | null {
+  const eligible = parentUsages.filter(
+    (u) => u.eventTime != null && u.eventTime <= subagentStartedAt,
+  );
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => a.eventTime!.getTime() - b.eventTime!.getTime());
+  return eligible[eligible.length - 1]!.id;
+}
+
+async function attachParentSkillUsageToAgentToolCalls(
+  connection: PoolConnection,
+  interactions: Map<string, InteractionRef>,
+): Promise<number> {
+  const subagentRows = await cleaningRepository.listSubagentInteractionsByIds(
+    connection,
+    Array.from(interactions.values()).map((i) => i.id),
+  );
+  let updated = 0;
+  for (const sub of subagentRows) {
+    if (!sub.sessionId || !sub.startedAt) continue;
+
+    const parent = await cleaningRepository.findParentInteractionBySessionAndTime(
+      connection,
+      sub.sessionId,
+      sub.startedAt,
+    );
+    if (!parent) continue;
+
+    const parentUsages = await cleaningRepository.listSkillUsagesByInteractionWithTime(
+      connection,
+      parent.id,
+    );
+    const parentSkillUsageId = findParentSkillUsageForSubagent(
+      parentUsages,
+      sub.startedAt,
+    );
+    if (!parentSkillUsageId) continue;
+
+    const affected = await cleaningRepository.updateSubagentToolCallSkillUsage(
+      connection,
+      sub.id,
+      parentSkillUsageId,
+    );
+    updated += affected;
   }
   return updated;
 }

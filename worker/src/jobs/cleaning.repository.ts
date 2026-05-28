@@ -571,6 +571,61 @@ export class CleaningRepository {
     return rows as Array<{ id: string; sequence: number | null }>;
   }
 
+  async listSubagentInteractionsByIds(
+    connection: PoolConnection,
+    interactionIds: string[],
+  ): Promise<Array<{ id: string; sessionId: string | null; startedAt: Date | null }>> {
+    if (interactionIds.length === 0) return [];
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, session_id AS sessionId, started_at AS startedAt
+       FROM sdd_interactions
+       WHERE id IN (?) AND agent_name IS NOT NULL`,
+      [interactionIds],
+    );
+    return rows as Array<{ id: string; sessionId: string | null; startedAt: Date | null }>;
+  }
+
+  async findParentInteractionBySessionAndTime(
+    connection: PoolConnection,
+    sessionId: string,
+    beforeTime: Date,
+  ): Promise<{ id: string } | null> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id FROM sdd_interactions
+       WHERE session_id = ? AND agent_name IS NULL AND started_at < ?
+       ORDER BY started_at DESC LIMIT 1`,
+      [sessionId, beforeTime],
+    );
+    const r = (rows as Array<{ id: string }>)[0];
+    return r ?? null;
+  }
+
+  async listSkillUsagesByInteractionWithTime(
+    connection: PoolConnection,
+    interactionId: string,
+  ): Promise<Array<{ id: string; eventTime: Date | null }>> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, event_time AS eventTime FROM sdd_skill_usages
+       WHERE interaction_id = ?`,
+      [interactionId],
+    );
+    return rows as Array<{ id: string; eventTime: Date | null }>;
+  }
+
+  async updateSubagentToolCallSkillUsage(
+    connection: PoolConnection,
+    subagentInteractionId: string,
+    skillUsageId: string,
+  ): Promise<number> {
+    const [result] = await connection.query<ResultSetHeader>(
+      `UPDATE sdd_interaction_tool_calls
+       SET skill_usage_id = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE interaction_id = ? AND skill_usage_id IS NULL`,
+      [skillUsageId, subagentInteractionId],
+    );
+    return result.affectedRows;
+  }
+
   async bulkUpdateToolCallSkillUsages(
     connection: PoolConnection,
     assignments: Array<{ toolCallId: string; skillUsageId: string | null }>,
