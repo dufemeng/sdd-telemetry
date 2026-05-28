@@ -210,6 +210,25 @@ export interface LinkSkillUsageToWorkItemInput {
   artifactEventTime: Date | null;
 }
 
+export interface UpsertWikiRecallInput {
+  recallKey: string;
+  toolCallId: string;
+  interactionId: string;
+  skillUsageId: string | null;
+  workItemId: string | null;
+  userId: string | null;
+  actionType: string;
+  rawPath: string;
+  wikiRelativePath: string | null;
+  wikiDomain: string | null;
+  wikiAxis: string | null;
+  wikiSystem: string | null;
+  eventId: string | null;
+  eventSequence: number | null;
+  eventTime: Date | null;
+  ruleVersion: string;
+}
+
 export class CleaningRepository {
   async markBatchFailed(
     pool: Pool,
@@ -967,6 +986,103 @@ export class CleaningRepository {
     );
     const id = rows[0]?.id;
     return id ? String(id) : null;
+  }
+
+  async upsertWikiRecall(
+    connection: PoolConnection,
+    input: UpsertWikiRecallInput,
+  ): Promise<void> {
+    await connection.query<ResultSetHeader>(
+      `INSERT INTO sdd_wiki_recalls
+        (recall_key, tool_call_id, interaction_id, skill_usage_id, work_item_id, user_id,
+         action_type, raw_path, wiki_relative_path, wiki_domain, wiki_axis, wiki_system,
+         event_id, event_sequence, event_time, rule_version, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       ON DUPLICATE KEY UPDATE
+         skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
+         work_item_id = COALESCE(VALUES(work_item_id), work_item_id),
+         user_id = COALESCE(VALUES(user_id), user_id),
+         action_type = VALUES(action_type),
+         wiki_relative_path = VALUES(wiki_relative_path),
+         wiki_domain = VALUES(wiki_domain),
+         wiki_axis = VALUES(wiki_axis),
+         wiki_system = VALUES(wiki_system),
+         event_id = COALESCE(VALUES(event_id), event_id),
+         event_sequence = COALESCE(VALUES(event_sequence), event_sequence),
+         event_time = COALESCE(VALUES(event_time), event_time),
+         rule_version = VALUES(rule_version),
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
+      [
+        input.recallKey,
+        input.toolCallId,
+        input.interactionId,
+        input.skillUsageId,
+        input.workItemId,
+        input.userId,
+        input.actionType,
+        input.rawPath,
+        input.wikiRelativePath,
+        input.wikiDomain,
+        input.wikiAxis,
+        input.wikiSystem,
+        input.eventId,
+        input.eventSequence,
+        input.eventTime,
+        input.ruleVersion,
+      ],
+    );
+  }
+
+  async loadUserWikiRoots(connection: PoolConnection): Promise<Map<string, string>> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, wiki_root_path FROM sdd_users WHERE wiki_root_path IS NOT NULL`,
+    );
+    const m = new Map<string, string>();
+    for (const r of rows as Array<{ id: string; wiki_root_path: string }>) {
+      m.set(r.id, r.wiki_root_path);
+    }
+    return m;
+  }
+
+  async listToolCallsForWikiRecalls(
+    connection: PoolConnection,
+    interactionIds: string[],
+  ): Promise<Array<{
+    id: string;
+    interactionId: string;
+    skillUsageId: string | null;
+    toolName: string;
+    toolInputPreview: string | null;
+    sequence: number | null;
+  }>> {
+    if (interactionIds.length === 0) return [];
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, interaction_id AS interactionId, skill_usage_id AS skillUsageId,
+              tool_name AS toolName, tool_input_preview AS toolInputPreview, sequence
+       FROM sdd_interaction_tool_calls
+       WHERE interaction_id IN (?)`,
+      [interactionIds],
+    );
+    return rows as Array<{
+      id: string;
+      interactionId: string;
+      skillUsageId: string | null;
+      toolName: string;
+      toolInputPreview: string | null;
+      sequence: number | null;
+    }>;
+  }
+
+  async getWorkItemIdBySkillUsage(
+    connection: PoolConnection,
+    skillUsageId: string,
+  ): Promise<string | null> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT work_item_id FROM sdd_skill_usages WHERE id = ?`,
+      [skillUsageId],
+    );
+    const r = (rows as Array<{ work_item_id: string | null }>)[0];
+    return r?.work_item_id ?? null;
   }
 
   private greatestNullableSql(columnName: string): string {

@@ -1,4 +1,5 @@
-import type { Pool, PoolConnection } from 'mysql2/promise';
+import { createHash } from 'node:crypto';
+import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { Logger } from 'pino';
 import { withTransaction } from '../infrastructure/mysql/client';
 import {
@@ -14,6 +15,7 @@ import {
   sha256,
   type ExtractedLogEvent,
 } from './otel-extractor';
+import { extractCandidatePath, parseWikiPath } from './wiki-path';
 
 export interface CleanBatchJob {
   batchId: string;
@@ -245,8 +247,18 @@ async function persistCleanedData(
       interactions,
       assignments.eventToKey,
     );
+    const wikiRecallCount = await upsertWikiRecalls(connection, interactions, input.logger);
 
-    return interactions.size + toolCalls + usages + errors + artifacts + toolCallAttachments + subagentAttachments;
+    return (
+      interactions.size +
+      toolCalls +
+      usages +
+      errors +
+      artifacts +
+      toolCallAttachments +
+      subagentAttachments +
+      wikiRecallCount
+    );
   });
 }
 
@@ -732,6 +744,119 @@ async function upsertErrors(
   }
 
   return count;
+}
+
+const WIKI_RECALL_ENABLED = process.env.WIKI_RECALL_ENABLED !== '0';
+const WIKI_RECALL_RULE_VERSION = 'wiki_recall_v1';
+
+async function upsertWikiRecalls(
+  connection: PoolConnection,
+  interactions: Map<string, InteractionRef>,
+  logger: Logger,
+): Promise<number> {
+  if (!WIKI_RECALL_ENABLED) return 0;
+
+  const userWikiRoots = await cleaningRepository.loadUserWikiRoots(connection);
+  if (userWikiRoots.size === 0) return 0;
+
+  const interactionIds = Array.from(interactions.values()).map((i) => i.id);
+  if (interactionIds.length === 0) return 0;
+  const toolCalls = await cleaningRepository.listToolCallsForWikiRecalls(
+    connection,
+    interactionIds,
+  );
+  if (toolCalls.length === 0) return 0;
+
+  // 通过 sdd_interactions 表查每个 interaction 的 user_id
+  const [userRows] = await connection.query<RowDataPacket[]>(
+    `SELECT id, user_id FROM sdd_interactions WHERE id IN (?)`,
+    [interactionIds],
+  );
+  const interactionToUser = new Map<string, string | null>();
+  for (const r of userRows as Array<{ id: string; user_id: string | null }>) {
+    interactionToUser.set(r.id, r.user_id);
+  }
+
+  let inserted = 0;
+  let hits = 0;
+  let parseFailedPartial = 0;
+  let skippedInputParseError = 0;
+  let skippedWikiRootMissing = 0;
+
+  for (const tc of toolCalls) {
+    const userId = interactionToUser.get(tc.interactionId) ?? null;
+    if (!userId) continue;
+    const wikiRoot = userWikiRoots.get(userId);
+    if (!wikiRoot) {
+      skippedWikiRootMissing += 1;
+      continue;
+    }
+
+    let input: unknown;
+    try {
+      input = tc.toolInputPreview ? JSON.parse(tc.toolInputPreview) : {};
+    } catch {
+      skippedInputParseError += 1;
+      logger.warn(
+        { toolCallId: tc.id },
+        'wiki-recall: tool_input_preview JSON parse failed',
+      );
+      continue;
+    }
+
+    const candidate = extractCandidatePath(tc.toolName, (input ?? {}) as Record<string, string>);
+    if (!candidate) continue;
+
+    if (!candidate.candidate.startsWith(wikiRoot) && candidate.candidate !== wikiRoot) continue;
+    hits += 1;
+
+    const parsed = parseWikiPath(wikiRoot, candidate.candidate);
+    if (candidate.actionType === 'read' && !parsed.relative) {
+      parseFailedPartial += 1;
+    }
+
+    const workItemId = tc.skillUsageId
+      ? await cleaningRepository.getWorkItemIdBySkillUsage(connection, tc.skillUsageId)
+      : null;
+
+    const recallKey = createHash('sha256')
+      .update(`${tc.id}:${candidate.candidate}`)
+      .digest('hex');
+
+    await cleaningRepository.upsertWikiRecall(connection, {
+      recallKey,
+      toolCallId: tc.id,
+      interactionId: tc.interactionId,
+      skillUsageId: tc.skillUsageId,
+      workItemId,
+      userId,
+      actionType: candidate.actionType,
+      rawPath: candidate.candidate,
+      wikiRelativePath: parsed.relative,
+      wikiDomain: parsed.domain,
+      wikiAxis: parsed.axis,
+      wikiSystem: parsed.system,
+      eventId: null,
+      eventSequence: tc.sequence,
+      eventTime: null,
+      ruleVersion: WIKI_RECALL_RULE_VERSION,
+    });
+    inserted += 1;
+  }
+
+  logger.info(
+    {
+      candidateToolCalls: toolCalls.length,
+      wikiHits: hits,
+      inserted,
+      parseFailedPartial,
+      skippedWikiRootMissing,
+      skippedInputParseError,
+    },
+    'wiki-recall: batch processed',
+  );
+
+  return inserted;
 }
 
 async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): Promise<number> {
