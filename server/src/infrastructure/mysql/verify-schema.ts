@@ -14,6 +14,7 @@ const expectedTables = [
   'sdd_skill_usages',
   'sdd_work_items',
   'sdd_work_item_artifacts',
+  'sdd_wiki_recalls',
   'sdd_errors',
 ];
 
@@ -31,6 +32,7 @@ const expectedUniqueIndexes = [
   'uk_sdd_skill_usages_usage_key',
   'uk_sdd_work_items_work_item_key',
   'uk_sdd_work_item_artifacts_artifact_key',
+  'uk_recall_key',
   'uk_sdd_errors_error_key',
 ];
 
@@ -38,6 +40,25 @@ const expectedColumns: Record<string, string[]> = {
   auth_users: ['password_hash', 'role', 'status', 'session_version'],
   sdd_users: ['requirements_root_path'],
   sdd_skill_semantics: ['artifact_filename_patterns'],
+  sdd_interaction_tool_calls: ['skill_usage_id'],
+  sdd_wiki_recalls: [
+    'recall_key',
+    'tool_call_id',
+    'interaction_id',
+    'skill_usage_id',
+    'work_item_id',
+    'user_id',
+    'action_type',
+    'raw_path',
+    'wiki_relative_path',
+    'wiki_domain',
+    'wiki_axis',
+    'wiki_system',
+    'event_id',
+    'event_sequence',
+    'event_time',
+    'rule_version',
+  ],
 };
 
 async function main(): Promise<void> {

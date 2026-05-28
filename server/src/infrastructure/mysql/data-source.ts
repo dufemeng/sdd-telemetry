@@ -8,6 +8,7 @@ import { InteractionFidelity1778770000000 } from './migrations/1778770000000-int
 import { AddOtelTraceIndex1779000000000 } from './migrations/1779000000000-add-otel-trace-index';
 import { CreateAuthUsers1779868800000 } from './migrations/1779868800000-create-auth-users';
 import { AddSkillUsageIdToToolCalls1780000000000 } from './migrations/1780000000000-add-skill-usage-id-to-tool-calls';
+import { CreateWikiRecalls1780000001000 } from './migrations/1780000001000-create-wiki-recalls';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -32,6 +33,7 @@ export function createAppDataSource(): DataSource {
       AddOtelTraceIndex1779000000000,
       CreateAuthUsers1779868800000,
       AddSkillUsageIdToToolCalls1780000000000,
+      CreateWikiRecalls1780000001000,
     ],
   });
 }

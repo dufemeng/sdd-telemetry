@@ -11,6 +11,7 @@ export * from './sdd-skill-alias.entity';
 export * from './sdd-skill-semantic.entity';
 export * from './sdd-skill-usage.entity';
 export * from './sdd-user.entity';
+export * from './sdd-wiki-recall.entity';
 export * from './sdd-work-item-artifact.entity';
 export * from './sdd-work-item.entity';
 
@@ -27,6 +28,7 @@ import { SddSkillAliasEntity } from './sdd-skill-alias.entity';
 import { SddSkillSemanticEntity } from './sdd-skill-semantic.entity';
 import { SddSkillUsageEntity } from './sdd-skill-usage.entity';
 import { SddUserEntity } from './sdd-user.entity';
+import { SddWikiRecallEntity } from './sdd-wiki-recall.entity';
 import { SddWorkItemArtifactEntity } from './sdd-work-item-artifact.entity';
 import { SddWorkItemEntity } from './sdd-work-item.entity';
 
@@ -45,5 +47,6 @@ export const appEntities = [
   SddSkillUsageEntity,
   SddWorkItemEntity,
   SddWorkItemArtifactEntity,
+  SddWikiRecallEntity,
   SddErrorEntity,
 ];
