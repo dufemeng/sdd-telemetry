@@ -650,7 +650,7 @@ cat ~/.claude/skills/bk-fe-proposal/SKILL.md | head -10
   "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
   "OTEL_LOGS_EXPORTER": "otlp",
   "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-  "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://localhost:4318/api/ingest/otlp-logs?install_id=sdd-local-mock&user_name=mock-user&machine_name=local&requirements_root_path=%2FUsers%2Floomisli%2FDesktop%2Flm%2Fbk-fe-sdd%2Fbk-fe-requirements-trade&wiki_root_path=%2FUsers%2Floomisli%2FDesktop%2Flm%2Fbk-fe-sdd%2Fbk-fe-knowledge-trade",
+  "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://localhost:4318/api/ingest/otlp-logs",
   "OTEL_EXPORTER_OTLP_HEADERS": "sdd-install-id=sdd-local-mock,sdd-user-name=mock-user,sdd-machine-name=local,sdd-requirements-root-path=%2FUsers%2Floomisli%2FDesktop%2Flm%2Fbk-fe-sdd%2Fbk-fe-requirements-trade,sdd-wiki-root-path=%2FUsers%2Floomisli%2FDesktop%2Flm%2Fbk-fe-sdd%2Fbk-fe-knowledge-trade",
   "OTEL_LOG_USER_PROMPTS": "1",
   "OTEL_LOG_RAW_API_BODIES": "1",
@@ -661,9 +661,9 @@ cat ~/.claude/skills/bk-fe-proposal/SKILL.md | head -10
 
 **关键点**：
 
-- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` 指向 **localhost:4318/api/ingest/otlp-logs**（本机 sdd-telemetry server）
+- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` **只是 URL，不带 query params**——身份信息全部走 `OTEL_EXPORTER_OTLP_HEADERS`。OTel SDK 的规范用法（URL query 是历史兼容路径，不要再用）
 - `install_id` 用 `sdd-local-mock` 区分开（与生产用户）
-- 路径 URL 编码：`/` → `%2F`
+- header value 里的路径用 URL 编码：`/` → `%2F`（header value 含 `/` 在某些 HTTP client 里会被规范化掉，编码后更稳）
 
 如果 settings.json 中已有这些变量但值不同，**保留现有非冲突项**，只改 endpoint / headers / install_id。
 
