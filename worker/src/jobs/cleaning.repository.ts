@@ -126,6 +126,7 @@ export interface UpsertInteractionTextInput {
 
 export interface UpsertToolCallInput {
   interactionId: string;
+  skillUsageId: string | null;
   toolUseId: string;
   toolName: string;
   sequence: number;
@@ -499,12 +500,13 @@ export class CleaningRepository {
   ): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_interaction_tool_calls
-        (interaction_id, tool_use_id, tool_name, sequence, decision, decision_source,
+        (interaction_id, skill_usage_id, tool_use_id, tool_name, sequence, decision, decision_source,
          success, duration_ms, input_size_bytes, result_size_bytes, error_type,
          tool_input_preview, mcp_server_scope, evidence_json, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          interaction_id = VALUES(interaction_id),
+         skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
          tool_name = COALESCE(VALUES(tool_name), tool_name),
          sequence = CASE
            WHEN sequence = 0 THEN VALUES(sequence)
@@ -524,6 +526,7 @@ export class CleaningRepository {
          gmt_modified = CURRENT_TIMESTAMP(3)`,
       [
         input.interactionId,
+        input.skillUsageId,
         input.toolUseId,
         input.toolName,
         input.sequence,

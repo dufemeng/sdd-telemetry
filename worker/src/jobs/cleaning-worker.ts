@@ -504,6 +504,7 @@ async function upsertToolCalls(
 
     await cleaningRepository.upsertToolCall(connection, {
       interactionId: interaction.id,
+      skillUsageId: null,
       toolUseId,
       toolName,
       sequence,
