@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
+  BookOpen,
   CheckSquare, Database, Gauge,
   GitBranch, Layers3, ListFilter, Search, Settings, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ const NAV_GROUPS = [
       { to: '/sdd/users',      label: '用户分析', icon: UserRound },
       { to: '/sdd/skills',     label: '技能分析', icon: Layers3 },
       { to: '/sdd/work-items', label: '产出分析', icon: GitBranch },
+      { to: '/sdd/wiki-recalls', label: '知识库召回', icon: BookOpen },
     ],
   },
   {
