@@ -620,10 +620,7 @@ async function attachSkillUsageToToolCalls(
         .filter((u) => u.eventSequence != null)
         .map((u) => ({ id: u.id, eventSequence: u.eventSequence as number })),
     );
-    for (const a of assignments) {
-      await cleaningRepository.updateToolCallSkillUsageId(connection, a.toolCallId, a.skillUsageId);
-      updated += 1;
-    }
+    updated += await cleaningRepository.bulkUpdateToolCallSkillUsages(connection, assignments);
   }
   return updated;
 }

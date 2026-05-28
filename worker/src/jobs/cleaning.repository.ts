@@ -571,17 +571,28 @@ export class CleaningRepository {
     return rows as Array<{ id: string; sequence: number | null }>;
   }
 
-  async updateToolCallSkillUsageId(
+  async bulkUpdateToolCallSkillUsages(
     connection: PoolConnection,
-    toolCallId: string,
-    skillUsageId: string | null,
-  ): Promise<void> {
+    assignments: Array<{ toolCallId: string; skillUsageId: string | null }>,
+  ): Promise<number> {
+    // 过滤掉 skillUsageId 为 null 的（DB 里本来就是 NULL，无需 UPDATE）
+    const updates = assignments.filter((a) => a.skillUsageId !== null);
+    if (updates.length === 0) return 0;
+
+    const caseWhen = updates.map(() => `WHEN ? THEN ?`).join(' ');
+    const ids = updates.map((a) => a.toolCallId);
+    const caseParams = updates.flatMap((a) => [a.toolCallId, a.skillUsageId]);
+    const idPlaceholders = ids.map(() => '?').join(',');
+
     await connection.query<ResultSetHeader>(
       `UPDATE sdd_interaction_tool_calls
-       SET skill_usage_id = ?, gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE id = ?`,
-      [skillUsageId, toolCallId],
+       SET skill_usage_id = CASE id ${caseWhen} ELSE skill_usage_id END,
+           gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE id IN (${idPlaceholders})`,
+      [...caseParams, ...ids],
     );
+
+    return updates.length;
   }
 
   async loadSkillAliases(connection: PoolConnection): Promise<AliasRow[]> {
