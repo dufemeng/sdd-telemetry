@@ -27,6 +27,12 @@ import type {
   SddVersionItem,
   SddWorkItem,
   SddWorkItemDetail,
+  WikiRecallHeatmapResponse,
+  WikiRecallListResponse,
+  WikiRecallRange,
+  WikiRecallTimelineResponse,
+  WikiRecallUserRankingResponse,
+  WikiRecallWorkItemRankingResponse,
 } from '@sdd-telemetry/api';
 import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
@@ -603,6 +609,138 @@ export class SddQueryService {
     return user;
   }
 
+  async getWikiRecallUserRanking(
+    range: WikiRecallRange,
+    sortBy: 'total' | 'distinct_files' | 'recent',
+    page = 1,
+    pageSize = 50,
+  ): Promise<WikiRecallUserRankingResponse> {
+    const since = rangeToSinceDate(range);
+    const { items, total } = await this.sddQueryRepository.listWikiRecallUserRanking(
+      since,
+      sortBy,
+      pageSize,
+      (page - 1) * pageSize,
+    );
+
+    return {
+      items: items.map((row) => ({
+        userId: toStringId(row.userId),
+        userName: row.userName,
+        hasWikiRootPath: toNullableBoolean(row.hasWikiRootPath) ?? false,
+        totalRecalls: toNumber(row.totalRecalls),
+        distinctFiles: toNumber(row.distinctFiles),
+        distinctDomains: toNumber(row.distinctDomains),
+        distinctSystems: toNumber(row.distinctSystems),
+        lastRecallAt: toIsoDate(row.lastRecallAt),
+      })),
+      total: toNumber(total),
+    };
+  }
+
+  async getWikiRecallWorkItemRanking(
+    range: WikiRecallRange,
+    businessDomain: string | null,
+    userId: string | null,
+    page = 1,
+    pageSize = 50,
+  ): Promise<WikiRecallWorkItemRankingResponse> {
+    const since = rangeToSinceDate(range);
+    const { items, total } = await this.sddQueryRepository.listWikiRecallWorkItemRanking(
+      since,
+      businessDomain,
+      userId,
+      pageSize,
+      (page - 1) * pageSize,
+    );
+
+    return {
+      items: items.map((row) => ({
+        workItemId: toStringId(row.workItemId),
+        workItemSlug: row.workItemSlug,
+        businessDomain: row.businessDomain,
+        totalRecalls: toNumber(row.totalRecalls),
+        distinctDomains: toNumber(row.distinctDomains),
+        distinctSystems: toNumber(row.distinctSystems),
+        userCount: toNumber(row.userCount),
+      })),
+      total: toNumber(total),
+    };
+  }
+
+  async getWikiRecallHeatmap(
+    range: WikiRecallRange,
+    groupBy: 'domain' | 'axis' | 'system',
+  ): Promise<WikiRecallHeatmapResponse> {
+    const buckets = await this.sddQueryRepository.wikiRecallHeatmap(
+      rangeToSinceDate(range),
+      groupBy,
+    );
+
+    return {
+      buckets: buckets.map((bucket) => ({
+        key: bucket.key,
+        totalRecalls: toNumber(bucket.totalRecalls),
+        distinctUsers: toNumber(bucket.distinctUsers),
+      })),
+    };
+  }
+
+  async getWikiRecallTimeline(
+    range: WikiRecallRange,
+    granularity: 'day' | 'hour',
+    groupBy: 'domain' | 'axis',
+  ): Promise<WikiRecallTimelineResponse> {
+    const points = await this.sddQueryRepository.wikiRecallTimeline(
+      rangeToSinceDate(range),
+      granularity,
+      groupBy,
+    );
+
+    return {
+      points: points.map((point) => ({
+        t: point.t,
+        group: point.group,
+        count: toNumber(point.count),
+      })),
+    };
+  }
+
+  async listWikiRecalls(
+    range: WikiRecallRange,
+    filters: { workItemId?: string; userId?: string; skillUsageId?: string },
+    page = 1,
+    pageSize = 50,
+  ): Promise<WikiRecallListResponse> {
+    const { items, total } = await this.sddQueryRepository.listWikiRecalls(
+      filters,
+      rangeToSinceDate(range),
+      pageSize,
+      (page - 1) * pageSize,
+    );
+
+    return {
+      items: items.map((row) => ({
+        id: toStringId(row.id),
+        toolCallId: toStringId(row.toolCallId),
+        interactionId: toStringId(row.interactionId),
+        skillUsageId: row.skillUsageId === null ? null : toStringId(row.skillUsageId),
+        workItemId: row.workItemId === null ? null : toStringId(row.workItemId),
+        userId: row.userId === null ? null : toStringId(row.userId),
+        userName: row.userName,
+        actionType: row.actionType,
+        rawPath: row.rawPath,
+        wikiRelativePath: row.wikiRelativePath,
+        wikiDomain: row.wikiDomain,
+        wikiAxis: row.wikiAxis,
+        wikiSystem: row.wikiSystem,
+        eventSequence: toNullableNumber(row.eventSequence),
+        eventTime: toIsoDate(row.eventTime),
+      })),
+      total: toNumber(total),
+    };
+  }
+
   private buildUsageWhere(
     query: SddListQuery,
     alias: string,
@@ -828,6 +966,14 @@ function toNullableBoolean(value: unknown): boolean | null {
   }
 
   return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function rangeToSinceDate(range: WikiRecallRange): Date | null {
+  const now = Date.now();
+  if (range === '7d') return new Date(now - 7 * 24 * 60 * 60 * 1000);
+  if (range === '30d') return new Date(now - 30 * 24 * 60 * 60 * 1000);
+  if (range === '90d') return new Date(now - 90 * 24 * 60 * 60 * 1000);
+  return null;
 }
 
 // TODO: reportUserSettings 接口 (POST /api/sdd/user-settings) 前端无任何调用方，
