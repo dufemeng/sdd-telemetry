@@ -20,7 +20,7 @@ const NAV_GROUPS = [
       { to: '/sdd/users',      label: '用户分析', icon: UserRound },
       { to: '/sdd/skills',     label: '技能分析', icon: Layers3 },
       { to: '/sdd/work-items', label: '产出分析', icon: GitBranch },
-      { to: '/sdd/wiki-recalls', label: '知识库召回', icon: BookOpen },
+      { to: '/sdd/wiki-recalls', label: '知识召回', icon: BookOpen },
     ],
   },
   {
