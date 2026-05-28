@@ -156,6 +156,7 @@ export interface UpsertSkillUsageInput {
   serviceVersion: string | null;
   observedVersion: string | null;
   matchedBy: string;
+  eventSequence: number | null;
   eventTime: Date | null;
 }
 
@@ -559,7 +560,7 @@ export class CleaningRepository {
          service_version, observed_version, matched_by, rule_version, event_sequence,
          status, event_time, gmt_create, gmt_modified)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'p0-cleaner-v1',
-         NULL, 'observed', ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+         ?, 'observed', ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          semantic_id = VALUES(semantic_id),
          alias_id = VALUES(alias_id),
@@ -574,6 +575,7 @@ export class CleaningRepository {
          service_version = VALUES(service_version),
          observed_version = VALUES(observed_version),
          matched_by = VALUES(matched_by),
+         event_sequence = VALUES(event_sequence),
          status = VALUES(status),
          event_time = VALUES(event_time),
          gmt_modified = CURRENT_TIMESTAMP(3)`,
@@ -592,6 +594,7 @@ export class CleaningRepository {
         input.serviceVersion,
         input.observedVersion,
         input.matchedBy,
+        input.eventSequence,
         input.eventTime,
       ],
     );

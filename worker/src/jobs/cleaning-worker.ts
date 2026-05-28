@@ -576,6 +576,7 @@ async function upsertSkillUsages(
       serviceVersion: event.service_version,
       observedVersion: pickRowString(event, ['skill.version', 'sdd.skill_version']),
       matchedBy,
+      eventSequence: event.event_sequence ?? null,
       eventTime: asDate(event.event_time),
     });
     count += 1;
