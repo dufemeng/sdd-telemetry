@@ -74,6 +74,7 @@ web/src/pages/sdd/interactions/InteractionsPage.tsx  # tool_calls 表加 wiki �
 | 1 | migration (加列) + entity |
 | 2 | cleaning.repository.ts (upsertToolCall) |
 | 3 | cleaning.repository.ts (attachSkillUsageToToolCall) + cleaning-worker.ts + test |
+| 3.5 | cleaning.repository.ts (attachParentSkillUsageToAgentToolCalls) + cleaning-worker.ts + test |
 | 4 | migration (建表) + entity + index + reset-derived-data + verify-schema |
 | 5 | worker/jobs/wiki-path.ts + test |
 | 6 | cleaning.repository.ts (upsertWikiRecall) + cleaning-worker.ts (upsertWikiRecalls step) + test |
@@ -561,6 +562,242 @@ git commit -m "$(cat <<'EOF'
 
 按 (interaction_id, event_sequence) 范围推断 tool_call 归属，回填
 sdd_interaction_tool_calls.skill_usage_id。不递归子 skill。
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+## Task 3.5: 实现 `attachParentSkillUsageToAgentToolCalls` step（subagent 继承）
+
+针对 `agent_name` 不为 NULL 的 subagent interaction：从父 turn 继承归属。算法详见 spec §4.2.1。
+
+**生产数据已验证**（2026-05-28 探查）：subagent 与父 turn 共享 session_id，可用 `(session_id, started_at)` 时序找父。
+
+**Files:**
+- Modify: `worker/src/jobs/cleaning.repository.ts` (加 2 个查询方法)
+- Modify: `worker/src/jobs/cleaning-worker.ts` (加 step + 接入 cleanBatch)
+- Create: `worker/test/attach-parent-skill-usage.test.ts`
+
+- [ ] **Step 3.5.1: 先写测试（纯函数）**
+
+```typescript
+// worker/test/attach-parent-skill-usage.test.ts
+import { describe, expect, it } from 'vitest';
+import { findParentSkillUsageForSubagent } from '../src/jobs/cleaning-worker';
+
+describe('findParentSkillUsageForSubagent', () => {
+  it('subagent 在父 turn skill_activated 之后，归属到该 skill_usage', () => {
+    const parentUsages = [
+      { id: 'u1', eventTime: new Date('2026-05-28T10:00:00Z') },
+      { id: 'u2', eventTime: new Date('2026-05-28T10:05:00Z') },
+    ];
+    const subagentStartedAt = new Date('2026-05-28T10:07:00Z');
+    expect(findParentSkillUsageForSubagent(parentUsages, subagentStartedAt)).toBe('u2');
+  });
+
+  it('subagent 在所有父 skill_activated 之前，返回 null', () => {
+    const parentUsages = [
+      { id: 'u1', eventTime: new Date('2026-05-28T10:10:00Z') },
+    ];
+    expect(findParentSkillUsageForSubagent(parentUsages, new Date('2026-05-28T10:00:00Z'))).toBeNull();
+  });
+
+  it('父 turn 无 skill_usage，返回 null', () => {
+    expect(findParentSkillUsageForSubagent([], new Date())).toBeNull();
+  });
+
+  it('父 turn skill_usage 没有 event_time 字段时忽略', () => {
+    const parentUsages = [
+      { id: 'u1', eventTime: null },
+      { id: 'u2', eventTime: new Date('2026-05-28T10:05:00Z') },
+    ];
+    expect(findParentSkillUsageForSubagent(parentUsages, new Date('2026-05-28T10:07:00Z'))).toBe('u2');
+  });
+});
+```
+
+- [ ] **Step 3.5.2: 跑测试确认 FAIL**
+
+```bash
+pnpm --filter @sdd-telemetry/worker test attach-parent-skill-usage
+```
+
+预期：FAIL with `findParentSkillUsageForSubagent is not a function`
+
+- [ ] **Step 3.5.3: 在 cleaning-worker.ts 实现纯函数 + DB step**
+
+```typescript
+// 纯函数版本
+export function findParentSkillUsageForSubagent(
+  parentUsages: Array<{ id: string; eventTime: Date | null }>,
+  subagentStartedAt: Date,
+): string | null {
+  const eligible = parentUsages.filter(
+    (u) => u.eventTime != null && u.eventTime <= subagentStartedAt,
+  );
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => (a.eventTime!.getTime() - b.eventTime!.getTime()));
+  return eligible[eligible.length - 1].id;
+}
+
+// DB step
+async function attachParentSkillUsageToAgentToolCalls(
+  connection: PoolConnection,
+  interactions: Map<string, InteractionRef>,
+): Promise<number> {
+  // 只处理本批次 agent_name IS NOT NULL 的 interactions
+  const subagentRows = await cleaningRepository.listSubagentInteractionsByIds(
+    connection,
+    Array.from(interactions.values()).map((i) => i.id),
+  );
+  let updated = 0;
+  for (const sub of subagentRows) {
+    if (!sub.sessionId || !sub.startedAt) continue;
+
+    const parent = await cleaningRepository.findParentInteractionBySessionAndTime(
+      connection,
+      sub.sessionId,
+      sub.startedAt,
+    );
+    if (!parent) continue;
+
+    const parentUsages = await cleaningRepository.listSkillUsagesByInteractionWithTime(
+      connection,
+      parent.id,
+    );
+    const parentSkillUsageId = findParentSkillUsageForSubagent(
+      parentUsages,
+      sub.startedAt,
+    );
+    if (!parentSkillUsageId) continue;
+
+    const affected = await cleaningRepository.updateSubagentToolCallSkillUsage(
+      connection,
+      sub.id,
+      parentSkillUsageId,
+    );
+    updated += affected;
+  }
+  return updated;
+}
+```
+
+- [ ] **Step 3.5.4: 在 cleaning.repository.ts 加 3 个查询方法**
+
+```typescript
+async listSubagentInteractionsByIds(
+  connection: PoolConnection,
+  interactionIds: string[],
+): Promise<Array<{ id: string; sessionId: string | null; startedAt: Date | null }>> {
+  if (interactionIds.length === 0) return [];
+  const [rows] = await connection.query<RowDataPacket[]>(
+    `SELECT id, session_id AS sessionId, started_at AS startedAt
+     FROM sdd_interactions
+     WHERE id IN (?) AND agent_name IS NOT NULL`,
+    [interactionIds],
+  );
+  return rows as Array<{ id: string; sessionId: string | null; startedAt: Date | null }>;
+}
+
+async findParentInteractionBySessionAndTime(
+  connection: PoolConnection,
+  sessionId: string,
+  beforeTime: Date,
+): Promise<{ id: string } | null> {
+  const [rows] = await connection.query<RowDataPacket[]>(
+    `SELECT id FROM sdd_interactions
+     WHERE session_id = ? AND agent_name IS NULL AND started_at < ?
+     ORDER BY started_at DESC LIMIT 1`,
+    [sessionId, beforeTime],
+  );
+  const r = (rows as Array<{ id: string }>)[0];
+  return r ?? null;
+}
+
+async listSkillUsagesByInteractionWithTime(
+  connection: PoolConnection,
+  interactionId: string,
+): Promise<Array<{ id: string; eventTime: Date | null }>> {
+  const [rows] = await connection.query<RowDataPacket[]>(
+    `SELECT id, event_time AS eventTime FROM sdd_skill_usages
+     WHERE interaction_id = ?`,
+    [interactionId],
+  );
+  return rows as Array<{ id: string; eventTime: Date | null }>;
+}
+
+async updateSubagentToolCallSkillUsage(
+  connection: PoolConnection,
+  subagentInteractionId: string,
+  skillUsageId: string,
+): Promise<number> {
+  const [result] = await connection.query<ResultSetHeader>(
+    `UPDATE sdd_interaction_tool_calls
+     SET skill_usage_id = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+     WHERE interaction_id = ? AND skill_usage_id IS NULL`,
+    [skillUsageId, subagentInteractionId],
+  );
+  return result.affectedRows;
+}
+```
+
+- [ ] **Step 3.5.5: 接入 cleanBatch**
+
+在 `cleaning-worker.ts` cleanBatch 内，紧接 Task 3 的 `attachSkillUsageToToolCalls` 之后：
+
+```typescript
+const toolCallAttachments = await attachSkillUsageToToolCalls(connection, interactions);
+const subagentAttachments = await attachParentSkillUsageToAgentToolCalls(connection, interactions);  // ★ 新增
+const artifacts = await upsertWorkItems(connection, scopedEvents);
+// ...
+return interactions.size + toolCalls + usages + errors + artifacts + toolCallAttachments + subagentAttachments;
+```
+
+- [ ] **Step 3.5.6: 跑测试**
+
+```bash
+pnpm --filter @sdd-telemetry/worker test attach-parent-skill-usage
+pnpm --filter @sdd-telemetry/worker test
+```
+
+预期：新测试 PASS；旧测试无回归。
+
+- [ ] **Step 3.5.7: smoke test + 可证伪查询**
+
+```bash
+pnpm build
+pnpm --filter @sdd-telemetry/worker once
+```
+
+跑可证伪查询确认 subagent tool_call 归属率：
+
+```sql
+SELECT i.agent_name, 
+       SUM(tc.skill_usage_id IS NOT NULL) AS attached,
+       SUM(tc.skill_usage_id IS NULL) AS unattached
+FROM sdd_interaction_tool_calls tc
+JOIN sdd_interactions i ON i.id = tc.interaction_id
+WHERE i.agent_name IS NOT NULL
+GROUP BY i.agent_name;
+```
+
+预期：attached / (attached + unattached) > 70%（孤儿 subagent 可解释剩余 NULL）。
+
+- [ ] **Step 3.5.8: commit**
+
+```bash
+git add worker/src/jobs/cleaning.repository.ts \
+        worker/src/jobs/cleaning-worker.ts \
+        worker/test/attach-parent-skill-usage.test.ts
+git commit -m "$(cat <<'EOF'
+新增 attachParentSkillUsageToAgentToolCalls 清洗 step
+
+subagent interaction（agent_name 不为 NULL）从父 turn 继承归属：用
+(session_id, started_at) 找父，取父在 subagent 启动时刻的最近 skill_usage。
+不依赖 Agent dispatcher tool_call（数据反常）。孤儿 subagent 保持 NULL。
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
@@ -2696,8 +2933,9 @@ SELECT user_id, COUNT(*) FROM sdd_wiki_recalls GROUP BY user_id ORDER BY 2 DESC 
 | §3.1 skill_usage_id 加列 | Task 1, 2 |
 | §3.2 sdd_wiki_recalls 表 | Task 4 |
 | §3.3 Retention | spec 文档明示，本期不实现清理逻辑 |
-| §4.1 cleanBatch 改动 | Task 3, 6 |
+| §4.1 cleanBatch 改动 | Task 3, 3.5, 6 |
 | §4.2 attachSkillUsageToToolCalls | Task 3 |
+| §4.2.1 attachParentSkillUsageToAgentToolCalls | Task 3.5 |
 | §4.3 路径匹配规则 | Task 5, 6 |
 | §4.4 parseWikiPath | Task 5 |
 | §4.5 work_item_id 反查 | Task 6 |

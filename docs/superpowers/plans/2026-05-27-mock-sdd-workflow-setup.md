@@ -890,6 +890,46 @@ ORDER BY tc.id DESC LIMIT 5;
 
 如果以后要扩展模拟器（比如加 bk-fe-design / bk-fe-task），按 Step 3 的模式继续写 mock skill 即可。
 
+### 5.1 可选扩展：让 mock skill 触发 subagent（验证 Task 3.5）
+
+Plan 的 **Task 3.5** 引入了 `attachParentSkillUsageToAgentToolCalls`，专门处理 subagent interaction 内 tool_call 的归属继承。这个算法在本机要有真实数据才能集成验证。
+
+**步骤**（如果你想在本机验证 Task 3.5）：
+
+修改 `~/.claude/skills/bk-fe-proposal/SKILL.md` 的步骤 4（"召回业务域知识"）末尾，加：
+
+```markdown
+### 4.5 可选：通过 subagent 召回（用于验证 sdd-telemetry 的 subagent 归属算法）
+
+如果用户在 prompt 里明确说"用 subagent"或"派子代理"，则执行：
+
+**Agent 工具** 派一个 Explore 类型 subagent，prompt 为：
+
+> Read 以下三个文件并返回摘要：
+> - <@wiki>/domain-<X>/architecture/architecture.md
+> - <@wiki>/domain-<X>/business/INDEX.md  
+> - <@wiki>/domain-<X>/SUMMARY.md
+
+这会产生一个 `agent_name='Explore'` 的独立 interaction，其内部的 Read 调用会触发 plan Task 3.5 的归属继承逻辑。
+```
+
+**验证 SQL**（mock skill 跑完后）：
+
+```sql
+-- subagent interaction 内的 Read 应该被归属到父 turn 的 bk-fe-proposal
+SELECT i.agent_name, tc.tool_name, tc.skill_usage_id,
+       (SELECT su.raw_skill_name FROM sdd_skill_usages su WHERE su.id = tc.skill_usage_id) AS attributed_skill
+FROM sdd_interaction_tool_calls tc
+JOIN sdd_interactions i ON i.id = tc.interaction_id
+WHERE i.agent_name IS NOT NULL
+  AND tc.tool_input_preview LIKE '%bk-fe-knowledge-trade%'
+ORDER BY tc.id DESC LIMIT 10;
+```
+
+预期：`attributed_skill = 'bk-fe-proposal'`（说明继承成功）。
+
+**注意**：本可选扩展只有在 plan Task 3.5 实施完成后才需要做；本期模拟器主目标（链路通）只用 4.1-4 的直接 Read 召回就足够。
+
 ---
 
 ## 6. 文件清单（执行完后应有的所有文件）

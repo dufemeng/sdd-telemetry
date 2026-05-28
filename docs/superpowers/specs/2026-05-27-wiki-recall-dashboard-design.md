@@ -94,7 +94,7 @@ worker 轮询 outbox → 触发 cleanBatch                         [现有，不
 | 类别 | 改动 | 风险等级 |
 |---|---|---|
 | 数据库 | `sdd_interaction_tool_calls` 加列 `skill_usage_id`；新建 `sdd_wiki_recalls` 表 | 中（动了核心表 schema，但只加列，不改语义） |
-| worker | 在现有 cleanBatch 中追加 `attachSkillUsageToToolCalls` 与 `upsertWikiRecalls` 两个 step | 中（追加，不动现有逻辑） |
+| worker | 在现有 cleanBatch 中追加 `attachSkillUsageToToolCalls` / `attachParentSkillUsageToAgentToolCalls` / `upsertWikiRecalls` **三个** step | 中（追加，不动现有逻辑） |
 | server | 新增 wiki recall 查询 service / controller / Zod contract | 低 |
 | web | 新增"知识库召回"页面（4 个 tab）+ 用户/需求详情页加入口 | 低 |
 | db:reclean | 自动跑新逻辑；只需把 `sdd_wiki_recalls` 加进现有 reset-derived-data 清表列表 | 0 |
@@ -127,6 +127,7 @@ ALTER TABLE sdd_interaction_tool_calls
 - 现有 interactions 详情页 UI 不展示新列，零影响 ✅
 - 老数据 `skill_usage_id` 都是 NULL：跑一次 `pnpm db:reclean` 全量重清洗回填 ⚠️
 - 与 `sdd_errors.usage_id`（已有，用 `(session_id, event_time)` 推断）**并存**：两套归属算法精细度不同，本期不统一。spec 注释并存事实即可。
+- **subagent 内 tool_call 的特殊归属**：subagent interaction（`agent_name` 不为 NULL）内通常没有 `skill_activated` 事件——skill 在父 turn 触发，subagent 是独立 prompt 的子代理执行。当前 `(interaction_id, event_sequence)` 推断对它们会全部归 NULL。归属需要从父 turn 继承，详见 §4.2.1。生产数据已验证：subagent interaction 与父 turn **共享 session_id**（见 §6.4 验证查询）。
 
 ### 3.2 新建 `sdd_wiki_recalls` 表
 
@@ -242,16 +243,18 @@ cleanBatch
 ├── upsertInteractions
 ├── upsertToolCalls
 ├── upsertSkillUsages
-├── ★ attachSkillUsageToToolCalls   ← 新增
+├── ★ attachSkillUsageToToolCalls               ← 新增（interaction 内推断）
+├── ★ attachParentSkillUsageToAgentToolCalls    ← 新增（subagent 从父继承）
 ├── upsertWorkItems
 ├── upsertErrors
-└── ★ upsertWikiRecalls             ← 新增
+└── ★ upsertWikiRecalls                         ← 新增
 ```
 
 **顺序设计**：
 
 - `attachSkillUsageToToolCalls` 必须在 `upsertToolCalls + upsertSkillUsages` 都完成后，才能做归属推断
-- `upsertWikiRecalls` 必须在 `attachSkillUsageToToolCalls + upsertWorkItems` 之后，才能拿到 `skill_usage_id` 和 `work_item_id` 一起写
+- `attachParentSkillUsageToAgentToolCalls` 必须在 `attachSkillUsageToToolCalls` 之后，**只**对 `agent_name` 不为 NULL 的 interaction 中 `skill_usage_id IS NULL` 的 tool_call 做继承
+- `upsertWikiRecalls` 必须在两步归属之后 + `upsertWorkItems` 之后，才能拿到 `skill_usage_id` 和 `work_item_id` 一起写
 
 ### 4.2 `attachSkillUsageToToolCalls` 算法
 
@@ -281,7 +284,54 @@ for interaction in batch:
 - **NULL 是合法状态**：极早期 tool_call 出现在第一个 `skill_activated` 之前时，无前置 skill_usage 填 NULL
 - **重清洗友好**：UPDATE 写入是幂等的
 
-### 4.3 路径匹配：哪些 tool_input 算"召回"
+### 4.2.1 `attachParentSkillUsageToAgentToolCalls` 算法（subagent 继承）
+
+针对 `agent_name` 不为 NULL 的 subagent interaction：上一步 §4.2 算法因为 subagent 内通常没有 `skill_activated` 而归 NULL；这一步从父 turn 继承。
+
+**生产数据已验证**（探查 2026-05-28）：
+
+- subagent dispatcher tool 真名是 `Agent`（不是 `Task`，后者已废弃）
+- 但 **`Agent` tool 在数据库中并不可靠**：68 次全局调用中，大量分布在 subagent 自身内（自派子代理）；父 turn 内的 Agent 调用数远低于预期，部分 subagent 的父 turn 在 orphan 桶
+- subagent interaction 与父 turn **共享 session_id**，是更稳健的关联依据
+
+**算法**（每个 subagent interaction 独立处理）：
+
+```text
+for interaction in batch where agent_name IS NOT NULL:
+  # 1. 找父 interaction
+  parent = SELECT i' FROM sdd_interactions
+           WHERE i'.session_id = subagent.session_id
+             AND i'.agent_name IS NULL
+             AND i'.started_at < subagent.started_at
+           ORDER BY i'.started_at DESC LIMIT 1
+
+  if parent IS NULL:
+    continue  # 孤儿 subagent（父 turn 缺失或在 orphan 桶）；保持 skill_usage_id = NULL
+
+  # 2. 找父 turn 在 subagent 触发时刻的归属 skill_usage
+  parent_skill_usage = SELECT su FROM sdd_skill_usages
+                       WHERE su.interaction_id = parent.id
+                         AND su.event_time <= subagent.started_at
+                       ORDER BY su.event_sequence DESC LIMIT 1
+
+  if parent_skill_usage IS NULL:
+    continue  # 父 turn 在该时刻没有 active skill，无法继承
+
+  # 3. 应用到 subagent 内所有 skill_usage_id IS NULL 的 tool_call
+  UPDATE sdd_interaction_tool_calls
+     SET skill_usage_id = parent_skill_usage.id
+   WHERE interaction_id = subagent.id
+     AND skill_usage_id IS NULL
+```
+
+**关键决策**：
+
+- **不依赖 Agent tool_call 关联**：用 `(session_id, started_at)` 时序，更稳健
+- **孤儿 subagent**（父 turn 找不到）：保持 NULL，dashboard 优雅降级。生产观察约占少数 subagent 实例
+- **嵌套 subagent**（subagent 内再派 subagent）：链式继承。第二层 subagent 按算法找父，可能找到第一层 subagent（同 session 中 agent_name 不为 NULL 但 started_at 更早的也可能是父）；本期算法只找 `agent_name IS NULL` 的父，所以第二层 subagent 如果第一层 subagent 是它的真父，会跳过第一层直接继承到第一层的父（顶层）。**这是有意的简化** —— 顶层 skill_usage 仍是正确归属
+- **只覆盖 NULL 行**：上一步 §4.2 已给出归属的 tool_call 不再被这一步覆盖
+
+
 
 worker 在 `upsertWikiRecalls` step 加载一次用户表（`sdd_users.id → wiki_root_path` 的 map），遍历本批次的 `sdd_interaction_tool_calls`，按 `tool_name` 分支提取候选 path：
 
@@ -375,6 +425,10 @@ for each tool_call in batch (matched wiki recall):
 | `Read` 但 `file_path` 是相对路径 | 跳过——Claude Code Read 要求绝对路径，相对路径属于异常上报 |
 | 同一 tool_call 重清洗多次 | `recall_key` UNIQUE 幂等 |
 | wiki 文件被重命名 | 历史行存老路径、新行存新路径——dashboard 显示成"两个独立文件"。本期不做 rename detection |
+| `Agent` dispatcher tool 在父 turn 数据反常（数量远低于预期） | 不依赖该信号；用 `(session_id, started_at)` 父子关联（§4.2.1） |
+| `Skill` tool 触发的子 skill | 子 skill 自身仍上报 `skill_activated`；按自身 skill_usage 归属，不需要继承机制 |
+| 嵌套 subagent（subagent 派 subagent） | 算法只找 `agent_name IS NULL` 的父；第二层 subagent 会跳过第一层 subagent 直接继承到顶层（有意简化） |
+| subagent 的父 turn 在 orphan 桶 | subagent 内 tool_call `skill_usage_id` 保持 NULL；dashboard 优雅降级 |
 | `tool_input.file_path` 命中 wiki 但 parseWikiPath 4 维全失败 | 仍写 wiki_recall 行，`wiki_axis='root'`，`wiki_domain/wiki_system` NULL |
 
 ### 4.8 性能预算
@@ -596,6 +650,8 @@ worker 每个 batch 处理完后打一行结构化 log：
 | `SELECT COUNT(*) FROM sdd_wiki_recalls WHERE action_type='read' AND wiki_relative_path IS NULL` | 0 | Read 必须解析出 relative path |
 | `SELECT COUNT(*) FROM sdd_wiki_recalls r LEFT JOIN sdd_interaction_tool_calls t ON r.tool_call_id=t.id WHERE t.id IS NULL` | 0 | 孤儿 wiki_recall（理论不可能） |
 | `SELECT COUNT(*) FROM sdd_users WHERE wiki_root_path IS NOT NULL AND id NOT IN (SELECT user_id FROM sdd_wiki_recalls)` | 越小越好 | 有 wiki_root_path 但没召回的用户 |
+| `SELECT i.agent_name, COUNT(*) FROM sdd_interaction_tool_calls tc JOIN sdd_interactions i ON i.id=tc.interaction_id WHERE i.agent_name IS NOT NULL AND tc.skill_usage_id IS NULL GROUP BY i.agent_name` | 越小越好 | subagent 父子归属算法失效 |
+| `SELECT i.agent_name, COUNT(DISTINCT i.session_id) AS sessions FROM sdd_interactions i WHERE i.agent_name IS NOT NULL GROUP BY i.agent_name` | 显示当前生产 subagent 类型与数量分布 | 验证 subagent 类型符合预期 |
 
 ### 6.5 部署顺序与回滚
 
@@ -633,6 +689,7 @@ worker 每个 batch 处理完后打一行结构化 log：
 | wiki 文件重命名 | 历史 + 新行显示为两个独立文件 | 本期不做 rename detection |
 | `pnpm db:reclean` 跑历史数据时间 | 数据量大可能要几小时 | 按现有流程操作 |
 | schema 与 wiki 结构弱耦合 | wiki 顶层结构若大改需 reclean | spec 已明确 rule_version + reclean 流程 |
+| subagent 内 wiki 召回归属（§4.2.1） | 依赖父 turn 与 subagent 共享 session_id；如果 Claude Code 未来改变 subagent 上报机制（不再共享 session_id），算法失效 | spec 已通过 §6.4 可证伪查询监控；失效时 `agent_name IS NOT NULL AND skill_usage_id IS NULL` 计数会显著上升 |
 
 ### 7.2 本期明确不做的事项
 
