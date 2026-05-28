@@ -6,11 +6,15 @@ import { TimestampedEntity, nullableJsonColumn } from './common';
   unique: true,
 })
 @Index('idx_sdd_interaction_tool_calls_interaction_id', ['interactionId'])
+@Index('idx_sdd_interaction_tool_calls_skill_usage_id', ['skillUsageId'])
 @Index('idx_sdd_interaction_tool_calls_tool_name', ['toolName'])
 @Index('idx_sdd_interaction_tool_calls_interaction_sequence', ['interactionId', 'sequence'])
 export class SddInteractionToolCallEntity extends TimestampedEntity {
   @Column({ name: 'interaction_id', type: 'bigint', unsigned: true })
   interactionId!: string;
+
+  @Column({ name: 'skill_usage_id', type: 'bigint', unsigned: true, nullable: true })
+  skillUsageId!: string | null;
 
   @Column({ name: 'tool_use_id', type: 'varchar', length: 191 })
   toolUseId!: string;
