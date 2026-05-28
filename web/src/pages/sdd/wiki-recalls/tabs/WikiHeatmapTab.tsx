@@ -19,9 +19,7 @@ export function WikiHeatmapTab() {
         icon={<Flame size={18} />}
         headerRight={<RangeControl value={range} onChange={setRange} />}
       >
-        <div className="text-[12px] text-[var(--color-secondary)]">
-          按已清洗的 wiki 召回派生维度聚合，read / glob / grep 都纳入动作总量。
-        </div>
+        <div className="h-1" />
       </Panel>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
