@@ -544,6 +544,46 @@ export class CleaningRepository {
     );
   }
 
+  async listSkillUsagesByInteraction(
+    connection: PoolConnection,
+    interactionId: string,
+  ): Promise<Array<{ id: string; eventSequence: number | null }>> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, event_sequence AS eventSequence
+       FROM sdd_skill_usages
+       WHERE interaction_id = ?
+       ORDER BY event_sequence ASC, id ASC`,
+      [interactionId],
+    );
+    return rows as Array<{ id: string; eventSequence: number | null }>;
+  }
+
+  async listToolCallsByInteraction(
+    connection: PoolConnection,
+    interactionId: string,
+  ): Promise<Array<{ id: string; sequence: number | null }>> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, sequence
+       FROM sdd_interaction_tool_calls
+       WHERE interaction_id = ?`,
+      [interactionId],
+    );
+    return rows as Array<{ id: string; sequence: number | null }>;
+  }
+
+  async updateToolCallSkillUsageId(
+    connection: PoolConnection,
+    toolCallId: string,
+    skillUsageId: string | null,
+  ): Promise<void> {
+    await connection.query<ResultSetHeader>(
+      `UPDATE sdd_interaction_tool_calls
+       SET skill_usage_id = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE id = ?`,
+      [skillUsageId, toolCallId],
+    );
+  }
+
   async loadSkillAliases(connection: PoolConnection): Promise<AliasRow[]> {
     const [aliases] = await connection.query<AliasRow[]>(
       `SELECT id AS alias_id, semantic_id, skill_name

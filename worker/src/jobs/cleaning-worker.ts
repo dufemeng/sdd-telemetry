@@ -236,6 +236,7 @@ async function persistCleanedData(
       interactions,
       assignments.eventToKey,
     );
+    const toolCallAttachments = await attachSkillUsageToToolCalls(connection, interactions);
     const artifacts = await upsertWorkItems(connection, scopedEvents);
     const errors = await upsertErrors(
       connection,
@@ -244,7 +245,7 @@ async function persistCleanedData(
       assignments.eventToKey,
     );
 
-    return interactions.size + toolCalls + usages + errors + artifacts;
+    return interactions.size + toolCalls + usages + errors + artifacts + toolCallAttachments;
   });
 }
 
@@ -584,6 +585,47 @@ async function upsertSkillUsages(
   }
 
   return count;
+}
+
+// 纯函数版本，便于单测
+export function attachSkillUsageToToolCallsForOneInteraction(
+  toolCalls: Array<{ id: string; sequence: number }>,
+  usages: Array<{ id: string; eventSequence: number }>,
+): Array<{ toolCallId: string; skillUsageId: string | null }> {
+  const sortedUsages = [...usages].sort((a, b) => a.eventSequence - b.eventSequence);
+  return toolCalls.map((tc) => {
+    let nearest: { id: string; eventSequence: number } | null = null;
+    for (const u of sortedUsages) {
+      if (u.eventSequence <= tc.sequence) {
+        nearest = u;
+      } else {
+        break;
+      }
+    }
+    return { toolCallId: tc.id, skillUsageId: nearest ? nearest.id : null };
+  });
+}
+
+async function attachSkillUsageToToolCalls(
+  connection: PoolConnection,
+  interactions: Map<string, InteractionRef>,
+): Promise<number> {
+  let updated = 0;
+  for (const interaction of interactions.values()) {
+    const usagesRows = await cleaningRepository.listSkillUsagesByInteraction(connection, interaction.id);
+    const toolCallRows = await cleaningRepository.listToolCallsByInteraction(connection, interaction.id);
+    const assignments = attachSkillUsageToToolCallsForOneInteraction(
+      toolCallRows.map((tc) => ({ id: tc.id, sequence: tc.sequence ?? 0 })),
+      usagesRows
+        .filter((u) => u.eventSequence != null)
+        .map((u) => ({ id: u.id, eventSequence: u.eventSequence as number })),
+    );
+    for (const a of assignments) {
+      await cleaningRepository.updateToolCallSkillUsageId(connection, a.toolCallId, a.skillUsageId);
+      updated += 1;
+    }
+  }
+  return updated;
 }
 
 async function upsertErrors(
