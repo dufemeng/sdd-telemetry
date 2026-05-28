@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftCircle, ArrowRightCircle, Search, TerminalSquare, Wrench, Workflow } from 'lucide-react';
+import { ArrowLeftCircle, ArrowRightCircle, BookOpen, Search, TerminalSquare, Wrench, Workflow } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
 import {
   useSddInteractionDetail,
@@ -372,7 +372,7 @@ function ToolCallsSection({
       {error ? <div className="text-[12px] text-[#f87171]">工具调用加载失败：{error}</div> : null}
       {!loading && !error ? (
         <DataTable
-          headers={['#', '工具', '决策', '状态', '耗时', '入参', '结果']}
+          headers={['#', '工具', 'wiki', '决策', '状态', '耗时', '入参', '结果']}
           rows={calls.map(toToolCallRow)}
           emptyText="暂无工具调用"
         />
@@ -387,6 +387,18 @@ function toToolCallRow(call: SddInteractionToolCall): DataTableRow {
     cells: [
       call.sequence,
       call.toolName,
+      call.isWikiRecall ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-[4px] px-2 py-[2px] text-[11px] text-[var(--color-primary)]"
+          style={{ background: 'rgba(250,255,105,0.08)', border: '1px solid rgba(250,255,105,0.18)' }}
+          title={call.skillUsageId ? `skill_usage_id: ${call.skillUsageId}` : '召回 wiki 文件'}
+        >
+          <BookOpen size={12} />
+          wiki
+        </span>
+      ) : (
+        '—'
+      ),
       call.decision ?? '—',
       call.success == null ? '—' : <StatusBadge status={call.success ? 'success' : 'failed'} />,
       call.durationMs == null ? '—' : `${call.durationMs} ms`,

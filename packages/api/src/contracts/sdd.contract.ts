@@ -232,6 +232,7 @@ export const SddInteractionDetailSchema = SddInteractionItemSchema.extend({
 export const SddInteractionToolCallSchema = z.object({
   id: IdSchema,
   toolUseId: z.string(),
+  skillUsageId: IdSchema.nullable(),
   toolName: z.string(),
   sequence: z.number(),
   decision: z.string().nullable(),
@@ -243,6 +244,7 @@ export const SddInteractionToolCallSchema = z.object({
   errorType: z.string().nullable(),
   toolInputPreview: z.string().nullable(),
   mcpServerScope: z.string().nullable(),
+  isWikiRecall: z.boolean(),
 });
 
 export const SddInteractionToolCallListResponseSchema = z.object({

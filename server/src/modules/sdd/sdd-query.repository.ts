@@ -142,6 +142,7 @@ export interface InteractionDetailRow extends InteractionRow {
 export interface InteractionToolCallRow {
   id: string | number;
   tool_use_id: string;
+  skill_usage_id: string | number | null;
   tool_name: string;
   sequence: string | number;
   decision: string | null;
@@ -153,6 +154,7 @@ export interface InteractionToolCallRow {
   error_type: string | null;
   tool_input_preview: string | null;
   mcp_server_scope: string | null;
+  is_wiki_recall: string | number | boolean | null;
 }
 
 export interface ErrorRow {
@@ -567,12 +569,16 @@ export class SddQueryRepository {
   async listInteractionToolCalls(interactionId: string): Promise<InteractionToolCallRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
-      `SELECT id, tool_use_id, tool_name, sequence, decision, decision_source,
-              success, duration_ms, input_size_bytes, result_size_bytes,
-              error_type, tool_input_preview, mcp_server_scope
-       FROM sdd_interaction_tool_calls
-       WHERE interaction_id = ?
-       ORDER BY sequence ASC, id ASC`,
+      `SELECT tc.id, tc.tool_use_id, tc.skill_usage_id, tc.tool_name, tc.sequence,
+              tc.decision, tc.decision_source, tc.success, tc.duration_ms,
+              tc.input_size_bytes, tc.result_size_bytes, tc.error_type,
+              tc.tool_input_preview, tc.mcp_server_scope,
+              EXISTS (
+                SELECT 1 FROM sdd_wiki_recalls wr WHERE wr.tool_call_id = tc.id LIMIT 1
+              ) AS is_wiki_recall
+       FROM sdd_interaction_tool_calls tc
+       WHERE tc.interaction_id = ?
+       ORDER BY tc.sequence ASC, tc.id ASC`,
       [interactionId],
     )) as InteractionToolCallRow[];
   }

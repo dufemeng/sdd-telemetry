@@ -476,6 +476,7 @@ export class SddQueryService {
       items: rows.map((row) => ({
         id: toStringId(row.id),
         toolUseId: row.tool_use_id,
+        skillUsageId: row.skill_usage_id === null ? null : toStringId(row.skill_usage_id),
         toolName: row.tool_name,
         sequence: toNumber(row.sequence),
         decision: row.decision,
@@ -487,6 +488,7 @@ export class SddQueryService {
         errorType: row.error_type,
         toolInputPreview: row.tool_input_preview,
         mcpServerScope: row.mcp_server_scope,
+        isWikiRecall: toNullableBoolean(row.is_wiki_recall) ?? false,
       })),
     };
   }
