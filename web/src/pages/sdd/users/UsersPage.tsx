@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
+  BookOpen,
   GitBranch,
   Layers,
   Search,
@@ -11,11 +12,14 @@ import {
   UserRound,
   Zap,
 } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useSddUsers } from './useSddUsers';
 import { Pagination } from '@/components/ui/Pagination';
+import { RowInspectorDrawer, type RowInspectorField } from '@/components/ui/RowInspectorDrawer';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
+import { useWikiRecallList } from '@/pages/sdd/wiki-recalls/useWikiRecalls';
 import type { SddUserItem } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;
@@ -180,9 +184,11 @@ const ICON_BOX_STYLE = {
 
 export default function UsersPage() {
   const { data: rawData = [], isLoading } = useSddUsers();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const debouncedSearch = useDebouncedValue(search, 300);
+  const selectedUserId = params.get('userId');
 
   const now = Date.now();
 
@@ -249,6 +255,31 @@ export default function UsersPage() {
 
   const handleSearch = (v: string) => { setSearch(v); reset(); };
   const handleFilter = (v: StatusFilter) => { setStatusFilter(v); reset(); };
+  const selectUser = (userId: string | null) => {
+    const next = new URLSearchParams(params);
+    if (userId) {
+      next.set('userId', userId);
+    } else {
+      next.delete('userId');
+    }
+    setParams(next, { replace: true });
+  };
+
+  const selectedUser = rawData.find((u) => u.id === selectedUserId) ?? null;
+  const selectedUserStatus = selectedUser ? getUserStatus(selectedUser, now) : null;
+  const drawerFields: RowInspectorField[] = selectedUser
+    ? [
+        { label: '用户 ID', value: selectedUser.id, copyValue: selectedUser.id, mono: true },
+        { label: '安装 ID', value: selectedUser.installId ?? '—', copyValue: selectedUser.installId, mono: true },
+        { label: '机器', value: selectedUser.machineName ?? '—' },
+        { label: '需求根目录', value: selectedUser.requirementsRootPath ?? '—', copyValue: selectedUser.requirementsRootPath, mono: true },
+        { label: 'wiki 根目录', value: selectedUser.wikiRootPath ?? '—', copyValue: selectedUser.wikiRootPath, mono: true },
+        { label: '工作项', value: `${formatInteger(selectedUser.workItemCount)} 个`, mono: true },
+        { label: '累计使用', value: `${formatInteger(selectedUser.interactionCount)} 次`, mono: true },
+        { label: '首次活跃', value: formatTime(selectedUser.firstSeenAt), mono: true },
+        { label: '最近活跃', value: formatTime(selectedUser.lastSeenAt), mono: true },
+      ]
+    : [];
 
   const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-muted)'];
 
@@ -606,8 +637,9 @@ export default function UsersPage() {
                   return (
                     <tr
                       key={u.id}
-                      className="group"
+                      className="group cursor-pointer"
                       style={{ borderBottom: '1px solid var(--color-border)' }}
+                      onClick={() => selectUser(u.id)}
                     >
                       {/* 成员 */}
                       <td className="py-[10px] group-hover:bg-[#171717] transition-colors relative" style={{ paddingLeft: 20, paddingRight: 12 }}>
@@ -694,6 +726,82 @@ export default function UsersPage() {
           )}
         </div>
       </section>
+
+      {selectedUserId ? (
+        <RowInspectorDrawer
+          open={selectedUserId !== null}
+          onOpenChange={(open) => { if (!open) selectUser(null); }}
+          title={selectedUser?.userName ?? selectedUserId}
+          subtitle={selectedUser?.installId}
+          icon={<UserRound size={18} />}
+          badge={selectedUserStatus ? <StatusBadge status={selectedUserStatus} /> : null}
+          row={selectedUser ?? { id: selectedUserId }}
+          fields={drawerFields}
+          rawData={selectedUser ?? { id: selectedUserId }}
+          loading={isLoading}
+        >
+          {selectedUser ? <UserWikiRecallPanel userId={selectedUser.id} /> : null}
+        </RowInspectorDrawer>
+      ) : null}
     </div>
+  );
+}
+
+function UserWikiRecallPanel({ userId }: { userId: string }) {
+  const filters = useMemo(() => ({ userId }), [userId]);
+  const { data, isLoading, error } = useWikiRecallList('30d', filters);
+  const rows = data?.items.slice(0, 20) ?? [];
+
+  return (
+    <section className="space-y-3">
+      <div
+        className="flex items-center justify-between gap-2 pb-2"
+        style={{ borderBottom: '1px solid var(--color-border)' }}
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen size={14} style={{ color: 'var(--color-primary)' }} />
+          <span className="text-[12px] font-semibold text-[#f5f5f5]">最近 wiki 召回</span>
+        </div>
+        <Link
+          to="/sdd/wiki-recalls?tab=ranking"
+          className="text-[11px] text-[var(--color-primary)] hover:underline"
+        >
+          查看排行
+        </Link>
+      </div>
+
+      {isLoading ? <div className="text-[12px] text-[var(--color-muted)]">正在加载召回...</div> : null}
+      {error ? (
+        <div className="text-[12px] text-[#f87171]">
+          召回加载失败：{error instanceof Error ? error.message : String(error)}
+        </div>
+      ) : null}
+      {!isLoading && !error && rows.length === 0 ? (
+        <div className="text-[12px] text-[var(--color-muted)]">该用户最近 30 天无 wiki 召回</div>
+      ) : null}
+      {rows.length > 0 ? (
+        <div className="grid gap-[5px]">
+          {rows.map((row) => (
+            <div
+              key={row.id}
+              className="grid items-center gap-2 rounded-[4px] px-2 py-[6px] hover:bg-[#171717]"
+              style={{ gridTemplateColumns: '1fr 64px 72px' }}
+            >
+              <span
+                className="truncate text-[12px] text-[var(--color-secondary)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+                title={row.wikiRelativePath ?? row.rawPath}
+              >
+                {row.wikiRelativePath ?? row.rawPath}
+              </span>
+              <span className="text-[11px] text-[var(--color-muted)]">{row.actionType}</span>
+              <span className="text-right text-[11px] text-[var(--color-muted)]">
+                {formatTime(row.eventTime)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
