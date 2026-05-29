@@ -3,6 +3,9 @@ import type { Context } from '@midwayjs/koa';
 import {
   OpsJobsResponseSchema,
   OpsQueueSchema,
+  OpsResourceHistoryQuerySchema,
+  OpsResourceHistorySchema,
+  OpsResourceSummarySchema,
   OpsTableRowResponseSchema,
   OpsTableRowsQuerySchema,
   OpsTableRowsResponseSchema,
@@ -10,6 +13,8 @@ import {
   PaginationQuerySchema,
   type OpsJobsResponse,
   type OpsQueue,
+  type OpsResourceHistory,
+  type OpsResourceSummary,
   type OpsTableRowResponse,
   type OpsTableRowsResponse,
   type OpsTablesResponse,
@@ -59,5 +64,18 @@ export class OpsController {
   async queue() {
     const data: OpsQueue = await this.opsQueryService.getQueue();
     return ok(parseWithSchema(OpsQueueSchema, data));
+  }
+
+  @Get('/resources/summary')
+  async resourceSummary() {
+    const data: OpsResourceSummary = await this.opsQueryService.getResourceSummary();
+    return ok(parseWithSchema(OpsResourceSummarySchema, data));
+  }
+
+  @Get('/resources/history')
+  async resourceHistory() {
+    const query = parseWithSchema(OpsResourceHistoryQuerySchema, this.ctx.query);
+    const data: OpsResourceHistory = await this.opsQueryService.getResourceHistory(query);
+    return ok(parseWithSchema(OpsResourceHistorySchema, data));
   }
 }

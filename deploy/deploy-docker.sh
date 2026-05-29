@@ -233,8 +233,18 @@ fi
 if [[ -n "${MYSQL_PUBLISHED_PORT:-}" ]]; then
   set_env_value MYSQL_PUBLISHED_PORT "$MYSQL_PUBLISHED_PORT"
 fi
+if [[ -n "${OPS_RESOURCE_MONITOR_ENABLED:-}" ]]; then
+  set_env_value OPS_RESOURCE_MONITOR_ENABLED "$OPS_RESOURCE_MONITOR_ENABLED"
+fi
+if [[ -n "${OPS_RESOURCE_POLL_INTERVAL_SECONDS:-}" ]]; then
+  set_env_value OPS_RESOURCE_POLL_INTERVAL_SECONDS "$OPS_RESOURCE_POLL_INTERVAL_SECONDS"
+fi
+if [[ -n "${OPS_RESOURCE_RETENTION_DAYS:-}" ]]; then
+  set_env_value OPS_RESOURCE_RETENTION_DAYS "$OPS_RESOURCE_RETENTION_DAYS"
+fi
 
 compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+ops_resource_monitor_enabled="${OPS_RESOURCE_MONITOR_ENABLED:-$(awk -F= '$1 == "OPS_RESOURCE_MONITOR_ENABLED" { print $2 }' "$ENV_FILE" 2>/dev/null || true)}"
 
 printf 'Starting mysql\n'
 "${compose[@]}" up -d mysql
@@ -251,6 +261,10 @@ fi
 
 printf 'Starting application services\n'
 "${compose[@]}" up -d server worker web
+if [[ "${ops_resource_monitor_enabled:-0}" == "1" ]]; then
+  printf 'Starting ops-agent\n'
+  "${compose[@]}" --profile ops up -d ops-agent
+fi
 "${compose[@]}" ps
 
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${API_PUBLISHED_PORT}/api/healthz}"

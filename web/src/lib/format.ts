@@ -43,7 +43,9 @@ export function formatBytes(value: number | null | undefined): string {
   const n = value ?? 0;
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MiB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MiB`;
+  if (n < 1024 * 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+  return `${(n / 1024 / 1024 / 1024 / 1024).toFixed(2)} TiB`;
 }
 
 export function formatTime(value: string | null | undefined): string {

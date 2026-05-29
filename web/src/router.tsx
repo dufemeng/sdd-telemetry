@@ -29,6 +29,7 @@ const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPag
 const WikiRecallsPage   = lazy(() => import('./pages/sdd/wiki-recalls/WikiRecallsPage'));
 const SemanticsPage     = lazy(() => import('./pages/sdd/semantics/SemanticsPage'));
 const DatabasePage      = lazy(() => import('./pages/ops/database/DatabasePage'));
+const ResourcesPage     = lazy(() => import('./pages/ops/resources/ResourcesPage'));
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
 const LoginPage         = lazy(() => import('./pages/auth/LoginPage'));
 const AuthUsersPage     = lazy(() => import('./pages/admin/users/AuthUsersPage'));
@@ -62,6 +63,7 @@ export const router = createBrowserRouter([
             element: <AdminOnly />,
             children: [
               { path: 'ops/database', element: wrap(DatabasePage), errorElement: <RouteError /> },
+              { path: 'ops/resources', element: wrap(ResourcesPage), errorElement: <RouteError /> },
               { path: 'admin/users', element: wrap(AuthUsersPage), errorElement: <RouteError /> },
             ],
           },

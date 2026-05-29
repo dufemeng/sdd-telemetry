@@ -16,6 +16,9 @@ export const OpsTableSchema = z.object({
   tableName: z.string(),
   estimatedRows: z.number(),
   updatedAt: ISODateTimeSchema.nullable(),
+  totalBytes: z.number().nullable().optional(),
+  dataBytes: z.number().nullable().optional(),
+  indexBytes: z.number().nullable().optional(),
   columns: z.array(OpsColumnSchema),
 });
 
@@ -106,6 +109,95 @@ export const OpsTableRowResponseSchema = z.object({
   row: z.record(z.string(), z.unknown()).nullable(),
 });
 
+export const OpsResourceServiceNameSchema = z.enum(['mysql', 'server', 'worker', 'web']);
+
+export const OpsResourceProjectSchema = z.object({
+  name: z.string(),
+  deployVersion: z.string().nullable(),
+  appImage: z.string().nullable(),
+  webImage: z.string().nullable(),
+});
+
+export const OpsResourceTotalsSchema = z.object({
+  cpuPercent: z.number().nullable(),
+  memoryUsageBytes: z.number().nullable(),
+  memoryLimitBytes: z.number().nullable(),
+  imageSizeBytes: z.number().nullable(),
+  containerWritableBytes: z.number().nullable(),
+  databaseBytes: z.number().nullable(),
+  deployDirectoryBytes: z.number().nullable(),
+});
+
+export const OpsResourceServiceSchema = z.object({
+  serviceName: OpsResourceServiceNameSchema,
+  containerName: z.string(),
+  state: z.string(),
+  health: z.string().nullable(),
+  restartCount: z.number(),
+  cpuPercent: z.number().nullable(),
+  memoryUsageBytes: z.number().nullable(),
+  memoryLimitBytes: z.number().nullable(),
+  memoryPercent: z.number().nullable(),
+  networkRxBytes: z.number().nullable(),
+  networkTxBytes: z.number().nullable(),
+  blockReadBytes: z.number().nullable(),
+  blockWriteBytes: z.number().nullable(),
+  writableLayerBytes: z.number().nullable(),
+  imageRef: z.string().nullable(),
+  imageSizeBytes: z.number().nullable(),
+});
+
+export const OpsResourceTableSizeSchema = z.object({
+  tableName: z.string(),
+  estimatedRows: z.number(),
+  totalBytes: z.number(),
+  dataBytes: z.number(),
+  indexBytes: z.number(),
+  updatedAt: ISODateTimeSchema.nullable(),
+});
+
+export const OpsResourceDatabaseSchema = z.object({
+  totalBytes: z.number(),
+  dataBytes: z.number(),
+  indexBytes: z.number(),
+  tables: z.array(OpsResourceTableSizeSchema),
+});
+
+export const OpsResourceAlertSchema = z.object({
+  level: z.enum(['warn', 'bad']),
+  code: z.string(),
+  message: z.string(),
+  target: z.string(),
+});
+
+export const OpsResourceSummarySchema = z.object({
+  capturedAt: ISODateTimeSchema,
+  project: OpsResourceProjectSchema,
+  totals: OpsResourceTotalsSchema,
+  services: z.array(OpsResourceServiceSchema),
+  database: OpsResourceDatabaseSchema,
+  alerts: z.array(OpsResourceAlertSchema),
+});
+
+export const OpsResourceHistoryQuerySchema = z.object({
+  range: z.enum(['1h', '6h', '24h', '7d']).default('6h'),
+  serviceName: z
+    .union([OpsResourceServiceNameSchema, z.literal('total')])
+    .default('total'),
+  metric: z.enum(['cpu', 'memory', 'database', 'writableLayer']).default('memory'),
+});
+
+export const OpsResourceHistoryPointSchema = z.object({
+  timestamp: ISODateTimeSchema,
+  value: z.number().nullable(),
+});
+
+export const OpsResourceHistorySchema = z.object({
+  metric: z.string(),
+  serviceName: z.string(),
+  points: z.array(OpsResourceHistoryPointSchema),
+});
+
 export type OpsTable = z.infer<typeof OpsTableSchema>;
 export type OpsColumn = z.infer<typeof OpsColumnSchema>;
 export type OpsTableFilter = z.infer<typeof OpsTableFilterSchema>;
@@ -118,3 +210,13 @@ export type OpsTableRowResponse = z.infer<typeof OpsTableRowResponseSchema>;
 export type OpsQueue = z.infer<typeof OpsQueueSchema>;
 export type OpsJob = z.infer<typeof OpsJobSchema>;
 export type OpsJobsResponse = z.infer<typeof OpsJobsResponseSchema>;
+export type OpsResourceServiceName = z.infer<typeof OpsResourceServiceNameSchema>;
+export type OpsResourceProject = z.infer<typeof OpsResourceProjectSchema>;
+export type OpsResourceTotals = z.infer<typeof OpsResourceTotalsSchema>;
+export type OpsResourceService = z.infer<typeof OpsResourceServiceSchema>;
+export type OpsResourceTableSize = z.infer<typeof OpsResourceTableSizeSchema>;
+export type OpsResourceDatabase = z.infer<typeof OpsResourceDatabaseSchema>;
+export type OpsResourceAlert = z.infer<typeof OpsResourceAlertSchema>;
+export type OpsResourceSummary = z.infer<typeof OpsResourceSummarySchema>;
+export type OpsResourceHistoryQuery = z.infer<typeof OpsResourceHistoryQuerySchema>;
+export type OpsResourceHistory = z.infer<typeof OpsResourceHistorySchema>;

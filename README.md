@@ -200,6 +200,25 @@ VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.
 
 默认端口：API `4318`，Web `18080`，MySQL `3306`。可通过 `API_PUBLISHED_PORT`、`WEB_PUBLISHED_PORT`、`MYSQL_PUBLISHED_PORT` 和 `MYSQL_*` 环境变量覆盖。
 
+### 服务质量监测
+
+后台管理区提供 `/ops/resources` 服务质量页，仅 `super_admin` 可见。页面会直接展示 MySQL 数据库大小和表大小排行；如需展示 Docker 容器 CPU、内存、镜像大小和可写层趋势，在服务器部署时启用可选采集器：
+
+```bash
+OPS_RESOURCE_MONITOR_ENABLED=1 VERSION=<VERSION> ARCHIVE=sdd-telemetry-images-<VERSION>.tar.gz ./deploy-docker.sh
+```
+
+采集器以 `ops-agent` profile 启动，只按 Compose project `sdd-telemetry` 的 label 采集本项目容器，并将快照写入 `ops_resource_snapshots`。它需要只读挂载 Docker socket：`/var/run/docker.sock:/var/run/docker.sock:ro`。可选配置：
+
+```bash
+OPS_RESOURCE_POLL_INTERVAL_SECONDS=30
+OPS_RESOURCE_RETENTION_DAYS=14
+OPS_CPU_WARN_PERCENT=80
+OPS_MEMORY_WARN_PERCENT=80
+OPS_OUTBOX_FAILED_WARN=1
+OPS_OUTBOX_PENDING_WARN=1000
+```
+
 ## 常用命令
 
 ```bash

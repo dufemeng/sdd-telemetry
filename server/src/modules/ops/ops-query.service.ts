@@ -5,6 +5,13 @@ import type {
   OpsJob,
   OpsJobsResponse,
   OpsQueue,
+  OpsResourceAlert,
+  OpsResourceDatabase,
+  OpsResourceHistory,
+  OpsResourceHistoryQuery,
+  OpsResourceService,
+  OpsResourceSummary,
+  OpsResourceTableSize,
   OpsTable,
   OpsTableFilter,
   OpsTableFilterGroup,
@@ -18,6 +25,8 @@ import {
   OpsQueryRepository,
   type ColumnRow,
   type JobRow,
+  type ResourceSnapshotRow,
+  type TableRow,
 } from './ops-query.repository';
 
 const allowedTables = [
@@ -58,10 +67,16 @@ export class OpsQueryService {
 
     const tables: OpsTable[] = tableRows.map(row => {
       const tableName = String(row.table_name ?? row.TABLE_NAME);
+      const dataBytes = toNullableNumber(row.data_bytes ?? row.DATA_LENGTH);
+      const indexBytes = toNullableNumber(row.index_bytes ?? row.INDEX_LENGTH);
       return {
         tableName,
         estimatedRows: rowCountByTable.get(tableName) ?? 0,
         updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+        dataBytes,
+        indexBytes,
+        totalBytes:
+          dataBytes === null && indexBytes === null ? null : (dataBytes ?? 0) + (indexBytes ?? 0),
         columns: columnsByTable.get(tableName) ?? [],
       };
     });
@@ -169,6 +184,64 @@ export class OpsQueryService {
     };
   }
 
+  async getResourceSummary(): Promise<OpsResourceSummary> {
+    const [snapshotRows, tableRows, queueRows] = await Promise.all([
+      this.opsQueryRepository.listLatestResourceSnapshots(),
+      this.opsQueryRepository.listDatabaseTableSizes(),
+      this.opsQueryRepository.aggregateOutboxStatus(),
+    ]);
+    const capturedAt = toIsoDate(snapshotRows[0]?.captured_at) ?? new Date().toISOString();
+    const database = toResourceDatabase(tableRows);
+    const services = snapshotRows.map(row => toResourceService(row));
+    const latestProject = snapshotRows[0];
+    const runtimeTotals = buildRuntimeTotals(
+      services,
+      toNullableNumber(latestProject?.deploy_directory_bytes),
+    );
+    const totals = {
+      ...runtimeTotals,
+      imageSizeBytes: sumUniqueImageSizes(services),
+      databaseBytes: database.totalBytes,
+    };
+
+    return {
+      capturedAt,
+      project: {
+        name: String(latestProject?.project_name ?? process.env.COMPOSE_PROJECT_NAME ?? 'sdd-telemetry'),
+        deployVersion: process.env.DEPLOY_VERSION ?? null,
+        appImage: process.env.SDD_TELEMETRY_APP_IMAGE ?? null,
+        webImage: process.env.SDD_TELEMETRY_WEB_IMAGE ?? null,
+      },
+      totals,
+      services,
+      database,
+      alerts: buildResourceAlerts({
+        services,
+        queue: queueRows[0],
+        hasSnapshot: snapshotRows.length > 0,
+      }),
+    };
+  }
+
+  async getResourceHistory(query: OpsResourceHistoryQuery): Promise<OpsResourceHistory> {
+    const since = new Date(Date.now() - rangeMs(query.range));
+    const metricSql = historyMetricSql(query.metric, query.serviceName);
+    const rows = await this.opsQueryRepository.listResourceHistory({
+      since,
+      metricSql,
+      ...(query.serviceName === 'total' ? {} : { serviceName: query.serviceName }),
+    });
+
+    return {
+      metric: query.metric,
+      serviceName: query.serviceName,
+      points: rows.map(row => ({
+        timestamp: toIsoDate(row.timestamp) ?? new Date().toISOString(),
+        value: toNullableNumber(row.value),
+      })),
+    };
+  }
+
   private toOutboxJob(row: JobRow): OpsJob {
     return {
       id: toStringId(row.id),
@@ -181,6 +254,215 @@ export class OpsQueryService {
       updatedAt: toIsoDate(row.updated_at),
     };
   }
+}
+
+function toResourceService(row: ResourceSnapshotRow): OpsResourceService {
+  const memoryUsageBytes = toNullableNumber(row.memory_usage_bytes);
+  const memoryLimitBytes = toNullableNumber(row.memory_limit_bytes);
+  return {
+    serviceName: toServiceName(row.service_name),
+    containerName: row.container_name ?? 'unknown',
+    state: row.state ?? 'unknown',
+    health: row.health,
+    restartCount: toNumber(row.restart_count),
+    cpuPercent: toNullableNumber(row.cpu_percent),
+    memoryUsageBytes,
+    memoryLimitBytes,
+    memoryPercent:
+      memoryUsageBytes !== null && memoryLimitBytes && memoryLimitBytes > 0
+        ? memoryUsageBytes / memoryLimitBytes
+        : null,
+    networkRxBytes: toNullableNumber(row.network_rx_bytes),
+    networkTxBytes: toNullableNumber(row.network_tx_bytes),
+    blockReadBytes: toNullableNumber(row.block_read_bytes),
+    blockWriteBytes: toNullableNumber(row.block_write_bytes),
+    writableLayerBytes: toNullableNumber(row.writable_layer_bytes),
+    imageRef: row.image_ref,
+    imageSizeBytes: toNullableNumber(row.image_size_bytes),
+  };
+}
+
+function toServiceName(value: string): OpsResourceService['serviceName'] {
+  return ['mysql', 'server', 'worker', 'web'].includes(value)
+    ? (value as OpsResourceService['serviceName'])
+    : 'server';
+}
+
+function toResourceDatabase(rows: TableRow[]): OpsResourceDatabase {
+  const tables: OpsResourceTableSize[] = rows.map(row => {
+    const dataBytes = toNumber(row.data_bytes ?? row.DATA_LENGTH);
+    const indexBytes = toNumber(row.index_bytes ?? row.INDEX_LENGTH);
+    return {
+      tableName: String(row.table_name ?? row.TABLE_NAME),
+      estimatedRows: toNumber(row.estimated_rows ?? row.TABLE_ROWS),
+      totalBytes: dataBytes + indexBytes,
+      dataBytes,
+      indexBytes,
+      updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+    };
+  });
+
+  return {
+    totalBytes: tables.reduce((sum, table) => sum + table.totalBytes, 0),
+    dataBytes: tables.reduce((sum, table) => sum + table.dataBytes, 0),
+    indexBytes: tables.reduce((sum, table) => sum + table.indexBytes, 0),
+    tables,
+  };
+}
+
+function buildResourceAlerts(options: {
+  services: OpsResourceService[];
+  queue?: { pending_outbox: string | number; failed_outbox: string | number } | undefined;
+  hasSnapshot: boolean;
+}): OpsResourceAlert[] {
+  const alerts: OpsResourceAlert[] = [];
+  if (!options.hasSnapshot) {
+    alerts.push({
+      level: 'warn',
+      code: 'ops_agent_no_snapshot',
+      message: '尚未收到资源采集快照，启用 ops-agent 后可展示 CPU、内存和镜像占用。',
+      target: 'ops-agent',
+    });
+  }
+
+  for (const service of options.services) {
+    if (service.state !== 'running') {
+      alerts.push({
+        level: 'bad',
+        code: 'container_not_running',
+        message: `${service.serviceName} 容器状态为 ${service.state}`,
+        target: service.serviceName,
+      });
+    }
+    if (service.restartCount > 0) {
+      alerts.push({
+        level: 'warn',
+        code: 'container_restarted',
+        message: `${service.serviceName} 已重启 ${service.restartCount} 次`,
+        target: service.serviceName,
+      });
+    }
+    if (service.cpuPercent !== null && service.cpuPercent >= Number(process.env.OPS_CPU_WARN_PERCENT ?? 80)) {
+      alerts.push({
+        level: 'warn',
+        code: 'cpu_high',
+        message: `${service.serviceName} CPU 当前 ${service.cpuPercent.toFixed(1)}%`,
+        target: service.serviceName,
+      });
+    }
+    if (
+      service.memoryPercent !== null &&
+      service.memoryPercent >= Number(process.env.OPS_MEMORY_WARN_PERCENT ?? 80) / 100
+    ) {
+      alerts.push({
+        level: 'warn',
+        code: 'memory_high',
+        message: `${service.serviceName} 内存当前 ${(service.memoryPercent * 100).toFixed(1)}%`,
+        target: service.serviceName,
+      });
+    }
+  }
+
+  const failedOutbox = toNumber(options.queue?.failed_outbox);
+  const pendingOutbox = toNumber(options.queue?.pending_outbox);
+  if (failedOutbox >= Number(process.env.OPS_OUTBOX_FAILED_WARN ?? 1)) {
+    alerts.push({
+      level: 'bad',
+      code: 'outbox_failed',
+      message: `outbox 失败任务 ${failedOutbox} 条`,
+      target: 'ingest_outbox',
+    });
+  }
+  if (pendingOutbox >= Number(process.env.OPS_OUTBOX_PENDING_WARN ?? 1000)) {
+    alerts.push({
+      level: 'warn',
+      code: 'outbox_pending_high',
+      message: `outbox 待处理任务 ${pendingOutbox} 条`,
+      target: 'ingest_outbox',
+    });
+  }
+
+  return alerts;
+}
+
+function buildRuntimeTotals(
+  services: OpsResourceService[],
+  deployDirectoryBytes: number | null,
+): {
+  cpuPercent: number | null;
+  memoryUsageBytes: number | null;
+  memoryLimitBytes: number | null;
+  containerWritableBytes: number | null;
+  deployDirectoryBytes: number | null;
+} {
+  let cpuPercent: number | null = null;
+  let memoryUsageBytes: number | null = null;
+  let memoryLimitBytes: number | null = null;
+  let containerWritableBytes: number | null = null;
+
+  for (const service of services) {
+    cpuPercent = sumNullable(cpuPercent, service.cpuPercent);
+    memoryUsageBytes = sumNullable(memoryUsageBytes, service.memoryUsageBytes);
+    memoryLimitBytes = sumNullable(memoryLimitBytes, service.memoryLimitBytes);
+    containerWritableBytes = sumNullable(containerWritableBytes, service.writableLayerBytes);
+  }
+
+  return {
+    cpuPercent,
+    memoryUsageBytes,
+    memoryLimitBytes,
+    containerWritableBytes,
+    deployDirectoryBytes,
+  };
+}
+
+function historyMetricSql(metric: OpsResourceHistoryQuery['metric'], serviceName: string): string {
+  if (serviceName === 'total') {
+    if (metric === 'cpu') return 'SUM(cpu_percent)';
+    if (metric === 'memory') return 'SUM(memory_usage_bytes)';
+    if (metric === 'database') return 'MAX(database_bytes)';
+    return 'SUM(writable_layer_bytes)';
+  }
+
+  if (metric === 'cpu') return 'MAX(cpu_percent)';
+  if (metric === 'memory') return 'MAX(memory_usage_bytes)';
+  if (metric === 'database') return 'MAX(database_bytes)';
+  return 'MAX(writable_layer_bytes)';
+}
+
+function rangeMs(range: OpsResourceHistoryQuery['range']): number {
+  if (range === '1h') return 60 * 60 * 1000;
+  if (range === '24h') return 24 * 60 * 60 * 1000;
+  if (range === '7d') return 7 * 24 * 60 * 60 * 1000;
+  return 6 * 60 * 60 * 1000;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function sumNullable(left: unknown, right: unknown): number | null {
+  const a = toNullableNumber(left);
+  const b = toNullableNumber(right);
+  if (a === null && b === null) return null;
+  return (a ?? 0) + (b ?? 0);
+}
+
+function sumUniqueImageSizes(services: OpsResourceService[]): number | null {
+  const seen = new Set<string>();
+  let total = 0;
+  let hasValue = false;
+  for (const service of services) {
+    if (!service.imageRef || service.imageSizeBytes === null || seen.has(service.imageRef)) {
+      continue;
+    }
+    seen.add(service.imageRef);
+    total += service.imageSizeBytes;
+    hasValue = true;
+  }
+  return hasValue ? total : null;
 }
 
 function assertAllowedTable(tableName: string): void {

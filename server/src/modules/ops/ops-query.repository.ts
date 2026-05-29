@@ -6,6 +6,10 @@ export interface TableRow {
   TABLE_NAME?: string;
   estimated_rows?: string | number;
   TABLE_ROWS?: string | number;
+  data_bytes?: string | number | null;
+  DATA_LENGTH?: string | number | null;
+  index_bytes?: string | number | null;
+  INDEX_LENGTH?: string | number | null;
   updated_at?: Date | string | null;
   UPDATE_TIME?: Date | string | null;
 }
@@ -49,6 +53,34 @@ export interface JobRow {
   updated_at: Date | string | null;
 }
 
+export interface ResourceSnapshotRow {
+  captured_at: Date | string;
+  project_name: string;
+  service_name: string;
+  container_name: string | null;
+  container_id: string | null;
+  state: string | null;
+  health: string | null;
+  restart_count: string | number;
+  cpu_percent: string | number | null;
+  memory_usage_bytes: string | number | null;
+  memory_limit_bytes: string | number | null;
+  network_rx_bytes: string | number | null;
+  network_tx_bytes: string | number | null;
+  block_read_bytes: string | number | null;
+  block_write_bytes: string | number | null;
+  writable_layer_bytes: string | number | null;
+  image_ref: string | null;
+  image_size_bytes: string | number | null;
+  database_bytes: string | number | null;
+  deploy_directory_bytes: string | number | null;
+}
+
+export interface ResourceHistoryRow {
+  timestamp: Date | string;
+  value: string | number | null;
+}
+
 interface CountRow {
   cnt: string | number;
 }
@@ -69,7 +101,11 @@ export class OpsQueryRepository {
   async listAllowedTablesMeta(allowedTables: string[]): Promise<TableRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
-      `SELECT table_name, update_time AS updated_at
+      `SELECT table_name,
+              table_rows AS estimated_rows,
+              data_length AS data_bytes,
+              index_length AS index_bytes,
+              update_time AS updated_at
        FROM information_schema.tables
        WHERE table_schema = DATABASE()
          AND table_name IN (${allowedTables.map(() => '?').join(',')})
@@ -154,5 +190,56 @@ export class OpsQueryRepository {
        LIMIT ?`,
       [...params, limit],
     )) as JobRow[];
+  }
+
+  async listDatabaseTableSizes(): Promise<TableRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT table_name,
+              table_rows AS estimated_rows,
+              data_length AS data_bytes,
+              index_length AS index_bytes,
+              update_time AS updated_at
+       FROM information_schema.tables
+       WHERE table_schema = DATABASE()
+       ORDER BY data_length + index_length DESC`,
+    )) as TableRow[];
+  }
+
+  async listLatestResourceSnapshots(): Promise<ResourceSnapshotRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT captured_at, project_name, service_name, container_name, container_id,
+              state, health, restart_count, cpu_percent, memory_usage_bytes,
+              memory_limit_bytes, network_rx_bytes, network_tx_bytes,
+              block_read_bytes, block_write_bytes, writable_layer_bytes,
+              image_ref, image_size_bytes, database_bytes, deploy_directory_bytes
+       FROM ops_resource_snapshots
+       WHERE captured_at = (SELECT MAX(captured_at) FROM ops_resource_snapshots)
+       ORDER BY FIELD(service_name, 'mysql', 'server', 'worker', 'web'), service_name ASC`,
+    )) as ResourceSnapshotRow[];
+  }
+
+  async listResourceHistory(options: {
+    since: Date;
+    metricSql: string;
+    serviceName?: string;
+  }): Promise<ResourceHistoryRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const params: unknown[] = [options.since];
+    const serviceClause = options.serviceName ? 'AND service_name = ?' : '';
+    if (options.serviceName) {
+      params.push(options.serviceName);
+    }
+
+    return (await dataSource.query(
+      `SELECT captured_at AS timestamp, ${options.metricSql} AS value
+       FROM ops_resource_snapshots
+       WHERE captured_at >= ?
+         ${serviceClause}
+       GROUP BY captured_at
+       ORDER BY captured_at ASC`,
+      params,
+    )) as ResourceHistoryRow[];
   }
 }

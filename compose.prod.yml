@@ -22,6 +22,14 @@ x-app-env: &app-env
   SCHEDULE_CLEANING_INTERVAL_MS: ${SCHEDULE_CLEANING_INTERVAL_MS:-30000}
   SCHEDULE_CLEANING_BUDGET_MS: ${SCHEDULE_CLEANING_BUDGET_MS:-45000}
   SCHEDULE_CLEANING_LOCK_SECONDS: ${SCHEDULE_CLEANING_LOCK_SECONDS:-120}
+  OPS_RESOURCE_POLL_INTERVAL_SECONDS: ${OPS_RESOURCE_POLL_INTERVAL_SECONDS:-30}
+  OPS_RESOURCE_RETENTION_DAYS: ${OPS_RESOURCE_RETENTION_DAYS:-14}
+  OPS_CPU_WARN_PERCENT: ${OPS_CPU_WARN_PERCENT:-80}
+  OPS_MEMORY_WARN_PERCENT: ${OPS_MEMORY_WARN_PERCENT:-80}
+  OPS_OUTBOX_FAILED_WARN: ${OPS_OUTBOX_FAILED_WARN:-1}
+  OPS_OUTBOX_PENDING_WARN: ${OPS_OUTBOX_PENDING_WARN:-1000}
+  COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-sdd-telemetry}
+  DEPLOY_VERSION: ${DEPLOY_VERSION:-}
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:
@@ -94,6 +102,20 @@ services:
     working_dir: /app/worker
     environment: *app-env
     command: ["node", "dist/main.js"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  ops-agent:
+    image: ${SDD_TELEMETRY_APP_IMAGE:-sdd-telemetry-app:local}
+    container_name: sdd-telemetry-ops-agent
+    profiles: ["ops"]
+    restart: unless-stopped
+    working_dir: /app/worker
+    environment: *app-env
+    command: ["node", "dist/ops-resource-agent.js"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       mysql:
         condition: service_healthy
