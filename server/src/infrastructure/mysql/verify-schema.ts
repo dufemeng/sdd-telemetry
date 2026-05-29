@@ -14,6 +14,7 @@ const expectedTables = [
   'sdd_skill_usages',
   'sdd_work_items',
   'sdd_work_item_artifacts',
+  'sdd_work_item_artifact_writes',
   'sdd_wiki_recalls',
   'sdd_errors',
 ];
@@ -32,6 +33,7 @@ const expectedUniqueIndexes = [
   'uk_sdd_skill_usages_usage_key',
   'uk_sdd_work_items_work_item_key',
   'uk_sdd_work_item_artifacts_artifact_key',
+  'uk_artifact_write_key',
   'uk_recall_key',
   'uk_sdd_errors_error_key',
 ];

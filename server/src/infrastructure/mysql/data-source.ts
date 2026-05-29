@@ -10,6 +10,7 @@ import { CreateAuthUsers1779868800000 } from './migrations/1779868800000-create-
 import { AddSkillUsageIdToToolCalls1780000000000 } from './migrations/1780000000000-add-skill-usage-id-to-tool-calls';
 import { CreateWikiRecalls1780000001000 } from './migrations/1780000001000-create-wiki-recalls';
 import { CreateOpsResourceSnapshots1780000002000 } from './migrations/1780000002000-create-ops-resource-snapshots';
+import { CreateArtifactWrites1780000003000 } from './migrations/1780000003000-create-artifact-writes';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -36,6 +37,7 @@ export function createAppDataSource(): DataSource {
       AddSkillUsageIdToToolCalls1780000000000,
       CreateWikiRecalls1780000001000,
       CreateOpsResourceSnapshots1780000002000,
+      CreateArtifactWrites1780000003000,
     ],
   });
 }
