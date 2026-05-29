@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  BookOpen,
   FileText,
   GitBranch,
   Search,
@@ -9,15 +8,13 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
-import { useSddWorkItemDetail, useSddWorkItems } from './useSddWorkItems';
-import { RowInspectorDrawer, type RowInspectorField } from '@/components/ui/RowInspectorDrawer';
+import { useNavigate } from 'react-router-dom';
+import { useSddWorkItems } from './useSddWorkItems';
 import { BarList } from '@/components/ui/BarList';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import { useWikiRecallList } from '@/pages/sdd/wiki-recalls/useWikiRecalls';
-import type { SddWorkItem, WikiRecallRow } from '@sdd-telemetry/api';
+import type { SddWorkItem } from '@sdd-telemetry/api';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -40,13 +37,6 @@ const STAGE_DOT_COLORS: Record<SddStage, string> = {
   design: 'var(--color-good-text)',
   task: 'var(--color-primary)',
   review: '#a78bfa',
-};
-
-const ARTIFACT_BADGE: Record<string, { text: string; bg: string }> = {
-  proposal: { text: '#60a5fa',                     bg: 'rgba(96,165,250,0.12)' },
-  design:   { text: 'var(--color-good-text)',       bg: 'rgba(34,197,94,0.10)' },
-  task:     { text: 'var(--color-primary)',          bg: 'rgba(250,255,105,0.10)' },
-  review:   { text: '#a78bfa',                      bg: 'rgba(167,139,250,0.10)' },
 };
 
 const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-muted)'];
@@ -152,11 +142,9 @@ const STATUS_BORDER: Record<WorkItemStatus, string> = {
 
 export default function WorkItemsPage() {
   const { data = [], isLoading } = useSddWorkItems();
-  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const selectedId = params.get('workItemId');
-  const detailQuery = useSddWorkItemDetail(selectedId);
 
   const now = Date.now();
 
@@ -231,35 +219,6 @@ export default function WorkItemsPage() {
 
   const handleFilter = (v: StatusFilter) => { setStatusFilter(v); reset(); };
   const handleSearch = (v: string)       => { setSearch(v);       reset(); };
-  const selectWorkItem = (workItemId: string | null) => {
-    const next = new URLSearchParams(params);
-    if (workItemId) {
-      next.set('workItemId', workItemId);
-    } else {
-      next.delete('workItemId');
-    }
-    setParams(next, { replace: true });
-  };
-
-  // ── 详情抽屉 fields ───────────────────────────────────────────────────────
-
-  const detail = detailQuery.data;
-  const drawerFields: RowInspectorField[] = detail
-    ? [
-        { label: '业务域',  value: detail.businessDomain ?? '—' },
-        { label: '需求库',  value: detail.requirementsRepoName ?? '—' },
-        { label: '相对路径', value: detail.relativeDir, mono: true },
-        { label: '首次活跃', value: formatTime(detail.firstSeenAt) },
-        { label: '最近活跃', value: formatTime(detail.lastSeenAt) },
-        { label: '调用次数', value: `${formatInteger(detail.usageCount)} 次`, mono: true },
-        {
-          label: '错误数',
-          value: detail.errorCount > 0
-            ? <span style={{ color: 'var(--color-bad-text)' }}>{detail.errorCount}</span>
-            : '0',
-        },
-      ]
-    : [];
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -548,7 +507,7 @@ export default function WorkItemsPage() {
                       key={item.id}
                       className="group cursor-pointer"
                       style={{ borderBottom: '1px solid var(--color-border)' }}
-                      onClick={() => selectWorkItem(item.id)}
+                      onClick={() => navigate(`/sdd/work-items/${item.id}`)}
                     >
                       {/* 需求标题 */}
                       <td
@@ -645,160 +604,6 @@ export default function WorkItemsPage() {
         </div>
       </section>
 
-      {/* ── Section 5: 详情抽屉 ── */}
-      {selectedId && (
-        <RowInspectorDrawer
-          open={selectedId !== null}
-          onOpenChange={(open) => { if (!open) selectWorkItem(null); }}
-          title={detail?.workItemTitle ?? detail?.workItemSlug ?? selectedId}
-          subtitle={detail?.workItemKey}
-          icon={<GitBranch size={18} />}
-          badge={
-            detail ? (
-              <span
-                className="text-[11px] px-2 py-[2px] rounded-full"
-                style={{ color: 'var(--color-secondary)', border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
-              >
-                {getCoreStages(detail.coverageStages).length} / 4 阶段
-              </span>
-            ) : null
-          }
-          row={detail}
-          fields={drawerFields}
-          loading={detailQuery.isLoading}
-        >
-          {detail ? <WorkItemWikiRecallPanel workItemId={detail.id} /> : null}
-
-          {detail && detail.artifacts.length > 0 && (
-            <div className="px-5 pb-4">
-              <div
-                className="flex items-center gap-2 pb-2 mb-3"
-                style={{ borderBottom: '1px solid var(--color-border)' }}
-              >
-                <FileText size={14} style={{ color: 'var(--color-primary)' }} />
-                <span className="text-[12px] font-semibold text-[#f5f5f5]">Artifacts</span>
-                <span className="text-[11px] text-[var(--color-muted)]">· {detail.artifacts.length} 篇</span>
-              </div>
-              <div className="grid gap-[4px]">
-                {detail.artifacts
-                  .slice()
-                  .sort((a, b) =>
-                    (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''),
-                  )
-                  .slice(0, 50)
-                  .map((a) => {
-                    const badgeStyle = ARTIFACT_BADGE[a.artifactType] ?? ARTIFACT_BADGE_DEFAULT;
-                    return (
-                      <div
-                        key={a.id}
-                        className="flex items-center gap-2 px-2 py-[5px] rounded-[4px] hover:bg-[#171717] transition-colors"
-                      >
-                        <span
-                          className="shrink-0 text-[10px] font-medium px-[6px] py-[1px] rounded-[3px] w-[64px] text-center"
-                          style={{ color: badgeStyle.text, background: badgeStyle.bg }}
-                        >
-                          {a.artifactType}
-                        </span>
-                        <span
-                          className="flex-1 text-[12px] truncate text-[var(--color-secondary)]"
-                          style={{ fontFamily: 'var(--font-mono)' }}
-                          title={a.artifactRelativePath}
-                        >
-                          {a.artifactRelativePath}
-                        </span>
-                        <span className="shrink-0 text-[11px] text-[var(--color-muted)] w-[64px] text-right">
-                          {a.systemModule ?? '—'}
-                        </span>
-                        <span
-                          className="shrink-0 text-[11px] text-[var(--color-muted)] w-[48px] text-right"
-                          style={{ fontFamily: 'var(--font-mono)' }}
-                        >
-                          {a.lastSeenAt ? formatTime(a.lastSeenAt).slice(5) : '—'}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-        </RowInspectorDrawer>
-      )}
     </div>
   );
-}
-
-const ARTIFACT_BADGE_DEFAULT = { text: '#93927c', bg: 'rgba(255,255,255,0.06)' };
-
-function WorkItemWikiRecallPanel({ workItemId }: { workItemId: string }) {
-  const filters = useMemo(() => ({ workItemId }), [workItemId]);
-  const { data, isLoading, error } = useWikiRecallList('30d', filters);
-  const groups = useMemo(() => groupRecallsBySkill(data?.items ?? []), [data?.items]);
-
-  return (
-    <section className="px-5 pb-4">
-      <div
-        className="flex items-center gap-2 pb-2 mb-3"
-        style={{ borderBottom: '1px solid var(--color-border)' }}
-      >
-        <BookOpen size={14} style={{ color: 'var(--color-primary)' }} />
-        <span className="text-[12px] font-semibold text-[#f5f5f5]">wiki 召回</span>
-        {data ? (
-          <span className="text-[11px] text-[var(--color-muted)]">· {data.total} 条</span>
-        ) : null}
-      </div>
-
-      {isLoading ? <div className="text-[12px] text-[var(--color-muted)]">正在加载召回...</div> : null}
-      {error ? (
-        <div className="text-[12px] text-[#f87171]">
-          召回加载失败：{error instanceof Error ? error.message : String(error)}
-        </div>
-      ) : null}
-      {!isLoading && !error && groups.length === 0 ? (
-        <div className="text-[12px] text-[var(--color-muted)]">该需求最近 30 天无 wiki 召回</div>
-      ) : null}
-
-      <div className="grid gap-3">
-        {groups.map(([skillUsageId, recalls]) => (
-          <div key={skillUsageId} className="grid gap-[5px]">
-            <div
-              className="text-[11px] text-[var(--color-muted)]"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              skill_usage: {skillUsageId}
-            </div>
-            {recalls.slice(0, 12).map((recall) => (
-              <div
-                key={recall.id}
-                className="grid items-center gap-2 rounded-[4px] px-2 py-[6px] hover:bg-[#171717]"
-                style={{ gridTemplateColumns: '1fr 64px 72px' }}
-              >
-                <span
-                  className="truncate text-[12px] text-[var(--color-secondary)]"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                  title={recall.wikiRelativePath ?? recall.rawPath}
-                >
-                  {recall.wikiRelativePath ?? recall.rawPath}
-                </span>
-                <span className="text-[11px] text-[var(--color-muted)]">{recall.actionType}</span>
-                <span className="text-right text-[11px] text-[var(--color-muted)]">
-                  {formatTime(recall.eventTime)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function groupRecallsBySkill(items: WikiRecallRow[]): Array<[string, WikiRecallRow[]]> {
-  const groups = new Map<string, WikiRecallRow[]>();
-  for (const item of items) {
-    const key = item.skillUsageId ?? 'unattached';
-    const rows = groups.get(key) ?? [];
-    rows.push(item);
-    groups.set(key, rows);
-  }
-  return [...groups.entries()];
 }
