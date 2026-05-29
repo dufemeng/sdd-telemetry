@@ -42,6 +42,7 @@ SDD 业务层
   sdd_work_items
   sdd_work_item_artifacts
   sdd_errors
+  sdd_work_item_artifact_writes
 ```
 
 ## 3. 访问控制与配置层
@@ -484,6 +485,34 @@ event_id 存在：
 否则：
   sha256(error_type + ":" + session_id + ":" + error_message_hash + ":" + event_time)
 ```
+
+### 6.5 sdd_work_item_artifact_writes
+
+每次 artifact 写入事件的派生记录，用于「文档生成时间线」下钻。worker 在 `upsertWorkItems` 里派生 artifact 后顺手写入，不改变 artifact 本身的去重/upsert 语义。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 主键 |
+| `write_key` | CHAR(64) | NOT NULL, UNIQUE | 稳定写入 key，sha256(event_id + ':' + artifact_key) |
+| `artifact_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_item_artifacts.id` |
+| `work_item_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_items.id` |
+| `interaction_id` | BIGINT UNSIGNED | NULL, INDEX | 关联交互；能由 prompt_id 解析到就填 |
+| `skill_usage_id` | BIGINT UNSIGNED | NULL, INDEX | 关联 skill 调用 |
+| `user_id` | BIGINT UNSIGNED | NULL | 用户 |
+| `session_id` | VARCHAR(191) | NULL | session |
+| `prompt_id` | VARCHAR(191) | NULL | prompt |
+| `event_id` | CHAR(64) | NULL | 来源写入事件 |
+| `write_kind` | VARCHAR(32) | NOT NULL | Write / Edit / MultiEdit / other |
+| `content_preview` | TEXT | NULL | 写入内容预览，≤4KB，best-effort |
+| `event_sequence` | INT UNSIGNED | NULL | 写入事件在 session 内的序号 |
+| `event_time` | DATETIME(3) | NULL, INDEX | 写入时间 |
+| `rule_version` | VARCHAR(32) | NOT NULL | 清洗规则版本 |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
+
+`write_key` 生成：`sha256(event_id + ':' + artifact_key)`——一次写入事件对一篇 artifact 至多一行，幂等。
+
+保留期：对齐 `sdd_skill_usages`（至少 6 个月，P0 可不清理）。
 
 ## 7. Retention
 

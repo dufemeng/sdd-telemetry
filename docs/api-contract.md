@@ -711,6 +711,38 @@ Response item 包含用户标识、机器标识、`requirementsRootPath`、`wiki
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
+新增字段（需求维度 summary）：
+- `turnCount` — 关联该需求的不重复 interaction 数
+- `sessionCount` — 跨越的 session 数
+- `contributorCount` — 参与的用户数
+- `wikiRecallCount` — wiki 读取总次数
+
+#### GET /api/sdd/work-items/:workItemId/artifacts/:artifactId/writes
+
+返回单篇文档的生成时间线（每次写入节点）。
+
+**Response:** `SddArtifactWriteListResponse`
+
+```json
+{
+  "items": [
+    {
+      "id": "123",
+      "writeKind": "Write",
+      "eventTime": "2026-05-10T14:22:00.000Z",
+      "eventSequence": 42,
+      "interactionId": "456",
+      "skillSemanticCode": "design",
+      "skillDisplayName": "系统设计",
+      "rawSkillName": "bk-fe:design",
+      "wikiRecallCount": 3,
+      "promptPreview": "帮我设计...",
+      "contentPreview": null
+    }
+  ]
+}
+```
+
 ### 6.19 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
