@@ -2111,11 +2111,10 @@ function inferArtifact(
   const normalizedRoot = trimTrailingSlash(normalizePath(requirementsRootPath));
   const relativePath = normalized.slice(normalizedRoot.length).replace(/^\/+/, '');
   const relativeSegments = relativePath.split('/').filter(Boolean);
-  const workItemIndex = relativeSegments.findIndex((segment) =>
-    /^\d{4}-\d{2}-\d{2}-.+/.test(segment),
-  );
+  const workItemIndex = 1;
+  const workItemSegment = relativeSegments[workItemIndex];
 
-  if (workItemIndex <= 0) {
+  if (relativeSegments.length <= workItemIndex || !workItemSegment || workItemSegment.endsWith('.md')) {
     return null;
   }
 
@@ -2138,7 +2137,7 @@ function inferArtifact(
     repoName,
     businessDomain,
     workItemSlug,
-    workItemTitle: titleFromSlug(workItemSlug),
+    workItemTitle: workItemSlug,
     relativeDir,
     artifactType: artifactTypeFromFileName(fileName),
     artifactRelativePath: artifactRelativeSegments.join('/'),
@@ -2168,10 +2167,6 @@ function artifactTypeFromFileName(fileName: string): string {
   return 'document';
 }
 
-function titleFromSlug(slug: string): string | null {
-  const matched = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(slug);
-  return matched?.[1] ?? null;
-}
 
 async function selectIdByKey(
   connection: PoolConnection,
