@@ -6,6 +6,18 @@ import type { DataSource } from 'typeorm';
 import { createAppDataSource } from './data-source';
 import { resetDerivedData } from './reset-derived-data';
 
+// worker/dist/main.js relative to this file: ../../../../worker/dist/main.js
+const WORKER_DIST_MAIN = join(__dirname, '..', '..', '..', '..', 'worker', 'dist', 'main.js');
+
+function hasPnpm(): boolean {
+  try {
+    execSync('pnpm --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface Flags {
   yes: boolean;
   forceRemote: boolean;
@@ -209,14 +221,23 @@ async function main(): Promise<void> {
       }
     }
 
+    const usePnpm = hasPnpm();
     if (!flags.skipBuild) {
-      console.info('[reclean] building worker...');
-      execSync('pnpm --filter @sdd-telemetry/worker build', { stdio: 'inherit' });
+      if (usePnpm) {
+        console.info('[reclean] building worker...');
+        execSync('pnpm --filter @sdd-telemetry/worker build', { stdio: 'inherit' });
+      } else {
+        if (!existsSync(WORKER_DIST_MAIN)) {
+          throw new Error(
+            `[reclean] pnpm not available and worker dist not found at ${WORKER_DIST_MAIN}.`,
+          );
+        }
+        console.info('[reclean] pnpm not available; using existing worker dist...');
+      }
     } else {
-      const workerDist = join(__dirname, '..', '..', '..', '..', 'worker', 'dist', 'main.js');
-      if (!existsSync(workerDist)) {
+      if (!existsSync(WORKER_DIST_MAIN)) {
         throw new Error(
-          `[reclean] --skip-build set but worker dist not found at ${workerDist}. ` +
+          `[reclean] --skip-build set but worker dist not found at ${WORKER_DIST_MAIN}. ` +
             `run pnpm --filter @sdd-telemetry/worker build first.`,
         );
       }
@@ -249,10 +270,14 @@ async function main(): Promise<void> {
         `[reclean] iteration ${iteration}: pending=${pending} (was ${previousPending}); running worker once...`,
       );
       try {
-        execSync('pnpm --filter @sdd-telemetry/worker once', {
+        const workerCmd = usePnpm
+          ? 'pnpm --filter @sdd-telemetry/worker once'
+          : `WORKER_ONCE=true node "${WORKER_DIST_MAIN}"`;
+        execSync(workerCmd, {
           stdio: 'inherit',
           env: {
             ...process.env,
+            WORKER_ONCE: 'true',
             SCHEDULE_CLEANING_BUDGET_MS: String(flags.budgetMs),
           },
         });
