@@ -40,7 +40,7 @@ export interface AliasRow extends RowDataPacket {
 }
 
 export interface UserRequirementsRootRow extends RowDataPacket {
-  id: string;
+  id: string | number;
   requirements_root_path: string | null;
 }
 
@@ -1038,8 +1038,8 @@ export class CleaningRepository {
       `SELECT id, wiki_root_path FROM sdd_users WHERE wiki_root_path IS NOT NULL`,
     );
     const m = new Map<string, string>();
-    for (const r of rows as Array<{ id: string; wiki_root_path: string }>) {
-      m.set(r.id, r.wiki_root_path);
+    for (const r of rows as Array<{ id: string | number; wiki_root_path: string }>) {
+      m.set(String(r.id), r.wiki_root_path);
     }
     return m;
   }
@@ -1063,14 +1063,21 @@ export class CleaningRepository {
        WHERE interaction_id IN (?)`,
       [interactionIds],
     );
-    return rows as Array<{
-      id: string;
-      interactionId: string;
-      skillUsageId: string | null;
+    return (rows as Array<{
+      id: string | number;
+      interactionId: string | number;
+      skillUsageId: string | number | null;
       toolName: string;
       toolInputPreview: string | null;
-      sequence: number | null;
-    }>;
+      sequence: string | number | null;
+    }>).map((row) => ({
+      id: String(row.id),
+      interactionId: String(row.interactionId),
+      skillUsageId: row.skillUsageId == null ? null : String(row.skillUsageId),
+      toolName: row.toolName,
+      toolInputPreview: row.toolInputPreview,
+      sequence: row.sequence == null ? null : Number(row.sequence),
+    }));
   }
 
   async loadWorkItemIdsBySkillUsageIds(

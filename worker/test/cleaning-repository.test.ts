@@ -40,3 +40,52 @@ describe('CleaningRepository.loadWorkItemIdsBySkillUsageIds', () => {
     expect(result.size).toBe(0);
   });
 });
+
+describe('CleaningRepository.loadUserWikiRoots', () => {
+  it('把 MySQL BIGINT number id 归一化成 string key', async () => {
+    const query = vi.fn().mockResolvedValue([
+      [
+        { id: 2762, wiki_root_path: '/Users/u/wiki' },
+      ],
+    ]);
+    const repo = new CleaningRepository();
+
+    const result = await repo.loadUserWikiRoots({ query } as never);
+
+    expect(result).toEqual(new Map([['2762', '/Users/u/wiki']]));
+  });
+});
+
+describe('CleaningRepository.listToolCallsForWikiRecalls', () => {
+  it('把 tool_call 和 skill_usage 的 numeric id 归一化成 string', async () => {
+    const query = vi.fn().mockResolvedValue([
+      [
+        {
+          id: 97,
+          interactionId: 44,
+          skillUsageId: 482,
+          toolName: 'Read',
+          toolInputPreview: '{"file_path":"/Users/u/wiki/SUMMARY.md"}',
+          sequence: '12',
+        },
+      ],
+    ]);
+    const repo = new CleaningRepository();
+
+    const result = await repo.listToolCallsForWikiRecalls(
+      { query } as never,
+      ['44'],
+    );
+
+    expect(result).toEqual([
+      {
+        id: '97',
+        interactionId: '44',
+        skillUsageId: '482',
+        toolName: 'Read',
+        toolInputPreview: '{"file_path":"/Users/u/wiki/SUMMARY.md"}',
+        sequence: 12,
+      },
+    ]);
+  });
+});

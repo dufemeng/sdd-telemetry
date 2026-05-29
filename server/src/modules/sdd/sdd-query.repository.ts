@@ -767,7 +767,8 @@ export class SddQueryRepository {
     offset: number,
   ): Promise<{ items: WikiRecallWorkItemRankingRow[]; total: string | number }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses: string[] = ['wr.work_item_id IS NOT NULL'];
+    const effectiveWorkItemIdSql = 'COALESCE(wr.work_item_id, su.work_item_id)';
+    const clauses: string[] = [`${effectiveWorkItemIdSql} IS NOT NULL`];
     const params: unknown[] = [];
     if (rangeSinceDate) {
       clauses.push('wr.event_time >= ?');
@@ -791,7 +792,8 @@ export class SddQueryRepository {
               COUNT(DISTINCT wr.wiki_system) AS distinctSystems,
               COUNT(DISTINCT wr.user_id) AS userCount
        FROM sdd_wiki_recalls wr
-       JOIN sdd_work_items wi ON wi.id = wr.work_item_id
+       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
+       JOIN sdd_work_items wi ON wi.id = ${effectiveWorkItemIdSql}
        WHERE ${where}
        GROUP BY wi.id
        ORDER BY totalRecalls DESC
@@ -800,9 +802,10 @@ export class SddQueryRepository {
     )) as WikiRecallWorkItemRankingRow[];
 
     const totalRows = (await dataSource.query(
-      `SELECT COUNT(DISTINCT wr.work_item_id) AS total
+      `SELECT COUNT(DISTINCT ${effectiveWorkItemIdSql}) AS total
        FROM sdd_wiki_recalls wr
-       JOIN sdd_work_items wi ON wi.id = wr.work_item_id
+       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
+       JOIN sdd_work_items wi ON wi.id = ${effectiveWorkItemIdSql}
        WHERE ${where}`,
       params,
     )) as Array<{ total: string | number }>;
@@ -867,7 +870,7 @@ export class SddQueryRepository {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (filters.workItemId) {
-      clauses.push('wr.work_item_id = ?');
+      clauses.push('COALESCE(wr.work_item_id, su.work_item_id) = ?');
       params.push(filters.workItemId);
     }
     if (filters.userId) {
@@ -886,12 +889,14 @@ export class SddQueryRepository {
 
     const items = (await dataSource.query(
       `SELECT wr.id, wr.tool_call_id AS toolCallId, wr.interaction_id AS interactionId,
-              wr.skill_usage_id AS skillUsageId, wr.work_item_id AS workItemId,
+              wr.skill_usage_id AS skillUsageId,
+              COALESCE(wr.work_item_id, su.work_item_id) AS workItemId,
               wr.user_id AS userId, u.user_name AS userName, wr.action_type AS actionType,
               wr.raw_path AS rawPath, wr.wiki_relative_path AS wikiRelativePath,
               wr.wiki_domain AS wikiDomain, wr.wiki_axis AS wikiAxis, wr.wiki_system AS wikiSystem,
               wr.event_sequence AS eventSequence, wr.event_time AS eventTime
        FROM sdd_wiki_recalls wr
+       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
        LEFT JOIN sdd_users u ON u.id = wr.user_id
        ${where}
        ORDER BY wr.id DESC
@@ -902,6 +907,7 @@ export class SddQueryRepository {
     const totalRows = (await dataSource.query(
       `SELECT COUNT(*) AS total
        FROM sdd_wiki_recalls wr
+       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
        ${where}`,
       params,
     )) as Array<{ total: string | number }>;
