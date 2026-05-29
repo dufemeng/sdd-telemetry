@@ -3,6 +3,7 @@ import { NullableDateColumn, TimestampedEntity } from './common';
 
 @Entity({ name: 'sdd_work_item_artifact_writes' })
 @Index('uk_artifact_write_key', ['writeKey'], { unique: true })
+@Index('idx_artifact_writes_artifact_event_time', ['artifactId', 'eventTime'])
 @Index('idx_artifact_writes_work_item_id', ['workItemId'])
 @Index('idx_artifact_writes_interaction_id', ['interactionId'])
 @Index('idx_artifact_writes_skill_usage_id', ['skillUsageId'])
