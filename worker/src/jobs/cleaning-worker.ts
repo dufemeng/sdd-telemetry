@@ -776,12 +776,18 @@ async function upsertWikiRecalls(
 
   // 通过 sdd_interactions 表查每个 interaction 的 user_id
   const [userRows] = await connection.query<RowDataPacket[]>(
-    `SELECT id, user_id FROM sdd_interactions WHERE id IN (?)`,
+    `SELECT id, user_id, started_at FROM sdd_interactions WHERE id IN (?)`,
     [interactionIds],
   );
   const interactionToUser = new Map<string, string | null>();
-  for (const r of userRows as Array<{ id: string; user_id: string | null }>) {
+  const interactionToTime = new Map<string, Date | null>();
+  for (const r of userRows as Array<{
+    id: string;
+    user_id: string | null;
+    started_at: Date | string | null;
+  }>) {
     interactionToUser.set(r.id, r.user_id);
+    interactionToTime.set(r.id, asDate(r.started_at));
   }
 
   let inserted = 0;
@@ -845,7 +851,7 @@ async function upsertWikiRecalls(
       wikiSystem: parsed.system,
       eventId: null,
       eventSequence: tc.sequence,
-      eventTime: null,
+      eventTime: interactionToTime.get(tc.interactionId) ?? null,
       ruleVersion: WIKI_RECALL_RULE_VERSION,
     });
     inserted += 1;
