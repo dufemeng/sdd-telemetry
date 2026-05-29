@@ -1,14 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock3, Database, FileText, Globe2, Trophy } from 'lucide-react';
-import type { WikiRecallRange } from '@sdd-telemetry/api';
+import type { TimeRange } from '@/components/layout/TopBar';
 import { DataTable, type DataTableRow } from '@/components/ui/DataTable';
 import { Panel } from '@/components/ui/Panel';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
 import { useWikiRecallUserRanking } from '../useWikiRecalls';
 import {
   QueryNotice,
-  RangeControl,
   SegmentedControl,
   SoftBadge,
 } from '../components/WikiRecallControls';
@@ -21,8 +20,7 @@ const SORT_OPTIONS: Array<{ value: UserRankingSortBy; label: string }> = [
   { value: 'recent', label: '最近活跃' },
 ];
 
-export function UserRankingTab() {
-  const [range, setRange] = useState<WikiRecallRange>('30d');
+export function UserRankingTab({ range }: { range: TimeRange }) {
   const [sortBy, setSortBy] = useState<UserRankingSortBy>('total');
   const { data, isLoading, error } = useWikiRecallUserRanking(range, sortBy);
 
@@ -79,15 +77,12 @@ export function UserRankingTab() {
       title="用户使用排行"
       icon={<Trophy size={18} />}
       headerRight={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <RangeControl value={range} onChange={setRange} />
-          <SegmentedControl
-            label="排序"
-            value={sortBy}
-            options={SORT_OPTIONS}
-            onChange={setSortBy}
-          />
-        </div>
+        <SegmentedControl
+          label="排序"
+          value={sortBy}
+          options={SORT_OPTIONS}
+          onChange={setSortBy}
+        />
       }
     >
       <div className="grid gap-3">

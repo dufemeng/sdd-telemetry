@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Clock3, LineChart } from 'lucide-react';
-import type { WikiRecallRange, WikiRecallTimelinePoint } from '@sdd-telemetry/api';
+import type { WikiRecallTimelinePoint } from '@sdd-telemetry/api';
+import type { TimeRange } from '@/components/layout/TopBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Panel } from '@/components/ui/Panel';
 import { formatInteger } from '@/lib/format';
 import { useWikiRecallTimeline } from '../useWikiRecalls';
 import {
   QueryNotice,
-  RangeControl,
   SegmentedControl,
 } from '../components/WikiRecallControls';
 
@@ -35,8 +35,7 @@ const SERIES_COLORS = [
   '#22d3ee',
 ];
 
-export function TimelineTab() {
-  const [range, setRange] = useState<WikiRecallRange>('30d');
+export function TimelineTab({ range }: { range: TimeRange }) {
   const [granularity, setGranularity] = useState<TimelineGranularity>('day');
   const [groupBy, setGroupBy] = useState<TimelineGroupBy>('domain');
   const { data, isLoading, error } = useWikiRecallTimeline(range, granularity, groupBy);
@@ -51,7 +50,6 @@ export function TimelineTab() {
       icon={<LineChart size={18} />}
       headerRight={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <RangeControl value={range} onChange={setRange} />
           <SegmentedControl
             label="粒度"
             value={granularity}

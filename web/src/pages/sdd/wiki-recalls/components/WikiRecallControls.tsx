@@ -1,12 +1,4 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { WikiRecallRange } from '@sdd-telemetry/api';
-
-export const RANGE_OPTIONS: Array<{ value: WikiRecallRange; label: string }> = [
-  { value: '7d', label: '7 天' },
-  { value: '30d', label: '30 天' },
-  { value: '90d', label: '90 天' },
-  { value: 'all', label: '全部' },
-];
 
 interface SegmentedOption<T extends string> {
   value: T;
@@ -61,23 +53,6 @@ export function SegmentedControl<T extends string>({
         })}
       </div>
     </div>
-  );
-}
-
-export function RangeControl({
-  value,
-  onChange,
-}: {
-  value: WikiRecallRange;
-  onChange: (value: WikiRecallRange) => void;
-}) {
-  return (
-    <SegmentedControl
-      label="时间范围"
-      value={value}
-      options={RANGE_OPTIONS}
-      onChange={onChange}
-    />
   );
 }
 

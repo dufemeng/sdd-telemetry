@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileStack, GitBranch, Search, UsersRound } from 'lucide-react';
-import type { WikiRecallRange } from '@sdd-telemetry/api';
+import type { TimeRange } from '@/components/layout/TopBar';
 import { DataTable, type DataTableRow } from '@/components/ui/DataTable';
 import { Panel } from '@/components/ui/Panel';
 import { formatInteger } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useWikiRecallWorkItemRanking } from '../useWikiRecalls';
-import { QueryNotice, RangeControl, SoftBadge } from '../components/WikiRecallControls';
+import { QueryNotice, SoftBadge } from '../components/WikiRecallControls';
 
-export function WorkItemRankingTab() {
-  const [range, setRange] = useState<WikiRecallRange>('30d');
+export function WorkItemRankingTab({ range }: { range: TimeRange }) {
   const [businessDomain, setBusinessDomain] = useState('');
   const debouncedDomain = useDebouncedValue(businessDomain.trim(), 300);
   const filters = useMemo(
@@ -51,11 +50,7 @@ export function WorkItemRankingTab() {
     })) ?? [];
 
   return (
-    <Panel
-      title="需求 × wiki 下钻"
-      icon={<FileStack size={18} />}
-      headerRight={<RangeControl value={range} onChange={setRange} />}
-    >
+    <Panel title="需求 × wiki 下钻" icon={<FileStack size={18} />}>
       <div className="grid gap-3">
         <div
           className="flex h-[30px] w-full max-w-[260px] items-center gap-2 rounded-[4px] px-[10px]"

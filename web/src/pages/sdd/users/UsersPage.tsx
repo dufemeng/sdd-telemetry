@@ -763,7 +763,7 @@ function UserWikiRecallPanel({ userId }: { userId: string }) {
           <span className="text-[12px] font-semibold text-[#f5f5f5]">最近 wiki 召回</span>
         </div>
         <Link
-          to="/sdd/wiki-recalls?tab=ranking"
+          to="/sdd/wiki-recalls"
           className="text-[11px] text-[var(--color-primary)] hover:underline"
         >
           查看排行

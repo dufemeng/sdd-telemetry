@@ -329,7 +329,7 @@ export const ReportUserSettingsRequestSchema = z.object({
   settings: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const WikiRecallRangeSchema = z.enum(['7d', '30d', '90d', 'all']);
+export const WikiRecallRangeSchema = z.enum(['24h', '7d', '30d', '90d', 'all']);
 
 export const WikiRecallUserRankingItemSchema = z.object({
   userId: IdSchema,
