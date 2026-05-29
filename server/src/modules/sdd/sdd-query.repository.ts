@@ -746,13 +746,15 @@ export class SddQueryRepository {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT
-         (SELECT COUNT(DISTINCT interaction_id) FROM sdd_skill_usages
-            WHERE work_item_id = ? AND interaction_id IS NOT NULL) AS turn_count,
-         (SELECT COUNT(DISTINCT session_id) FROM sdd_skill_usages
-            WHERE work_item_id = ? AND session_id IS NOT NULL) AS session_count,
-         (SELECT COUNT(DISTINCT user_id) FROM sdd_skill_usages
-            WHERE work_item_id = ? AND user_id IS NOT NULL) AS contributor_count,
-         (SELECT COUNT(*) FROM sdd_wiki_recalls WHERE work_item_id = ?) AS wiki_recall_count`,
+          (SELECT COUNT(DISTINCT interaction_id) FROM sdd_skill_usages
+             WHERE work_item_id = ? AND interaction_id IS NOT NULL) AS turn_count,
+          (SELECT COUNT(DISTINCT session_id) FROM sdd_skill_usages
+             WHERE work_item_id = ? AND session_id IS NOT NULL) AS session_count,
+          (SELECT COUNT(DISTINCT user_id) FROM sdd_skill_usages
+             WHERE work_item_id = ? AND user_id IS NOT NULL) AS contributor_count,
+          (SELECT COUNT(*) FROM sdd_wiki_recalls wr
+             LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
+             WHERE COALESCE(wr.work_item_id, su.work_item_id) = ?) AS wiki_recall_count`,
       [workItemId, workItemId, workItemId, workItemId],
     )) as WorkItemSummaryRow[];
   }

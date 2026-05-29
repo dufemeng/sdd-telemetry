@@ -68,6 +68,79 @@ async function pendingOutboxCount(dataSource: DataSource): Promise<number> {
   );
 }
 
+async function backfillWikiRecalls(dataSource: DataSource): Promise<number> {
+  const result = await dataSource.query(
+    `INSERT INTO sdd_wiki_recalls
+      (recall_key, tool_call_id, interaction_id, skill_usage_id, work_item_id, user_id,
+       action_type, raw_path, wiki_relative_path, wiki_domain, wiki_axis, wiki_system,
+       event_id, event_sequence, event_time, rule_version, gmt_create, gmt_modified)
+    SELECT
+      SHA2(CONCAT(tc.id, ':', JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path'))), 256),
+      tc.id,
+      tc.interaction_id,
+      tc.skill_usage_id,
+      su.work_item_id,
+      i.user_id,
+      LOWER(tc.tool_name),
+      JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+      TRIM(LEADING '/' FROM SUBSTRING(
+        JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+        LENGTH(u.wiki_root_path) + 1)),
+      CASE
+        WHEN SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 1) LIKE 'domain-%'
+        THEN SUBSTRING(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 1), 8)
+        ELSE NULL
+      END,
+      CASE
+        WHEN TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)) = '' THEN 'root'
+        WHEN SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 1) NOT LIKE 'domain-%' THEN 'root'
+        ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 2), '/', -1)
+      END,
+      CASE
+        WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 3), '/', -1) = 'apps'
+        THEN SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
+          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
+          LENGTH(u.wiki_root_path) + 1)), '/', 4), '/', -1)
+        ELSE NULL
+      END,
+      NULL,
+      tc.sequence,
+      i.started_at,
+      'backfill-wiki-v1',
+      CURRENT_TIMESTAMP(3),
+      CURRENT_TIMESTAMP(3)
+    FROM sdd_interaction_tool_calls tc
+    JOIN sdd_interactions i ON i.id = tc.interaction_id
+    JOIN sdd_users u ON u.id = i.user_id
+    LEFT JOIN sdd_skill_usages su ON su.id = tc.skill_usage_id
+    WHERE tc.tool_name IN ('Read', 'Glob', 'Grep')
+      AND u.wiki_root_path IS NOT NULL
+      AND tc.tool_input_preview IS NOT NULL
+      AND JSON_EXTRACT(tc.tool_input_preview, '$.file_path') IS NOT NULL
+      AND JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')) LIKE CONCAT(u.wiki_root_path, '%')
+    ON DUPLICATE KEY UPDATE
+      sdd_wiki_recalls.skill_usage_id = COALESCE(VALUES(skill_usage_id), sdd_wiki_recalls.skill_usage_id),
+      sdd_wiki_recalls.work_item_id = COALESCE(VALUES(work_item_id), sdd_wiki_recalls.work_item_id),
+      gmt_modified = CURRENT_TIMESTAMP(3)`,
+  );
+  const affected = Number(result?.affectedRows ?? 0);
+  const total = await scalar(dataSource, 'SELECT COUNT(*) AS n FROM sdd_wiki_recalls');
+  console.info(`[reclean] wiki-recall backfill: affected=${affected} total=${total}`);
+  return total;
+}
+
 async function main(): Promise<void> {
   const flags = parseFlags();
   const host = process.env.MYSQL_HOST ?? '127.0.0.1';
@@ -207,6 +280,9 @@ async function main(): Promise<void> {
       console.error(`[reclean] reached --max-iterations=${flags.maxIterations}; outbox not drained.`);
       stuck = true;
     }
+
+    console.info('[reclean] running wiki-recall backfill...');
+    await backfillWikiRecalls(dataSource);
 
     const statusRows = (await dataSource.query(
       `SELECT status, COUNT(*) AS n FROM otel_ingest_batches GROUP BY status ORDER BY n DESC`,

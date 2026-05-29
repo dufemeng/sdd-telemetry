@@ -68,13 +68,21 @@ async function main(): Promise<void> {
   try {
     console.log('[backfill] fetching events with artifact write signals...');
 
-    // Step 1: 查询所有带 artifact write 信号的事件
     const events = (await ds.query(
       `SELECT e.event_id, e.user_id, e.session_id, e.prompt_id, e.event_sequence, e.event_time,
               e.attributes_json
        FROM otel_log_events e
-       WHERE JSON_EXTRACT(e.attributes_json, '$."sdd.artifact_is_write"') = true
-          OR JSON_EXTRACT(e.attributes_json, '$."sdd.artifact.is_write"') = true
+       WHERE e.event_name = 'tool_result'
+         AND (
+           JSON_EXTRACT(e.attributes_json, '$."sdd.artifact_is_write"') = true
+           OR JSON_EXTRACT(e.attributes_json, '$."sdd.artifact.is_write"') = true
+           OR JSON_UNQUOTE(JSON_EXTRACT(e.attributes_json, '$."tool_name"')) IN ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
+         )
+         AND (
+           JSON_EXTRACT(e.attributes_json, '$."sdd.artifact_path"') IS NOT NULL
+           OR JSON_EXTRACT(e.attributes_json, '$."sdd.artifact.path"') IS NOT NULL
+           OR JSON_EXTRACT(e.attributes_json, '$."tool_input"') IS NOT NULL
+         )
        LIMIT 100000`,
     )) as Array<{
       event_id: string;
@@ -86,7 +94,7 @@ async function main(): Promise<void> {
       attributes_json: unknown;
     }>;
 
-    console.log(`[backfill] found ${events.length} events with artifact write signals`);
+    console.log(`[backfill] found ${events.length} tool_result events with write signals`);
 
     let inserted = 0;
     let skipped = 0;
@@ -103,10 +111,19 @@ async function main(): Promise<void> {
       try {
         // 提取 artifact path
         const attributes = parseJsonObject(e.attributes_json);
-        const artifactPath =
+        const persistedPath =
           readString(attributes['sdd.artifact_path']) ||
           readString(attributes['sdd.artifact.path']) ||
           readString(attributes['artifact.path']);
+
+        let artifactPath = persistedPath;
+        if (!artifactPath) {
+          const toolInput = parseJsonObject(attributes['tool_input']);
+          const inputPath = readString(toolInput['file_path']) || readString(toolInput['path']);
+          if (inputPath && inputPath.includes('/')) {
+            artifactPath = inputPath;
+          }
+        }
 
         if (!artifactPath) {
           skipped++;

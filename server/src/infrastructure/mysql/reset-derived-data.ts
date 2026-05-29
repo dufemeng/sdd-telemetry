@@ -2,7 +2,7 @@ import type { DataSource } from 'typeorm';
 import { createAppDataSource } from './data-source';
 
 const derivedTables = [
-  'sdd_wiki_recalls',
+  'sdd_work_item_artifact_writes',
   'sdd_errors',
   'sdd_work_item_artifacts',
   'sdd_work_items',
