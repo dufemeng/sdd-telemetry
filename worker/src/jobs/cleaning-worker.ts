@@ -953,6 +953,44 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
       lastSeenAt: asDate(event.event_time),
     });
 
+    const artifactId = await cleaningRepository.findArtifactIdByKey(
+      connection,
+      artifact.artifactKey,
+    );
+    if (artifactId) {
+      const writeSessionId = event.session_id ?? null;
+      const writeEventTime = asDate(event.event_time);
+      const skillUsageId =
+        attribution.skillCandidate && writeSessionId
+          ? await cleaningRepository.findSkillUsageIdForArtifact(
+              connection,
+              writeSessionId,
+              attribution.skillCandidate.rawSkillName,
+              writeEventTime,
+            )
+          : null;
+      const interactionId = event.prompt_id
+        ? await cleaningRepository.findInteractionIdByPromptId(connection, event.prompt_id)
+        : null;
+
+      await cleaningRepository.upsertArtifactWrite(connection, {
+        writeKey: sha256(`${event.event_id}:${artifact.artifactKey}`),
+        artifactId,
+        workItemId,
+        interactionId,
+        skillUsageId,
+        userId: event.user_id != null ? String(event.user_id) : null,
+        sessionId: writeSessionId,
+        promptId: event.prompt_id ?? null,
+        eventId: event.event_id,
+        writeKind: extractWriteKind(event),
+        contentPreview: extractToolInputPreview(event),
+        eventSequence: event.event_sequence ?? null,
+        eventTime: writeEventTime,
+        ruleVersion: 'p0-cleaner-v1',
+      });
+    }
+
     if (attribution.skillCandidate?.semantic && event.session_id) {
       await linkSkillUsageToWorkItem(connection, {
         workItemId,
@@ -966,6 +1004,17 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
   }
 
   return count;
+}
+
+function extractWriteKind(event: EventRow): string {
+  const attributes = parseJsonObject(event.attributes_json);
+  const toolName =
+    readString(attributes['tool_name']) ??
+    readString(attributes['tool.name']) ??
+    readString(attributes['sdd.tool_name']);
+  if (!toolName) return 'other';
+  if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(toolName)) return toolName;
+  return 'other';
 }
 
 function extractWriteArtifactSignal(event: EventRow): { filePath: string; isWrite: true } | null {

@@ -210,6 +210,23 @@ export interface LinkSkillUsageToWorkItemInput {
   artifactEventTime: Date | null;
 }
 
+export interface UpsertArtifactWriteInput {
+  writeKey: string;
+  artifactId: string;
+  workItemId: string;
+  interactionId: string | null;
+  skillUsageId: string | null;
+  userId: string | null;
+  sessionId: string | null;
+  promptId: string | null;
+  eventId: string | null;
+  writeKind: string;
+  contentPreview: string | null;
+  eventSequence: number | null;
+  eventTime: Date | null;
+  ruleVersion: string;
+}
+
 export interface UpsertWikiRecallInput {
   recallKey: string;
   toolCallId: string;
@@ -1031,6 +1048,89 @@ export class CleaningRepository {
         input.ruleVersion,
       ],
     );
+  }
+
+  async upsertArtifactWrite(
+    connection: PoolConnection,
+    input: UpsertArtifactWriteInput,
+  ): Promise<void> {
+    await connection.query<ResultSetHeader>(
+      `INSERT INTO sdd_work_item_artifact_writes
+        (write_key, artifact_id, work_item_id, interaction_id, skill_usage_id, user_id,
+         session_id, prompt_id, event_id, write_kind, content_preview, event_sequence,
+         event_time, rule_version, gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       ON DUPLICATE KEY UPDATE
+         interaction_id = COALESCE(VALUES(interaction_id), interaction_id),
+         skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
+         user_id = COALESCE(VALUES(user_id), user_id),
+         session_id = COALESCE(VALUES(session_id), session_id),
+         prompt_id = COALESCE(VALUES(prompt_id), prompt_id),
+         write_kind = VALUES(write_kind),
+         content_preview = COALESCE(VALUES(content_preview), content_preview),
+         event_sequence = COALESCE(VALUES(event_sequence), event_sequence),
+         event_time = COALESCE(VALUES(event_time), event_time),
+         rule_version = VALUES(rule_version),
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
+      [
+        input.writeKey,
+        input.artifactId,
+        input.workItemId,
+        input.interactionId,
+        input.skillUsageId,
+        input.userId,
+        input.sessionId,
+        input.promptId,
+        input.eventId,
+        input.writeKind,
+        input.contentPreview,
+        input.eventSequence,
+        input.eventTime,
+        input.ruleVersion,
+      ],
+    );
+  }
+
+  async findArtifactIdByKey(
+    connection: PoolConnection,
+    artifactKey: string,
+  ): Promise<string | null> {
+    const [rows] = await connection.query<IdRow[]>(
+      `SELECT id FROM sdd_work_item_artifacts WHERE artifact_key = ? LIMIT 1`,
+      [artifactKey],
+    );
+    const id = rows[0]?.id;
+    return id ? String(id) : null;
+  }
+
+  async findInteractionIdByPromptId(
+    connection: PoolConnection,
+    promptId: string,
+  ): Promise<string | null> {
+    const [rows] = await connection.query<IdRow[]>(
+      `SELECT id FROM sdd_interactions WHERE prompt_id = ? ORDER BY id ASC LIMIT 1`,
+      [promptId],
+    );
+    const id = rows[0]?.id;
+    return id ? String(id) : null;
+  }
+
+  async findSkillUsageIdForArtifact(
+    connection: PoolConnection,
+    sessionId: string,
+    rawSkillName: string,
+    beforeTime: Date | null,
+  ): Promise<string | null> {
+    const [rows] = await connection.query<IdRow[]>(
+      `SELECT id FROM sdd_skill_usages
+       WHERE session_id = ? AND raw_skill_name = ?
+         AND (? IS NULL OR event_time IS NULL OR event_time <= ?)
+       ORDER BY event_time DESC, id DESC
+       LIMIT 1`,
+      [sessionId, rawSkillName, beforeTime, beforeTime],
+    );
+    const id = rows[0]?.id;
+    return id ? String(id) : null;
   }
 
   async loadUserWikiRoots(connection: PoolConnection): Promise<Map<string, string>> {
