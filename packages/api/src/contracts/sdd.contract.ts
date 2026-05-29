@@ -317,6 +317,28 @@ export const SddWorkItemDetailSchema = SddWorkItemSchema.extend({
   ),
   usageCount: z.number(),
   errorCount: z.number(),
+  turnCount: z.number(),
+  sessionCount: z.number(),
+  contributorCount: z.number(),
+  wikiRecallCount: z.number(),
+});
+
+export const SddArtifactWriteSchema = z.object({
+  id: IdSchema,
+  writeKind: z.string(),
+  eventTime: ISODateTimeSchema.nullable(),
+  eventSequence: z.number().nullable(),
+  interactionId: IdSchema.nullable(),
+  skillSemanticCode: z.string().nullable(),
+  skillDisplayName: z.string().nullable(),
+  rawSkillName: z.string().nullable(),
+  wikiRecallCount: z.number(),
+  promptPreview: z.string().nullable(),
+  contentPreview: z.string().nullable(),
+});
+
+export const SddArtifactWriteListResponseSchema = z.object({
+  items: z.array(SddArtifactWriteSchema),
 });
 
 export const ReportUserSettingsRequestSchema = z.object({
@@ -433,6 +455,8 @@ export type SddUserItem = z.infer<typeof SddUserItemSchema>;
 export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;
 export type SddWorkItem = z.infer<typeof SddWorkItemSchema>;
 export type SddWorkItemDetail = z.infer<typeof SddWorkItemDetailSchema>;
+export type SddArtifactWrite = z.infer<typeof SddArtifactWriteSchema>;
+export type SddArtifactWriteListResponse = z.infer<typeof SddArtifactWriteListResponseSchema>;
 export type ReportUserSettingsRequest = z.infer<typeof ReportUserSettingsRequestSchema>;
 export type WikiRecallRange = z.infer<typeof WikiRecallRangeSchema>;
 export type WikiRecallUserRankingItem = z.infer<typeof WikiRecallUserRankingItemSchema>;
