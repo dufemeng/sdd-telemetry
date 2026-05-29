@@ -4,6 +4,7 @@ import type {
   CreateSddSemanticRequest,
   UpdateSddSemanticRequest,
   ReportUserSettingsRequest,
+  SddArtifactWriteListResponse,
   SddErrorItem,
   SddFunnel,
   SddFunnelQuery,
@@ -39,9 +40,11 @@ import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-m
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText } from '../query-utils';
 import {
   SddQueryRepository,
+  type ArtifactWriteRow,
   type InteractionRow,
   type ResolvedTimeWindow,
   type WorkItemRow,
+  type WorkItemSummaryRow,
 } from './sdd-query.repository';
 import { SddWriteRepository } from './sdd-write.repository';
 
@@ -572,11 +575,12 @@ export class SddQueryService {
   }
 
   async getWorkItemDetail(workItemId: string): Promise<SddWorkItemDetail | null> {
-    const [workRows, artifactRows, usageRows, errorRows] = await Promise.all([
+    const [workRows, artifactRows, usageRows, errorRows, summaryRows] = await Promise.all([
       this.sddQueryRepository.getWorkItem(workItemId),
       this.sddQueryRepository.listWorkItemArtifacts(workItemId),
       this.sddQueryRepository.countWorkItemUsages(workItemId),
       this.sddQueryRepository.countWorkItemErrors(workItemId),
+      this.sddQueryRepository.getWorkItemSummary(workItemId),
     ]);
     const workItem = workRows[0];
 
@@ -595,6 +599,32 @@ export class SddQueryService {
       })),
       usageCount: toNumber(usageRows[0]?.count_value),
       errorCount: toNumber(errorRows[0]?.count_value),
+      turnCount: toNumber(summaryRows[0]?.turn_count),
+      sessionCount: toNumber(summaryRows[0]?.session_count),
+      contributorCount: toNumber(summaryRows[0]?.contributor_count),
+      wikiRecallCount: toNumber(summaryRows[0]?.wiki_recall_count),
+    };
+  }
+
+  async listArtifactWrites(
+    workItemId: string,
+    artifactId: string,
+  ): Promise<SddArtifactWriteListResponse> {
+    const rows = await this.sddQueryRepository.listArtifactWrites(workItemId, artifactId);
+    return {
+      items: rows.map((row: ArtifactWriteRow) => ({
+        id: toStringId(row.id),
+        writeKind: row.write_kind,
+        eventTime: toIsoDate(row.event_time),
+        eventSequence: row.event_sequence === null ? null : toNumber(row.event_sequence),
+        interactionId: row.interaction_id === null ? null : toStringId(row.interaction_id),
+        skillSemanticCode: row.skill_semantic_code,
+        skillDisplayName: row.skill_display_name,
+        rawSkillName: row.raw_skill_name,
+        wikiRecallCount: toNumber(row.wiki_recall_count),
+        promptPreview: row.prompt_text ? row.prompt_text.slice(0, 200) : null,
+        contentPreview: row.content_preview,
+      })),
     };
   }
 

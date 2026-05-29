@@ -4,6 +4,7 @@ import {
   CreateSddSemanticRequestSchema,
   UpdateSddSemanticRequestSchema,
   ReportUserSettingsRequestSchema,
+  SddArtifactWriteListResponseSchema,
   SddErrorItemSchema,
   SddFunnelQuerySchema,
   SddFunnelSchema,
@@ -32,6 +33,7 @@ import {
   WikiRecallTimelineResponseSchema,
   WikiRecallUserRankingResponseSchema,
   WikiRecallWorkItemRankingResponseSchema,
+  type SddArtifactWriteListResponse,
   type SddErrorItem,
   type SddFunnel,
   type SddInteractionDetail,
@@ -263,6 +265,15 @@ export class SddController {
     }
 
     return ok(parseWithSchema(SddWorkItemDetailSchema, data));
+  }
+
+  @Get('/work-items/:workItemId/artifacts/:artifactId/writes')
+  async artifactWrites() {
+    const workItemId = this.ctx.params.workItemId as string;
+    const artifactId = this.ctx.params.artifactId as string;
+    const data: SddArtifactWriteListResponse =
+      await this.sddQueryService.listArtifactWrites(workItemId, artifactId);
+    return ok(parseWithSchema(SddArtifactWriteListResponseSchema, data));
   }
 
   @Post('/user-settings')

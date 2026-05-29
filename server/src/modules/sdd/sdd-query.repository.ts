@@ -219,6 +219,27 @@ export interface ArtifactRow {
   last_seen_at: Date | string | null;
 }
 
+export interface ArtifactWriteRow {
+  id: string | number;
+  write_kind: string;
+  event_time: Date | string | null;
+  event_sequence: number | null;
+  interaction_id: string | number | null;
+  content_preview: string | null;
+  raw_skill_name: string | null;
+  skill_semantic_code: string | null;
+  skill_display_name: string | null;
+  prompt_text: string | null;
+  wiki_recall_count: string | number;
+}
+
+export interface WorkItemSummaryRow {
+  turn_count: string | number;
+  session_count: string | number;
+  contributor_count: string | number;
+  wiki_recall_count: string | number;
+}
+
 export interface WikiRecallUserRankingRow {
   userId: string | number;
   userName: string | null;
@@ -698,6 +719,42 @@ export class SddQueryRepository {
        ORDER BY id ASC`,
       [workItemId],
     )) as ArtifactRow[];
+  }
+
+  async listArtifactWrites(
+    workItemId: string,
+    artifactId: string,
+  ): Promise<ArtifactWriteRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT w.id, w.write_kind, w.event_time, w.event_sequence, w.interaction_id,
+              w.content_preview, su.raw_skill_name,
+              sem.semantic_code AS skill_semantic_code, sem.display_name AS skill_display_name,
+              it.prompt_text,
+              (SELECT COUNT(*) FROM sdd_wiki_recalls wr WHERE wr.interaction_id = w.interaction_id) AS wiki_recall_count
+       FROM sdd_work_item_artifact_writes w
+       LEFT JOIN sdd_skill_usages su ON su.id = w.skill_usage_id
+       LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
+       LEFT JOIN sdd_interaction_texts it ON it.interaction_id = w.interaction_id
+       WHERE w.work_item_id = ? AND w.artifact_id = ?
+       ORDER BY w.event_sequence IS NULL, w.event_sequence ASC, w.event_time ASC, w.id ASC`,
+      [workItemId, artifactId],
+    )) as ArtifactWriteRow[];
+  }
+
+  async getWorkItemSummary(workItemId: string): Promise<WorkItemSummaryRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT
+         (SELECT COUNT(DISTINCT interaction_id) FROM sdd_skill_usages
+            WHERE work_item_id = ? AND interaction_id IS NOT NULL) AS turn_count,
+         (SELECT COUNT(DISTINCT session_id) FROM sdd_skill_usages
+            WHERE work_item_id = ? AND session_id IS NOT NULL) AS session_count,
+         (SELECT COUNT(DISTINCT user_id) FROM sdd_skill_usages
+            WHERE work_item_id = ? AND user_id IS NOT NULL) AS contributor_count,
+         (SELECT COUNT(*) FROM sdd_wiki_recalls WHERE work_item_id = ?) AS wiki_recall_count`,
+      [workItemId, workItemId, workItemId, workItemId],
+    )) as WorkItemSummaryRow[];
   }
 
   async countWorkItemUsages(workItemId: string): Promise<CountRow[]> {
