@@ -15,6 +15,7 @@ const expectedTables = [
   'sdd_work_items',
   'sdd_work_item_artifacts',
   'sdd_work_item_artifact_writes',
+  'sdd_work_item_artifact_turns',
   'sdd_wiki_recalls',
   'sdd_errors',
 ];

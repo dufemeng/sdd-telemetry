@@ -11,6 +11,7 @@ import { AddSkillUsageIdToToolCalls1780000000000 } from './migrations/1780000000
 import { CreateWikiRecalls1780000001000 } from './migrations/1780000001000-create-wiki-recalls';
 import { CreateOpsResourceSnapshots1780000002000 } from './migrations/1780000002000-create-ops-resource-snapshots';
 import { CreateArtifactWrites1780000003000 } from './migrations/1780000003000-create-artifact-writes';
+import { CreateArtifactTurns1780000004000 } from './migrations/1780000004000-create-artifact-turns';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -38,6 +39,7 @@ export function createAppDataSource(): DataSource {
       CreateWikiRecalls1780000001000,
       CreateOpsResourceSnapshots1780000002000,
       CreateArtifactWrites1780000003000,
+      CreateArtifactTurns1780000004000,
     ],
   });
 }
