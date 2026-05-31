@@ -1020,6 +1020,16 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
         eventTime: writeEventTime,
         ruleVersion: 'p0-cleaner-v1',
       });
+
+      if (attribution.skillCandidate) {
+        await upsertArtifactDiscussionTurns(connection, {
+          artifactId,
+          workItemId,
+          skillUsageId,
+          candidate: attribution.skillCandidate,
+          writeEvent: event,
+        });
+      }
     }
 
     if (attribution.skillCandidate?.semantic && event.session_id) {
@@ -1035,6 +1045,44 @@ async function upsertWorkItems(connection: PoolConnection, events: EventRow[]): 
   }
 
   return count;
+}
+
+async function upsertArtifactDiscussionTurns(
+  connection: PoolConnection,
+  input: {
+    artifactId: string;
+    workItemId: string;
+    skillUsageId: string | null;
+    candidate: SkillCandidate;
+    writeEvent: EventRow;
+  },
+): Promise<void> {
+  const sessionId = input.writeEvent.session_id;
+  const writeEventTime = asDate(input.writeEvent.event_time);
+  if (!sessionId || !writeEventTime) return;
+
+  const anchorEventTime = asDate(input.candidate.event.event_time);
+  const turns = await cleaningRepository.listDiscussionTurnsForWrite(connection, {
+    sessionId,
+    anchorPromptId: input.candidate.event.prompt_id ?? null,
+    anchorEventTime,
+    writeEventTime,
+  });
+  if (turns.length === 0) return;
+
+  const inputs = buildArtifactTurnInputs({
+    artifactId: input.artifactId,
+    workItemId: input.workItemId,
+    skillUsageId: input.skillUsageId,
+    userId: input.writeEvent.user_id != null ? String(input.writeEvent.user_id) : null,
+    sessionId,
+    anchorEventTime,
+    writeEventTime,
+    turns,
+  });
+  for (const turnInput of inputs) {
+    await cleaningRepository.upsertArtifactTurn(connection, turnInput);
+  }
 }
 
 function extractWriteKind(event: EventRow): string {
