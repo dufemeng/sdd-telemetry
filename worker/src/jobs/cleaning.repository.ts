@@ -227,6 +227,20 @@ export interface UpsertArtifactWriteInput {
   ruleVersion: string;
 }
 
+export interface UpsertArtifactTurnInput {
+  turnKey: string;
+  artifactId: string;
+  workItemId: string;
+  interactionId: string;
+  skillUsageId: string | null;
+  userId: string | null;
+  sessionId: string | null;
+  anchorEventTime: Date | null;
+  writeEventTime: Date | null;
+  eventTime: Date | null;
+  ruleVersion: string;
+}
+
 export interface UpsertWikiRecallInput {
   recallKey: string;
   toolCallId: string;
@@ -1089,6 +1103,78 @@ export class CleaningRepository {
         input.ruleVersion,
       ],
     );
+  }
+
+  async upsertArtifactTurn(
+    connection: PoolConnection,
+    input: UpsertArtifactTurnInput,
+  ): Promise<void> {
+    await connection.query<ResultSetHeader>(
+      `INSERT INTO sdd_work_item_artifact_turns
+        (turn_key, artifact_id, work_item_id, interaction_id, skill_usage_id, user_id,
+         session_id, anchor_event_time, write_event_time, event_time, rule_version,
+         gmt_create, gmt_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       ON DUPLICATE KEY UPDATE
+         skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
+         user_id = COALESCE(VALUES(user_id), user_id),
+         session_id = COALESCE(VALUES(session_id), session_id),
+         anchor_event_time = COALESCE(VALUES(anchor_event_time), anchor_event_time),
+         write_event_time = COALESCE(VALUES(write_event_time), write_event_time),
+         event_time = COALESCE(VALUES(event_time), event_time),
+         rule_version = VALUES(rule_version),
+         gmt_modified = CURRENT_TIMESTAMP(3)`,
+      [
+        input.turnKey,
+        input.artifactId,
+        input.workItemId,
+        input.interactionId,
+        input.skillUsageId,
+        input.userId,
+        input.sessionId,
+        input.anchorEventTime,
+        input.writeEventTime,
+        input.eventTime,
+        input.ruleVersion,
+      ],
+    );
+  }
+
+  async listDiscussionTurnsForWrite(
+    connection: PoolConnection,
+    input: {
+      sessionId: string;
+      anchorPromptId: string | null;
+      anchorEventTime: Date | null;
+      writeEventTime: Date;
+    },
+  ): Promise<Array<{ id: string; startedAt: Date | null }>> {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT i.id AS id, i.started_at AS startedAt
+       FROM sdd_interactions i
+       WHERE i.session_id = ?
+         AND i.started_at IS NOT NULL
+         AND i.started_at < ?
+         AND i.started_at >= COALESCE(
+               (SELECT i2.started_at FROM sdd_interactions i2
+                WHERE i2.prompt_id = ? ORDER BY i2.id ASC LIMIT 1),
+               ?)
+         AND i.id NOT IN (
+               SELECT awr.interaction_id FROM sdd_work_item_artifact_writes awr
+               WHERE awr.session_id = ? AND awr.interaction_id IS NOT NULL)
+       ORDER BY i.started_at ASC, i.id ASC`,
+      [
+        input.sessionId,
+        input.writeEventTime,
+        input.anchorPromptId,
+        input.anchorEventTime,
+        input.sessionId,
+      ],
+    );
+    return (rows as Array<{ id: string | number; startedAt: Date | string | null }>).map((r) => ({
+      id: String(r.id),
+      startedAt: r.startedAt ? new Date(r.startedAt) : null,
+    }));
   }
 
   async findArtifactIdByKey(
