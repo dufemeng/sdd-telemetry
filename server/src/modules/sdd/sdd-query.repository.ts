@@ -221,7 +221,8 @@ export interface ArtifactRow {
 
 export interface ArtifactWriteRow {
   id: string | number;
-  write_kind: string;
+  node_kind: string;
+  write_kind: string | null;
   event_time: Date | string | null;
   event_sequence: number | null;
   interaction_id: string | number | null;
@@ -727,18 +728,32 @@ export class SddQueryRepository {
   ): Promise<ArtifactWriteRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
-      `SELECT w.id, w.write_kind, w.event_time, w.event_sequence, w.interaction_id,
-              w.content_preview, su.raw_skill_name,
-              sem.semantic_code AS skill_semantic_code, sem.display_name AS skill_display_name,
-              it.prompt_text,
-              (SELECT COUNT(*) FROM sdd_wiki_recalls wr WHERE wr.interaction_id = w.interaction_id) AS wiki_recall_count
-       FROM sdd_work_item_artifact_writes w
-       LEFT JOIN sdd_skill_usages su ON su.id = w.skill_usage_id
-       LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
-       LEFT JOIN sdd_interaction_texts it ON it.interaction_id = w.interaction_id
-       WHERE w.work_item_id = ? AND w.artifact_id = ?
-       ORDER BY w.event_sequence IS NULL, w.event_sequence ASC, w.event_time ASC, w.id ASC`,
-      [workItemId, artifactId],
+      `SELECT timeline.* FROM (
+         SELECT w.id, 'write' AS node_kind, w.write_kind, w.event_time, w.event_sequence,
+                w.interaction_id, w.content_preview, su.raw_skill_name,
+                sem.semantic_code AS skill_semantic_code, sem.display_name AS skill_display_name,
+                it.prompt_text,
+                (SELECT COUNT(*) FROM sdd_wiki_recalls wr WHERE wr.interaction_id = w.interaction_id) AS wiki_recall_count
+         FROM sdd_work_item_artifact_writes w
+         LEFT JOIN sdd_skill_usages su ON su.id = w.skill_usage_id
+         LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
+         LEFT JOIN sdd_interaction_texts it ON it.interaction_id = w.interaction_id
+         WHERE w.work_item_id = ? AND w.artifact_id = ?
+         UNION ALL
+         SELECT t.id, 'discussion' AS node_kind, NULL AS write_kind, t.event_time,
+                NULL AS event_sequence, t.interaction_id, NULL AS content_preview, su.raw_skill_name,
+                sem.semantic_code AS skill_semantic_code, sem.display_name AS skill_display_name,
+                it.prompt_text,
+                (SELECT COUNT(*) FROM sdd_wiki_recalls wr WHERE wr.interaction_id = t.interaction_id) AS wiki_recall_count
+         FROM sdd_work_item_artifact_turns t
+         LEFT JOIN sdd_skill_usages su ON su.id = t.skill_usage_id
+         LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
+         LEFT JOIN sdd_interaction_texts it ON it.interaction_id = t.interaction_id
+         WHERE t.work_item_id = ? AND t.artifact_id = ?
+       ) timeline
+       ORDER BY timeline.event_time IS NULL, timeline.event_time ASC,
+                FIELD(timeline.node_kind, 'discussion', 'write'), timeline.id ASC`,
+      [workItemId, artifactId, workItemId, artifactId],
     )) as ArtifactWriteRow[];
   }
 
