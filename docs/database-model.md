@@ -514,6 +514,33 @@ event_id 存在：
 
 保留期：对齐 `sdd_skill_usages`（至少 6 个月，P0 可不清理）。
 
+### 6.6 sdd_work_item_artifact_turns
+
+一篇文档「生成对话」的派生记录：产出一篇文档往往需要多轮对话，但只有最后一两条是 Write/Edit。本表把写入之前那段**讨论 turn**（非写入交互）归因到文档，供生成时间线展示。与 `sdd_work_item_artifact_writes` 平行、加法，不耦合其写入语义；正文不入库，仍走 `sdd_interaction_texts`。
+
+**归因窗口**：一篇文档的讨论 turn = 同 `session_id`、`started_at` 落在 `[控制它的 skill 运行激活 turn started_at, 该文档写入 event_time)`、且本身不是写入节点的 interactions。多文档 session 用各自 skill 段的窗口切分；无 skill 锚点的写入不产生讨论 turn（退回纯写入节点）。worker 在 `upsertWorkItems` 写入 artifact 后前向补全，历史数据用 `backfill-artifact-turns.ts` 回填。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 主键 |
+| `turn_key` | CHAR(64) | NOT NULL, UNIQUE | 幂等 key，sha256('turn:' + artifact_id + ':' + interaction_id) |
+| `artifact_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_item_artifacts.id` |
+| `work_item_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_items.id` |
+| `interaction_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 该讨论 turn 的交互 |
+| `skill_usage_id` | BIGINT UNSIGNED | NULL | 控制这篇文档的 skill 运行（窗口下界来源） |
+| `user_id` | BIGINT UNSIGNED | NULL | 用户 |
+| `session_id` | VARCHAR(191) | NULL | session |
+| `anchor_event_time` | DATETIME(3) | NULL | 窗口下界：激活 turn 的 started_at |
+| `write_event_time` | DATETIME(3) | NULL | 窗口上界：该文档写入时间 |
+| `event_time` | DATETIME(3) | NULL, INDEX | 这个 turn 自己的 started_at（时间线排序用） |
+| `rule_version` | VARCHAR(32) | NOT NULL | 清洗规则版本（`doc-conversation-v1`） |
+| `gmt_create` | DATETIME(3) | NOT NULL | 创建时间 |
+| `gmt_modified` | DATETIME(3) | NOT NULL | 更新时间 |
+
+`turn_key` 生成：`sha256('turn:' + artifact_id + ':' + interaction_id)`——一篇文档对一个讨论 turn 至多一行，reclean / 重处理 / 回填可重复跑不产生重复，且 worker 与回填脚本口径一致。
+
+保留期：对齐 `sdd_work_item_artifact_writes`。
+
 ## 7. Retention
 
 P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。

@@ -719,7 +719,12 @@ Response item 包含用户标识、机器标识、`requirementsRootPath`、`wiki
 
 #### GET /api/sdd/work-items/:workItemId/artifacts/:artifactId/writes
 
-返回单篇文档的生成时间线（每次写入节点）。
+返回单篇文档的生成时间线。是「写入节点 ∪ 讨论节点」按时间合并的列表，不再只有写入：
+
+- `nodeKind: 'write'` — 一次 Write/Edit 写入（来自 `sdd_work_item_artifact_writes`），`writeKind` 为写入类型。
+- `nodeKind: 'discussion'` — 产出这篇文档过程中的一轮讨论交互（来自 `sdd_work_item_artifact_turns`），`writeKind` 为 `null`。
+
+两类节点都带 `interactionId`，可展开全文（复用 `GET /api/sdd/interactions/:interactionId`）；`wikiRecallCount` 为该轮读取 wiki 次数。按 `eventTime` 升序，同刻讨论排在写入之前。
 
 **Response:** `SddArtifactWriteListResponse`
 
@@ -727,7 +732,22 @@ Response item 包含用户标识、机器标识、`requirementsRootPath`、`wiki
 {
   "items": [
     {
+      "id": "789",
+      "nodeKind": "discussion",
+      "writeKind": null,
+      "eventTime": "2026-05-10T14:18:00.000Z",
+      "eventSequence": null,
+      "interactionId": "455",
+      "skillSemanticCode": "design",
+      "skillDisplayName": "系统设计",
+      "rawSkillName": "bk-fe:design",
+      "wikiRecallCount": 1,
+      "promptPreview": "先聊一下错误处理那段...",
+      "contentPreview": null
+    },
+    {
       "id": "123",
+      "nodeKind": "write",
       "writeKind": "Write",
       "eventTime": "2026-05-10T14:22:00.000Z",
       "eventSequence": 42,
