@@ -6,6 +6,7 @@ import {
   CleaningRepository,
   type EventRow,
   type LoadedBatch,
+  type UpsertArtifactTurnInput,
 } from './cleaning.repository';
 import {
   extractArtifactFromToolResult,
@@ -617,6 +618,36 @@ export function attachSkillUsageToToolCallsForOneInteraction(
     }
     return { toolCallId: tc.id, skillUsageId: nearest ? nearest.id : null };
   });
+}
+
+export interface SessionTurnRef {
+  id: string;
+  startedAt: Date | null;
+}
+
+export function buildArtifactTurnInputs(input: {
+  artifactId: string;
+  workItemId: string;
+  skillUsageId: string | null;
+  userId: string | null;
+  sessionId: string | null;
+  anchorEventTime: Date | null;
+  writeEventTime: Date | null;
+  turns: SessionTurnRef[];
+}): UpsertArtifactTurnInput[] {
+  return input.turns.map((turn) => ({
+    turnKey: sha256(`turn:${input.artifactId}:${turn.id}`),
+    artifactId: input.artifactId,
+    workItemId: input.workItemId,
+    interactionId: turn.id,
+    skillUsageId: input.skillUsageId,
+    userId: input.userId,
+    sessionId: input.sessionId,
+    anchorEventTime: input.anchorEventTime,
+    writeEventTime: input.writeEventTime,
+    eventTime: turn.startedAt,
+    ruleVersion: 'doc-conversation-v1',
+  }));
 }
 
 async function attachSkillUsageToToolCalls(
