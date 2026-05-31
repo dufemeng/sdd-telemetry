@@ -325,7 +325,8 @@ export const SddWorkItemDetailSchema = SddWorkItemSchema.extend({
 
 export const SddArtifactWriteSchema = z.object({
   id: IdSchema,
-  writeKind: z.string(),
+  nodeKind: z.enum(['write', 'discussion']),
+  writeKind: z.string().nullable(),
   eventTime: ISODateTimeSchema.nullable(),
   eventSequence: z.number().nullable(),
   interactionId: IdSchema.nullable(),
