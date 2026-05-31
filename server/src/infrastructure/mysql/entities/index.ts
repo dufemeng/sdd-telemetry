@@ -14,6 +14,7 @@ export * from './sdd-user.entity';
 export * from './sdd-wiki-recall.entity';
 export * from './sdd-work-item-artifact.entity';
 export * from './sdd-work-item-artifact-write.entity';
+export * from './sdd-work-item-artifact-turn.entity';
 export * from './sdd-work-item.entity';
 
 import { AuthUserEntity } from './auth-user.entity';
@@ -32,6 +33,7 @@ import { SddUserEntity } from './sdd-user.entity';
 import { SddWikiRecallEntity } from './sdd-wiki-recall.entity';
 import { SddWorkItemArtifactEntity } from './sdd-work-item-artifact.entity';
 import { SddWorkItemArtifactWriteEntity } from './sdd-work-item-artifact-write.entity';
+import { SddWorkItemArtifactTurnEntity } from './sdd-work-item-artifact-turn.entity';
 import { SddWorkItemEntity } from './sdd-work-item.entity';
 
 export const appEntities = [
@@ -50,6 +52,7 @@ export const appEntities = [
   SddWorkItemEntity,
   SddWorkItemArtifactEntity,
   SddWorkItemArtifactWriteEntity,
+  SddWorkItemArtifactTurnEntity,
   SddWikiRecallEntity,
   SddErrorEntity,
 ];
