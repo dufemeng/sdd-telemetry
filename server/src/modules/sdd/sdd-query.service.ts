@@ -614,6 +614,7 @@ export class SddQueryService {
     return {
       items: rows.map((row: ArtifactWriteRow) => ({
         id: toStringId(row.id),
+        nodeKind: row.node_kind === 'discussion' ? 'discussion' : 'write',
         writeKind: row.write_kind,
         eventTime: toIsoDate(row.event_time),
         eventSequence: row.event_sequence === null ? null : toNumber(row.event_sequence),
