@@ -243,3 +243,20 @@ KNOWLEDGE_BASE_ROOT=/Users/loomisli/Desktop/lm/bk-fe-sdd pnpm dev:server
 ## 13. 文档保鲜
 
 落地时同步更新：`README.md`（部署目录结构 + 知识库挂载 + 零摩擦冷启动）、`docs/api-contract.md`（新增内容接口）。
+
+## 14. 与「文档生成对话归因」需求的交叉与协同
+
+并行进行中的需求 `docs/design-artifact-conversation-attribution.md` / `docs/tasks-artifact-conversation-attribution.md`。两者**逻辑解耦、可并行**，交叉点如下：
+
+**核心盘子不重叠**：对方重度改 worker + 新增 `sdd_work_item_artifact_turns` 表/迁移/实体；本需求**不碰 worker、无迁移、无新表**（故不会与其迁移序号 `1780000004000` 冲突）。
+
+**同文件不同区域（仅合并协调，无逻辑冲突）**：
+- `packages/api/src/contracts/sdd.contract.ts`：对方改 `SddArtifactWriteSchema`；本需求**新增** `SddWikiRecallContentSchema`。
+- `server/src/modules/sdd/{sdd-query.repository.ts, sdd-query.service.ts, sdd.controller.ts}`：对方改 `listArtifactWrites`；本需求**新增**内容查询方法 + 路由 `/wiki-recalls/content/:toolCallId`。
+- `docs/api-contract.md`：各写各小节。
+
+**`InteractionDetailDrawer`——正向协同（关键）**：对方把抽屉当下钻终点（时间线节点 → `onOpenTurn` → 抽屉看全文），**不改抽屉本身**；本需求**增强抽屉内部**（wiki 标签可点看内容）。对方让更多「讨论 turn」在抽屉里被打开，其中强制召回 wiki 的（`/bk-fe-proposal`、`/bk-fe-design`）正好用上本功能——对方引流、本功能补内容。**约束：本需求对抽屉的改动必须保持纯加法**（只加 `onClick` + Modal，不动现有 props/字段/`interactionId` 行为），因对方依赖抽屉作为下钻终点。
+
+**`sdd_wiki_recalls`——两边只读、概念同源**：对方在时间线节点显示「wiki×N」（只读聚合），本需求按 `tool_call_id` 读单行取路径；都不改表结构。同一份召回数据的两种呈现。
+
+**落地建议**：对方计划更成熟（已到 tasks 级），建议**对方先落、本需求后接**；或本需求独立分支开发，对方合并后 rebase 上述共享文件。两种均低风险。
