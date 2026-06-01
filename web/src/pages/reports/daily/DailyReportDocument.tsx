@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { DailyReportMetrics } from '@sdd-telemetry/api';
 import './daily-report.css';
 
 interface Props {
   metrics: DailyReportMetrics;
+  docRef?: RefObject<HTMLDivElement | null>;
 }
 
 const STAGE_ORDER = ['proposal', 'design', 'task', 'review'] as const;
@@ -68,11 +69,18 @@ function useCountUp(target: number, duration = 800, delay = 280): number {
   return value;
 }
 
-export function DailyReportDocument({ metrics }: Props) {
-  const docRef = useRef<HTMLDivElement>(null);
+export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
+  const internalRef = useRef<HTMLDivElement>(null);
+
+  const setRef = useCallback((el: HTMLDivElement | null) => {
+    internalRef.current = el;
+    if (externalRef) {
+      (externalRef as { current: HTMLDivElement | null }).current = el;
+    }
+  }, [externalRef]);
 
   useEffect(() => {
-    const el = docRef.current;
+    const el = internalRef.current;
     if (!el) return;
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) return;
@@ -84,7 +92,7 @@ export function DailyReportDocument({ metrics }: Props) {
   const m = metrics;
 
   return (
-    <article className="daily-report-document" ref={docRef}>
+    <article className="daily-report-document" ref={setRef}>
       <header className="dr-masthead">
         <div>
           <div className="dr-meta">SDD Daily Brief &middot; {m.reportDate}</div>

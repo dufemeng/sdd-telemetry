@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { requestData } from '@/api/client';
@@ -16,6 +16,7 @@ export default function DailyReportsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [showHistory, setShowHistory] = useState(false);
+  const docRef = useRef<HTMLDivElement>(null);
 
   const isLatest = !routeDate || routeDate === 'latest';
   const latestQuery = useLatestDailyReport();
@@ -86,7 +87,7 @@ export default function DailyReportsPage() {
         {report && (
           <DailyReportToolbar
             reportDate={report.reportDate}
-            markdownText={report.markdownText}
+            docRef={docRef}
             onRegenerate={handleRegenerate}
             regenerating={regenMutation.isPending}
           />
@@ -138,7 +139,7 @@ export default function DailyReportsPage() {
       )}
 
       {!loading && report?.status === 'generated' && report.metrics && (
-        <DailyReportDocument metrics={report.metrics} />
+        <DailyReportDocument metrics={report.metrics} docRef={docRef} />
       )}
     </div>
   );
