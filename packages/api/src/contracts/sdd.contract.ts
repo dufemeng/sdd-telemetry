@@ -447,6 +447,72 @@ export const WikiRecallListResponseSchema = z.object({
   total: z.number(),
 });
 
+export const WikiCoverageRepoSchema = z.object({
+  repo: z.string(),
+  label: z.string(),
+  totalDocs: z.number(),
+  recalledDocs: z.number(),
+  coverageRate: z.number(),
+  recalls: z.number(),
+  deadDocs: z.number(),
+  newUnreadDocs: z.number(),
+  distinctUsers: z.number(),
+});
+
+export const WikiCoverageDomainSchema = z.object({
+  repo: z.string(),
+  domain: z.string(),
+  totalDocs: z.number(),
+  recalledDocs: z.number(),
+  recalls: z.number(),
+  deadDocs: z.number(),
+  newUnreadDocs: z.number(),
+  distinctUsers: z.number(),
+  lastRecallAt: ISODateTimeSchema.nullable(),
+});
+
+export const WikiCoverageResponseSchema = z.object({
+  scan: z.object({
+    configured: z.boolean(),
+    repos: z.array(
+      z.object({
+        repo: z.string(),
+        label: z.string(),
+        gitRef: z.string().nullable(),
+        scannedAt: ISODateTimeSchema,
+      }),
+    ),
+  }),
+  totals: z.object({
+    totalDocs: z.number(),
+    recalledDocs: z.number(),
+    coverageRate: z.number(),
+    recalls: z.number(),
+    coldDocs: z.number(),
+    deadDocs: z.number(),
+    newUnreadDocs: z.number(),
+    orphanPaths: z.number(),
+  }),
+  repos: z.array(WikiCoverageRepoSchema),
+  domains: z.array(WikiCoverageDomainSchema),
+});
+
+export const WikiDomainDocSchema = z.object({
+  relativePath: z.string(),
+  recallCount: z.number(),
+  distinctUsers: z.number(),
+  lastRecallAt: ISODateTimeSchema.nullable(),
+  lastToolCallId: IdSchema.nullable(),
+  status: z.enum(['hot', 'cold', 'dead', 'new']),
+  addedAt: ISODateTimeSchema.nullable(),
+});
+
+export const WikiDomainDocsResponseSchema = z.object({
+  repo: z.string(),
+  domain: z.string(),
+  items: z.array(WikiDomainDocSchema),
+});
+
 export type SddSemantic = z.infer<typeof SddSemanticSchema>;
 export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSchema>;
 export type UpdateSddSemanticRequest = z.infer<typeof UpdateSddSemanticRequestSchema>;
@@ -494,3 +560,8 @@ export type WikiRecallTimelinePoint = z.infer<typeof WikiRecallTimelinePointSche
 export type WikiRecallTimelineResponse = z.infer<typeof WikiRecallTimelineResponseSchema>;
 export type WikiRecallRow = z.infer<typeof WikiRecallRowSchema>;
 export type WikiRecallListResponse = z.infer<typeof WikiRecallListResponseSchema>;
+export type WikiCoverageResponse = z.infer<typeof WikiCoverageResponseSchema>;
+export type WikiCoverageRepo = z.infer<typeof WikiCoverageRepoSchema>;
+export type WikiCoverageDomain = z.infer<typeof WikiCoverageDomainSchema>;
+export type WikiDomainDoc = z.infer<typeof WikiDomainDocSchema>;
+export type WikiDomainDocsResponse = z.infer<typeof WikiDomainDocsResponseSchema>;
