@@ -1,51 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import type {
-  WikiRecallHeatmapResponse,
-  WikiRecallListResponse,
-  WikiRecallRange,
   WikiRecallTimelineResponse,
-  WikiRecallUserRankingResponse,
+  WikiRecallRange,
+  WikiRecallListResponse,
   WikiRecallWorkItemRankingResponse,
+  WikiCoverageResponse,
+  WikiDomainDocsResponse,
+  SddWikiRecallContent,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
 
-type UserRankingSortBy = 'total' | 'distinct_files' | 'recent';
-type HeatmapGroupBy = 'domain' | 'axis' | 'system';
 type TimelineGranularity = 'day' | 'hour';
 type TimelineGroupBy = 'domain' | 'axis';
-
-export function useWikiRecallUserRanking(range: WikiRecallRange, sortBy: UserRankingSortBy) {
-  return useQuery({
-    queryKey: ['wiki-recalls', 'users', range, sortBy],
-    queryFn: () =>
-      requestData<WikiRecallUserRankingResponse>(
-        `/api/sdd/wiki-recalls/users?${toQueryString({ range, sortBy })}`,
-      ),
-  });
-}
-
-export function useWikiRecallWorkItemRanking(
-  range: WikiRecallRange,
-  filters: { businessDomain?: string; userId?: string },
-) {
-  return useQuery({
-    queryKey: ['wiki-recalls', 'work-items', range, filters],
-    queryFn: () =>
-      requestData<WikiRecallWorkItemRankingResponse>(
-        `/api/sdd/wiki-recalls/work-items?${toQueryString({ range, ...filters })}`,
-      ),
-  });
-}
-
-export function useWikiRecallHeatmap(range: WikiRecallRange, groupBy: HeatmapGroupBy) {
-  return useQuery({
-    queryKey: ['wiki-recalls', 'heatmap', range, groupBy],
-    queryFn: () =>
-      requestData<WikiRecallHeatmapResponse>(
-        `/api/sdd/wiki-recalls/heatmap?${toQueryString({ range, groupBy })}`,
-      ),
-  });
-}
 
 export function useWikiRecallTimeline(
   range: WikiRecallRange,
@@ -70,6 +36,49 @@ export function useWikiRecallList(
     queryFn: () =>
       requestData<WikiRecallListResponse>(
         `/api/sdd/wiki-recalls/list?${toQueryString({ range, ...filters })}`,
+      ),
+  });
+}
+
+export function useWikiRecallWorkItemRanking(
+  range: WikiRecallRange,
+  filters: { businessDomain?: string; userId?: string },
+) {
+  return useQuery({
+    queryKey: ['wiki-recalls', 'work-items', range, filters],
+    queryFn: () =>
+      requestData<WikiRecallWorkItemRankingResponse>(
+        `/api/sdd/wiki-recalls/work-items?${toQueryString({ range, ...filters })}`,
+      ),
+  });
+}
+
+export function useWikiRecallCoverage() {
+  return useQuery({
+    queryKey: ['wiki-recalls', 'coverage'],
+    queryFn: () => requestData<WikiCoverageResponse>('/api/sdd/wiki-recalls/coverage'),
+  });
+}
+
+export function useWikiRecallDomainDocs(repo: string | null, domain: string | null) {
+  return useQuery({
+    queryKey: ['wiki-recalls', 'docs', repo, domain],
+    enabled: !!repo && !!domain,
+    queryFn: () =>
+      requestData<WikiDomainDocsResponse>(
+        `/api/sdd/wiki-recalls/docs?${toQueryString({ repo: repo!, domain: domain! })}`,
+      ),
+  });
+}
+
+export function useWikiRecallDocContentByPath(repo: string | null, relativePath: string | null) {
+  return useQuery({
+    queryKey: ['wiki-recalls', 'content-by-path', repo, relativePath],
+    enabled: !!repo && !!relativePath,
+    staleTime: 60_000,
+    queryFn: () =>
+      requestData<SddWikiRecallContent>(
+        `/api/sdd/wiki-recalls/content/by-path?${toQueryString({ repo: repo!, relativePath: relativePath! })}`,
       ),
   });
 }

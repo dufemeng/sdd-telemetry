@@ -1,15 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Clock3, LineChart } from 'lucide-react';
+import { Clock3 } from 'lucide-react';
 import type { WikiRecallTimelinePoint } from '@sdd-telemetry/api';
-import type { TimeRange } from '@/components/layout/TopBar';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Panel } from '@/components/ui/Panel';
 import { formatInteger } from '@/lib/format';
 import { useWikiRecallTimeline } from '../useWikiRecalls';
-import {
-  QueryNotice,
-  SegmentedControl,
-} from '../components/WikiRecallControls';
+import { QueryNotice, SegmentedControl } from './WikiRecallControls';
+import { CARD_STYLE } from '../styles';
 
 type TimelineGranularity = 'day' | 'hour';
 type TimelineGroupBy = 'domain' | 'axis';
@@ -35,36 +31,27 @@ const SERIES_COLORS = [
   '#22d3ee',
 ];
 
-export function TimelineTab({ range }: { range: TimeRange }) {
+export function RecallTrendChart() {
   const [granularity, setGranularity] = useState<TimelineGranularity>('day');
   const [groupBy, setGroupBy] = useState<TimelineGroupBy>('domain');
-  const { data, isLoading, error } = useWikiRecallTimeline(range, granularity, groupBy);
+  const { data, isLoading, error } = useWikiRecallTimeline('30d', granularity, groupBy);
   const chart = useMemo(
     () => buildTimelineChart(data?.points ?? []),
     [data?.points],
   );
 
   return (
-    <Panel
-      title="召回时间线"
-      icon={<LineChart size={18} />}
-      headerRight={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <SegmentedControl
-            label="粒度"
-            value={granularity}
-            options={GRANULARITY_OPTIONS}
-            onChange={setGranularity}
-          />
-          <SegmentedControl
-            label="分组"
-            value={groupBy}
-            options={GROUP_OPTIONS}
-            onChange={setGroupBy}
-          />
+    <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
+      <div className="mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
+          <Clock3 size={18} />
+          <span className="text-[14px] font-semibold text-[#f5f5f5]">召回趋势</span>
         </div>
-      }
-    >
+        <div className="flex items-center gap-2">
+          <SegmentedControl label="" value={granularity} options={GRANULARITY_OPTIONS} onChange={setGranularity} />
+          <SegmentedControl label="" value={groupBy} options={GROUP_OPTIONS} onChange={setGroupBy} />
+        </div>
+      </div>
       <div className="grid gap-3">
         <QueryNotice loading={isLoading} error={error} loadingText="正在加载时间线..." />
         {chart.times.length > 0 ? (
@@ -123,7 +110,6 @@ export function TimelineTab({ range }: { range: TimeRange }) {
                 </span>
               ))}
               <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-muted)]">
-                <Clock3 size={12} />
                 共 {formatInteger(chart.total)} 次
               </span>
             </div>
@@ -132,7 +118,7 @@ export function TimelineTab({ range }: { range: TimeRange }) {
           !isLoading && !error ? <EmptyState text="暂无召回时间线数据" /> : null
         )}
       </div>
-    </Panel>
+    </section>
   );
 }
 

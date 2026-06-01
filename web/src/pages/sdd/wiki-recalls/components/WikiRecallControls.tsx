@@ -85,7 +85,7 @@ export function SoftBadge({
   tone = 'neutral',
 }: {
   children: ReactNode;
-  tone?: 'good' | 'warn' | 'neutral';
+  tone?: 'good' | 'warn' | 'neutral' | 'info' | 'bad';
 }) {
   const styles = {
     good: {
@@ -102,6 +102,16 @@ export function SoftBadge({
       color: 'var(--color-secondary)',
       background: 'rgba(255,255,255,0.05)',
       border: '1px solid var(--color-border)',
+    },
+    info: {
+      color: '#60a5fa',
+      background: 'rgba(96,165,250,0.10)',
+      border: '1px solid rgba(96,165,250,0.16)',
+    },
+    bad: {
+      color: 'var(--color-bad-text)',
+      background: 'var(--color-bad-bg)',
+      border: '1px solid rgba(239,68,68,0.18)',
     },
   } satisfies Record<string, CSSProperties>;
 

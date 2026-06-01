@@ -5,6 +5,7 @@ import { BookOpen, Copy, X } from 'lucide-react';
 import type { SddWikiRecallContent } from '@sdd-telemetry/api';
 import { MarkdownView } from './MarkdownView';
 import { useWikiRecallContent } from './useWikiRecallContent';
+import { useWikiRecallDocContentByPath } from '@/pages/sdd/wiki-recalls/useWikiRecalls';
 
 const REASON_HINT: Record<Exclude<SddWikiRecallContent['reason'], 'ok'>, string> = {
   recall_not_found: '未找到该召回记录。',
@@ -17,14 +18,21 @@ const REASON_HINT: Record<Exclude<SddWikiRecallContent['reason'], 'ok'>, string>
 
 export function WikiDocModal({
   toolCallId,
+  source,
   open,
   onOpenChange,
 }: {
-  toolCallId: string | null;
+  toolCallId?: string | null;
+  source?: { repo: string; relativePath: string } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const query = useWikiRecallContent(open ? toolCallId : null);
+  const byId = useWikiRecallContent(source ? null : open ? toolCallId ?? null : null);
+  const byPath = useWikiRecallDocContentByPath(
+    source ? source.repo : null,
+    source ? source.relativePath : null,
+  );
+  const query = source ? byPath : byId;
   const data = query.data;
 
   useEffect(() => {
@@ -64,6 +72,11 @@ export function WikiDocModal({
             aria-modal="true"
           >
             <Header data={data} onCopy={copyText} onClose={() => onOpenChange(false)} />
+            {source && !query.isLoading && !query.error && data?.found ? (
+              <div className="flex items-center gap-2 px-4 py-2 text-[11px]" style={{ background: 'var(--color-warn-bg)', borderBottom: '1px solid var(--color-border)', color: 'var(--color-warn-text)' }}>
+                显示的是知识库当前挂载版本，可能与历史读取时的版本不同。
+              </div>
+            ) : null}
             <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--color-surface)' }}>
               {query.isLoading ? (
                 <div className="text-[12px] text-[var(--color-muted)]">正在加载文档…</div>
