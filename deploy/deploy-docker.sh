@@ -7,6 +7,7 @@ COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env}"
 WEB_PUBLISHED_PORT="${WEB_PUBLISHED_PORT:-18080}"
 API_PUBLISHED_PORT="${API_PUBLISHED_PORT:-4318}"
+KNOWLEDGE_BASE_HOST_DIR="${KNOWLEDGE_BASE_HOST_DIR:-./knowledge}"
 RUN_MIGRATE="${RUN_MIGRATE:-1}"
 RUN_SEED="${RUN_SEED:-0}"
 DOWNLOAD_COMPOSE="${DOWNLOAD_COMPOSE:-auto}"
@@ -95,6 +96,12 @@ infer_version_from_bundle() {
   fi
 }
 
+discover_local_bundle() {
+  # 未显式指定版本/包时，在部署目录与 releases/ 下挑最新的部署 bundle
+  ls -t "$DEPLOY_DIR"/sdd-telemetry-deploy-bundle-*.tar.gz \
+        "$ARTIFACT_DIR"/sdd-telemetry-deploy-bundle-*.tar.gz 2>/dev/null | head -n1 || true
+}
+
 extract_bundle() {
   local bundle="$1"
   local extract_dir
@@ -157,6 +164,13 @@ VERSION="${VERSION:-}"
 ARCHIVE="${ARCHIVE:-}"
 CHECKSUM="${CHECKSUM:-}"
 BUNDLE="${BUNDLE:-}"
+
+if [[ -z "$BUNDLE" && -z "$ARCHIVE" && -z "$VERSION" ]]; then
+  BUNDLE="$(discover_local_bundle)"
+  if [[ -n "$BUNDLE" ]]; then
+    printf '自动发现本地部署包：%s\n' "$BUNDLE"
+  fi
+fi
 
 if [[ -n "$BUNDLE" ]]; then
   [[ -f "$BUNDLE" ]] || die "部署 bundle 不存在：$BUNDLE"
@@ -224,8 +238,15 @@ set_env_value SDD_TELEMETRY_WEB_IMAGE "$SDD_TELEMETRY_WEB_IMAGE"
 set_env_value WEB_PUBLISHED_PORT "$WEB_PUBLISHED_PORT"
 set_env_value API_PUBLISHED_PORT "$API_PUBLISHED_PORT"
 set_env_value DEPLOY_VERSION "$VERSION"
+mkdir -p "$KNOWLEDGE_BASE_HOST_DIR"
+set_env_value KNOWLEDGE_BASE_HOST_DIR "$KNOWLEDGE_BASE_HOST_DIR"
 if [[ -n "${AUTH_SESSION_SECRET:-}" ]]; then
   set_env_value AUTH_SESSION_SECRET "$AUTH_SESSION_SECRET"
+fi
+if [[ -z "${AUTH_SESSION_SECRET:-}" ]] && ! grep -q '^AUTH_SESSION_SECRET=' "$ENV_FILE" 2>/dev/null; then
+  require_cmd openssl
+  set_env_value AUTH_SESSION_SECRET "$(openssl rand -base64 48)"
+  printf '已自动生成 AUTH_SESSION_SECRET 并写入 %s（后续复用，不轮换）\n' "$ENV_FILE"
 fi
 if [[ -n "${AUTH_SESSION_MAX_AGE_SECONDS:-}" ]]; then
   set_env_value AUTH_SESSION_MAX_AGE_SECONDS "$AUTH_SESSION_MAX_AGE_SECONDS"
