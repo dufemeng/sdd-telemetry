@@ -1,3 +1,4 @@
+import './load-env';
 import 'reflect-metadata';
 import { Bootstrap } from '@midwayjs/bootstrap';
 import { ApiErrorFilter } from './common/filter/api-error.filter';

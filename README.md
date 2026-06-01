@@ -109,7 +109,7 @@ ALLOW_DIRTY=1 pnpm docker:package
       └── bk-fe-knowledge-loan/
 ```
 
-`server` 容器以 `:ro` 挂载 `knowledge/` 为 `/knowledge`，`KNOWLEDGE_BASE_ROOT=/knowledge`（均有默认，可用 `KNOWLEDGE_BASE_HOST_DIR` / `KNOWLEDGE_BASE_ROOT` 覆盖）。未 clone 也不报错，功能仅降级。本机 dev 直接 `KNOWLEDGE_BASE_ROOT=<本机知识库父目录> pnpm dev:server`。
+`server` 容器以 `:ro` 挂载 `knowledge/` 为 `/knowledge`，`KNOWLEDGE_BASE_ROOT=/knowledge`（均有默认，可用 `KNOWLEDGE_BASE_HOST_DIR` / `KNOWLEDGE_BASE_ROOT` 覆盖）。未 clone 也不报错，功能仅降级。本机 dev 把 `KNOWLEDGE_BASE_ROOT=<本机知识库父目录>` 写进 gitignored 的 `server/.env`（dev 自动加载，仅非 production 生效；生产由 compose 注入，镜像内无 `.env`），改完需重启 server；或临时 `KNOWLEDGE_BASE_ROOT=... pnpm dev:server`。
 
 **零摩擦冷启动**：部署包已在部署目录时，`./deploy/deploy-docker.sh` 即可起——脚本自动建 `knowledge/`、首次自动生成并落盘 `AUTH_SESSION_SECRET`（复用、不轮换）、从本地 bundle 文件名自动识别 `VERSION`。仅当走「服务器在线从 GitHub Release 下载」时才需显式 `VERSION=<版本>`。
 
