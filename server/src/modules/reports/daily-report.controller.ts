@@ -13,6 +13,12 @@ import { DailyReportService } from './daily-report.service';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function isValidDate(s: string): boolean {
+  if (!DATE_RE.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
 @Controller('/api/reports/daily')
 export class DailyReportController {
   @Inject()
@@ -45,7 +51,7 @@ export class DailyReportController {
   @Get('/:date')
   async getByDate() {
     const date = this.ctx.params.date as string;
-    if (!DATE_RE.test(date)) {
+    if (!DATE_RE.test(date) || !isValidDate(date)) {
       this.ctx.status = 400;
       this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
       return;
@@ -60,7 +66,7 @@ export class DailyReportController {
   @Post('/:date/regenerate')
   async regenerate() {
     const date = this.ctx.params.date as string;
-    if (!DATE_RE.test(date)) {
+    if (!DATE_RE.test(date) || !isValidDate(date)) {
       this.ctx.status = 400;
       this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
       return;
@@ -73,7 +79,7 @@ export class DailyReportController {
   @Get('/:date/export')
   async exportMarkdown() {
     const date = this.ctx.params.date as string;
-    if (!DATE_RE.test(date)) {
+    if (!DATE_RE.test(date) || !isValidDate(date)) {
       this.ctx.status = 400;
       this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
       return;

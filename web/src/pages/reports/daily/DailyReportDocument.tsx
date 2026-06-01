@@ -49,24 +49,21 @@ function benchmarkTag(stageCodes: string[], wikiCount: number) {
 
 function useCountUp(target: number, duration = 800, delay = 280): number {
   const [value, setValue] = useState(0);
-  const started = useRef(false);
+  const rafRef = useRef<number>(0);
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) { setValue(target); return; }
-    let raf: number;
     const start = performance.now() + delay;
     function tick(now: number) {
       const elapsed = now - start;
-      if (elapsed < 0) { raf = requestAnimationFrame(tick); return; }
+      if (elapsed < 0) { rafRef.current = requestAnimationFrame(tick); return; }
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setValue(Math.round(eased * target));
-      if (progress < 1) raf = requestAnimationFrame(tick);
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
     }
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
   }, [target, duration, delay]);
   return value;
 }
@@ -127,7 +124,7 @@ export function DailyReportDocument({ metrics }: Props) {
             <ul>
               <li>活跃用户 <strong>{formatDeltaValue(m.kpis.activeUsers.delta)}</strong></li>
               <li>Skill 调用 <strong>{formatDeltaPercent(m.kpis.skillUsages)}</strong></li>
-              <li>覆盖需求 <strong>{formatDeltaValue(m.kpis.coveredWorkItems.delta)}</strong>，说明推广不是停留在存量需求</li>
+              <li>覆盖需求 <strong>{formatDeltaValue(m.kpis.coveredWorkItems.delta)}</strong>{m.kpis.coveredWorkItems.current === 0 ? '，已有调用但尚未关联需求；需检查 requirements root 配置' : '，说明推广不是停留在存量需求'}</li>
             </ul>
           </PanelB>
         </div>

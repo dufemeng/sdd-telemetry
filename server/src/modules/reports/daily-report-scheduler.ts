@@ -35,8 +35,7 @@ export class DailyReportScheduler {
         yesterday.setDate(yesterday.getDate() - 1);
         const dateStr = formatDate(yesterday);
         if (this.lastFiredDate !== dateStr) {
-          this.lastFiredDate = dateStr;
-          void this.fire(dateStr);
+          void this.fire(dateStr).then(() => { this.lastFiredDate = dateStr; });
         }
       }
       void this.backfill();
@@ -47,14 +46,20 @@ export class DailyReportScheduler {
     try {
       const now = new Date();
       const shanghai = new Date(now.toLocaleString('en-US', { timeZone: this.config.timezone ?? 'Asia/Shanghai' }));
+      const scheduleParts = (this.config.scheduleTime ?? '12:00').split(':').map(Number);
+      const schedHour = scheduleParts[0] ?? 12;
+      const schedMin = scheduleParts[1] ?? 0;
+      if (shanghai.getHours() < schedHour || (shanghai.getHours() === schedHour && shanghai.getMinutes() < schedMin)) {
+        return;
+      }
       const yesterday = new Date(shanghai);
       yesterday.setDate(yesterday.getDate() - 1);
       const dateStr = formatDate(yesterday);
       if (this.lastFiredDate === dateStr) return;
       const existing = await this.repo.findByDate(dateStr);
       if (!existing) {
-        this.lastFiredDate = dateStr;
         await this.fire(dateStr);
+        this.lastFiredDate = dateStr;
       }
     } catch {
       // backfill failure is non-fatal
