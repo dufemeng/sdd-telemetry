@@ -251,6 +251,25 @@ export const SddInteractionToolCallListResponseSchema = z.object({
   items: z.array(SddInteractionToolCallSchema),
 });
 
+export const SddWikiRecallContentSchema = z.object({
+  found: z.boolean(),
+  reason: z.enum([
+    'ok',
+    'recall_not_found',
+    'not_readable_action',
+    'not_configured',
+    'repo_missing',
+    'file_missing',
+    'not_a_file',
+  ]),
+  repoName: z.string().nullable(),
+  relativePath: z.string().nullable(),
+  rawPath: z.string().nullable(),
+  isMarkdown: z.boolean(),
+  content: z.string().nullable(),
+  truncated: z.boolean(),
+});
+
 export const SddErrorItemSchema = z.object({
   id: IdSchema,
   errorType: z.string(),
@@ -451,6 +470,7 @@ export type SddInteractionToolCall = z.infer<typeof SddInteractionToolCallSchema
 export type SddInteractionToolCallListResponse = z.infer<
   typeof SddInteractionToolCallListResponseSchema
 >;
+export type SddWikiRecallContent = z.infer<typeof SddWikiRecallContentSchema>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;
 export type SddUserItem = z.infer<typeof SddUserItemSchema>;
 export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;
