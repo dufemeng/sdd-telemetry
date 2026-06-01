@@ -1,4 +1,9 @@
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import type {
+  Pool,
+  PoolConnection,
+  ResultSetHeader,
+  RowDataPacket,
+} from "mysql2/promise";
 
 export interface LoadedBatch {
   batchId: string;
@@ -264,7 +269,7 @@ export class CleaningRepository {
   async markBatchFailed(
     pool: Pool,
     batchId: string,
-    status: 'failed_retryable' | 'failed_terminal',
+    status: "failed_retryable" | "failed_terminal",
     statusReason: string,
     errorMessage: string,
   ): Promise<void> {
@@ -285,7 +290,10 @@ export class CleaningRepository {
     );
   }
 
-  async lockAndLoadBatch(connection: PoolConnection, batchId: string): Promise<BatchRow[]> {
+  async lockAndLoadBatch(
+    connection: PoolConnection,
+    batchId: string,
+  ): Promise<BatchRow[]> {
     const [rows] = await connection.query<BatchRow[]>(
       `SELECT b.id, b.user_id, b.status, r.payload_json
        FROM otel_ingest_batches b
@@ -298,7 +306,10 @@ export class CleaningRepository {
     return rows;
   }
 
-  async markBatchProcessing(connection: PoolConnection, batchId: string): Promise<void> {
+  async markBatchProcessing(
+    connection: PoolConnection,
+    batchId: string,
+  ): Promise<void> {
     await connection.query(
       `UPDATE otel_ingest_batches
        SET status = 'processing',
@@ -384,7 +395,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
+       WHERE ${clauses.map((clause) => `(${clause})`).join(" OR ")}
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       params,
     );
@@ -404,7 +415,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
+       WHERE session_id IN (${sessionIds.map(() => "?").join(",")})
          AND prompt_id IS NOT NULL
          AND event_name LIKE '%user_prompt%'
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
@@ -426,7 +437,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE trace_id IN (${traceIds.map(() => '?').join(',')})
+       WHERE trace_id IN (${traceIds.map(() => "?").join(",")})
          AND prompt_id IS NOT NULL
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       traceIds,
@@ -468,12 +479,12 @@ export class CleaningRepository {
            WHEN VALUES(completed_at) IS NULL THEN completed_at
            ELSE GREATEST(completed_at, VALUES(completed_at))
          END,
-         duration_ms = ${this.greatestNullableSql('duration_ms')},
-         cost_usd = ${this.greatestNullableSql('cost_usd')},
-         input_tokens = ${this.greatestNullableSql('input_tokens')},
-         output_tokens = ${this.greatestNullableSql('output_tokens')},
-         cache_read_tokens = ${this.greatestNullableSql('cache_read_tokens')},
-         cache_creation_tokens = ${this.greatestNullableSql('cache_creation_tokens')},
+         duration_ms = ${this.greatestNullableSql("duration_ms")},
+         cost_usd = ${this.greatestNullableSql("cost_usd")},
+         input_tokens = ${this.greatestNullableSql("input_tokens")},
+         output_tokens = ${this.greatestNullableSql("output_tokens")},
+         cache_read_tokens = ${this.greatestNullableSql("cache_read_tokens")},
+         cache_creation_tokens = ${this.greatestNullableSql("cache_creation_tokens")},
          llm_call_count = GREATEST(VALUES(llm_call_count), llm_call_count),
          tool_call_count = GREATEST(VALUES(tool_call_count), tool_call_count),
          skill_name = COALESCE(VALUES(skill_name), skill_name),
@@ -624,7 +635,9 @@ export class CleaningRepository {
   async listSubagentInteractionsByIds(
     connection: PoolConnection,
     interactionIds: string[],
-  ): Promise<Array<{ id: string; sessionId: string | null; startedAt: Date | null }>> {
+  ): Promise<
+    Array<{ id: string; sessionId: string | null; startedAt: Date | null }>
+  > {
     if (interactionIds.length === 0) return [];
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, session_id AS sessionId, started_at AS startedAt
@@ -632,7 +645,11 @@ export class CleaningRepository {
        WHERE id IN (?) AND agent_name IS NOT NULL`,
       [interactionIds],
     );
-    return rows as Array<{ id: string; sessionId: string | null; startedAt: Date | null }>;
+    return rows as Array<{
+      id: string;
+      sessionId: string | null;
+      startedAt: Date | null;
+    }>;
   }
 
   async findParentInteractionBySessionAndTime(
@@ -684,10 +701,10 @@ export class CleaningRepository {
     const updates = assignments.filter((a) => a.skillUsageId !== null);
     if (updates.length === 0) return 0;
 
-    const caseWhen = updates.map(() => `WHEN ? THEN ?`).join(' ');
+    const caseWhen = updates.map(() => `WHEN ? THEN ?`).join(" ");
     const ids = updates.map((a) => a.toolCallId);
     const caseParams = updates.flatMap((a) => [a.toolCallId, a.skillUsageId]);
-    const idPlaceholders = ids.map(() => '?').join(',');
+    const idPlaceholders = ids.map(() => "?").join(",");
 
     await connection.query<ResultSetHeader>(
       `UPDATE sdd_interaction_tool_calls
@@ -759,7 +776,10 @@ export class CleaningRepository {
     );
   }
 
-  async upsertError(connection: PoolConnection, input: UpsertErrorInput): Promise<void> {
+  async upsertError(
+    connection: PoolConnection,
+    input: UpsertErrorInput,
+  ): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_errors
         (error_key, user_id, batch_id, event_id, interaction_id, usage_id, work_item_id,
@@ -804,7 +824,10 @@ export class CleaningRepository {
     );
   }
 
-  async upsertWorkItem(connection: PoolConnection, input: UpsertWorkItemInput): Promise<void> {
+  async upsertWorkItem(
+    connection: PoolConnection,
+    input: UpsertWorkItemInput,
+  ): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_work_items
         (work_item_key, requirements_repo_name, business_domain, work_item_slug,
@@ -873,13 +896,15 @@ export class CleaningRepository {
     const [rows] = await connection.query<UserRequirementsRootRow[]>(
       `SELECT id, requirements_root_path
        FROM sdd_users
-       WHERE id IN (${userIds.map(() => '?').join(',')})`,
+       WHERE id IN (${userIds.map(() => "?").join(",")})`,
       userIds,
     );
     return rows;
   }
 
-  async loadSkillSemanticMatchers(connection: PoolConnection): Promise<SemanticPatternRow[]> {
+  async loadSkillSemanticMatchers(
+    connection: PoolConnection,
+  ): Promise<SemanticPatternRow[]> {
     const [rows] = await connection.query<SemanticPatternRow[]>(
       `SELECT s.id AS semantic_id, s.semantic_code, s.artifact_filename_patterns, a.skill_name
        FROM sdd_skill_semantics s
@@ -987,15 +1012,15 @@ export class CleaningRepository {
              ?
            ),
            gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE event_id IN (${eventIds.map(() => '?').join(',')})`,
+       WHERE event_id IN (${eventIds.map(() => "?").join(",")})`,
       [reason, ...eventIds],
     );
   }
 
   async selectIdByKey(
     connection: PoolConnection,
-    tableName: 'sdd_interactions' | 'sdd_work_items',
-    keyColumn: 'interaction_key' | 'work_item_key',
+    tableName: "sdd_interactions" | "sdd_work_items",
+    keyColumn: "interaction_key" | "work_item_key",
     key: string,
   ): Promise<string> {
     const id = await this.findIdByKey(connection, tableName, keyColumn, key);
@@ -1007,8 +1032,8 @@ export class CleaningRepository {
 
   async findIdByKey(
     connection: PoolConnection,
-    tableName: 'sdd_interactions' | 'sdd_work_items',
-    keyColumn: 'interaction_key' | 'work_item_key',
+    tableName: "sdd_interactions" | "sdd_work_items",
+    keyColumn: "interaction_key" | "work_item_key",
     key: string,
   ): Promise<string | null> {
     const [rows] = await connection.query<IdRow[]>(
@@ -1144,36 +1169,53 @@ export class CleaningRepository {
     connection: PoolConnection,
     input: {
       sessionId: string;
-      anchorPromptId: string | null;
-      anchorEventTime: Date | null;
       writeEventTime: Date;
     },
-  ): Promise<Array<{ id: string; startedAt: Date | null }>> {
+  ): Promise<
+    Array<{ id: string; startedAt: Date | null; anchorEventTime: Date | null }>
+  > {
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT i.id AS id, i.started_at AS startedAt
+      `SELECT i.id AS id, i.started_at AS startedAt,
+              COALESCE(
+                (SELECT MAX(awr.event_time) FROM sdd_work_item_artifact_writes awr
+                 WHERE awr.session_id = i.session_id
+                   AND awr.event_time IS NOT NULL
+                   AND awr.event_time < ?),
+                (SELECT MIN(i2.started_at) FROM sdd_interactions i2
+                 WHERE i2.session_id = i.session_id AND i2.started_at IS NOT NULL)
+              ) AS anchorEventTime
        FROM sdd_interactions i
        WHERE i.session_id = ?
          AND i.started_at IS NOT NULL
          AND i.started_at < ?
          AND i.started_at >= COALESCE(
-               (SELECT i2.started_at FROM sdd_interactions i2
-                WHERE i2.prompt_id = ? ORDER BY i2.id ASC LIMIT 1),
-               ?)
+               (SELECT MAX(awr.event_time) FROM sdd_work_item_artifact_writes awr
+                WHERE awr.session_id = i.session_id
+                  AND awr.event_time IS NOT NULL
+                  AND awr.event_time < ?),
+               (SELECT MIN(i2.started_at) FROM sdd_interactions i2
+                WHERE i2.session_id = i.session_id AND i2.started_at IS NOT NULL))
          AND i.id NOT IN (
                SELECT awr.interaction_id FROM sdd_work_item_artifact_writes awr
-               WHERE awr.session_id = ? AND awr.interaction_id IS NOT NULL)
+               WHERE awr.session_id = i.session_id AND awr.interaction_id IS NOT NULL)
        ORDER BY i.started_at ASC, i.id ASC`,
       [
+        input.writeEventTime,
         input.sessionId,
         input.writeEventTime,
-        input.anchorPromptId,
-        input.anchorEventTime,
-        input.sessionId,
+        input.writeEventTime,
       ],
     );
-    return (rows as Array<{ id: string | number; startedAt: Date | string | null }>).map((r) => ({
+    return (
+      rows as Array<{
+        id: string | number;
+        startedAt: Date | string | null;
+        anchorEventTime: Date | string | null;
+      }>
+    ).map((r) => ({
       id: String(r.id),
       startedAt: r.startedAt ? new Date(r.startedAt) : null,
+      anchorEventTime: r.anchorEventTime ? new Date(r.anchorEventTime) : null,
     }));
   }
 
@@ -1219,12 +1261,17 @@ export class CleaningRepository {
     return id ? String(id) : null;
   }
 
-  async loadUserWikiRoots(connection: PoolConnection): Promise<Map<string, string>> {
+  async loadUserWikiRoots(
+    connection: PoolConnection,
+  ): Promise<Map<string, string>> {
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, wiki_root_path FROM sdd_users WHERE wiki_root_path IS NOT NULL`,
     );
     const m = new Map<string, string>();
-    for (const r of rows as Array<{ id: string | number; wiki_root_path: string }>) {
+    for (const r of rows as Array<{
+      id: string | number;
+      wiki_root_path: string;
+    }>) {
       m.set(String(r.id), r.wiki_root_path);
     }
     return m;
@@ -1233,14 +1280,16 @@ export class CleaningRepository {
   async listToolCallsForWikiRecalls(
     connection: PoolConnection,
     interactionIds: string[],
-  ): Promise<Array<{
-    id: string;
-    interactionId: string;
-    skillUsageId: string | null;
-    toolName: string;
-    toolInputPreview: string | null;
-    sequence: number | null;
-  }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      interactionId: string;
+      skillUsageId: string | null;
+      toolName: string;
+      toolInputPreview: string | null;
+      sequence: number | null;
+    }>
+  > {
     if (interactionIds.length === 0) return [];
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, interaction_id AS interactionId, skill_usage_id AS skillUsageId,
@@ -1249,14 +1298,16 @@ export class CleaningRepository {
        WHERE interaction_id IN (?)`,
       [interactionIds],
     );
-    return (rows as Array<{
-      id: string | number;
-      interactionId: string | number;
-      skillUsageId: string | number | null;
-      toolName: string;
-      toolInputPreview: string | null;
-      sequence: string | number | null;
-    }>).map((row) => ({
+    return (
+      rows as Array<{
+        id: string | number;
+        interactionId: string | number;
+        skillUsageId: string | number | null;
+        toolName: string;
+        toolInputPreview: string | null;
+        sequence: string | number | null;
+      }>
+    ).map((row) => ({
       id: String(row.id),
       interactionId: String(row.interactionId),
       skillUsageId: row.skillUsageId == null ? null : String(row.skillUsageId),
@@ -1275,7 +1326,7 @@ export class CleaningRepository {
     const [rows] = await connection.query<UsageWorkItemRow[]>(
       `SELECT id, work_item_id
        FROM sdd_skill_usages
-       WHERE id IN (${skillUsageIds.map(() => '?').join(',')})`,
+       WHERE id IN (${skillUsageIds.map(() => "?").join(",")})`,
       skillUsageIds,
     );
 
