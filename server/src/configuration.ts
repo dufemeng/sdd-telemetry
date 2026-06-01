@@ -3,6 +3,7 @@ import * as koa from '@midwayjs/koa';
 import { join } from 'node:path';
 import { ApiErrorFilter } from './common/filter/api-error.filter';
 import { AuthMiddleware } from './common/auth/auth.middleware';
+import { DailyReportScheduler } from './modules/reports/daily-report-scheduler';
 import './modules';
 
 @Configuration({
@@ -17,6 +18,7 @@ export class MainConfiguration {
     assertAuthConfiguration();
     this.app.useMiddleware([AuthMiddleware]);
     this.app.useFilter([ApiErrorFilter]);
+    await this.app.getApplicationContext().getAsync<DailyReportScheduler>('dailyReportScheduler');
     console.info('[sdd-telemetry] server ready');
   }
 }

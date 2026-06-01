@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { requestData } from '@/api/client';
 import type { DailyReportDetailResponse } from '@sdd-telemetry/api';
+import { useAuth } from '@/components/auth/useAuth';
 import { useLatestDailyReport, useDailyReport } from './useDailyReport';
 import { useDailyReportList } from './useDailyReportList';
 import { DailyReportDocument } from './DailyReportDocument';
@@ -13,6 +14,7 @@ import './daily-report.css';
 export default function DailyReportsPage() {
   const { date: routeDate } = useParams<{ date?: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [showHistory, setShowHistory] = useState(false);
 
   const isLatest = !routeDate || routeDate === 'latest';
@@ -41,6 +43,16 @@ export default function DailyReportsPage() {
       regenMutation.mutate(report.reportDate);
     }
   }, [report?.reportDate, regenMutation]);
+
+  const handleGenerateYesterday = useCallback(() => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    regenMutation.mutate(dateStr, {
+      onSuccess: () => navigate(`/reports/daily/${dateStr}`, { replace: true }),
+    });
+  }, [regenMutation, navigate]);
 
   useEffect(() => {
     if (isLatest && latestQuery.data?.reportDate) {
@@ -95,6 +107,26 @@ export default function DailyReportsPage() {
         <div className="dr-empty-state">
           <h2>暂无日报</h2>
           <p>还没有生成过每日简报。系统会在每天 12:00 自动生成昨天日报。</p>
+          {user.role === 'super_admin' && (
+            <button
+              type="button"
+              onClick={handleGenerateYesterday}
+              disabled={regenMutation.isPending}
+              style={{
+                marginTop: 16,
+                padding: '8px 20px',
+                fontSize: 13,
+                border: '1px solid rgba(250, 255, 105, 0.34)',
+                borderRadius: 4,
+                background: '#202016',
+                color: 'var(--color-primary, #faff69)',
+                cursor: regenMutation.isPending ? 'not-allowed' : 'pointer',
+                opacity: regenMutation.isPending ? 0.6 : 1,
+              }}
+            >
+              {regenMutation.isPending ? '生成中...' : '立即生成昨天日报'}
+            </button>
+          )}
         </div>
       )}
 
