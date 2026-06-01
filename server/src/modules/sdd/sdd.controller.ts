@@ -28,6 +28,8 @@ import {
   SddVersionItemSchema,
   SddWorkItemDetailSchema,
   SddWorkItemSchema,
+  WikiCoverageResponseSchema,
+  WikiDomainDocsResponseSchema,
   WikiRecallHeatmapResponseSchema,
   WikiRecallListResponseSchema,
   WikiRecallRangeSchema,
@@ -51,6 +53,8 @@ import {
   type SddVersionItem,
   type SddWorkItem,
   type SddWorkItemDetail,
+  type WikiCoverageResponse,
+  type WikiDomainDocsResponse,
   type WikiRecallHeatmapResponse,
   type WikiRecallListResponse,
   type WikiRecallRange,
@@ -249,6 +253,28 @@ export class SddController {
       parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 500),
     );
     return ok(parseWithSchema(WikiRecallListResponseSchema, data));
+  }
+
+  @Get('/wiki-recalls/coverage')
+  async wikiRecallCoverage() {
+    const data: WikiCoverageResponse = await this.sddQueryService.getWikiRecallCoverage();
+    return ok(parseWithSchema(WikiCoverageResponseSchema, data));
+  }
+
+  @Get('/wiki-recalls/docs')
+  async wikiRecallDomainDocs() {
+    const repo = firstQueryValue(this.ctx.query.repo) ?? '';
+    const domain = firstQueryValue(this.ctx.query.domain) ?? '';
+    const data: WikiDomainDocsResponse = await this.sddQueryService.getWikiRecallDomainDocs(repo, domain);
+    return ok(parseWithSchema(WikiDomainDocsResponseSchema, data));
+  }
+
+  @Get('/wiki-recalls/content/by-path')
+  async wikiRecallContentByPath() {
+    const repo = firstQueryValue(this.ctx.query.repo) ?? '';
+    const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
+    const data: SddWikiRecallContent = await this.sddQueryService.getWikiRecallContentByPath(repo, relativePath);
+    return ok(parseWithSchema(SddWikiRecallContentSchema, data));
   }
 
   @Get('/wiki-recalls/content/:toolCallId')
