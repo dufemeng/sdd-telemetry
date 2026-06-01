@@ -113,6 +113,8 @@ ALLOW_DIRTY=1 pnpm docker:package
 
 **零摩擦冷启动**：部署包已在部署目录时，`./deploy/deploy-docker.sh` 即可起——脚本自动建 `knowledge/`、首次自动生成并落盘 `AUTH_SESSION_SECRET`（复用、不轮换）、从本地 bundle 文件名自动识别 `VERSION`。仅当走「服务器在线从 GitHub Release 下载」时才需显式 `VERSION=<版本>`。
 
+公司服务器上 clone 知识库、挂卷、验证与排障的完整步骤见 [`docs/deploy-knowledge-base.md`](docs/deploy-knowledge-base.md)。
+
 ### 三台机器发布流程
 
 有 Docker 的 Mac 同时完成打包、生成单文件 bundle 和 GitHub Release 上传：
