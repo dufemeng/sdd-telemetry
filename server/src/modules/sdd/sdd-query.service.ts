@@ -31,6 +31,8 @@ import type {
   SddWorkItem,
   SddWorkItemDetail,
   SddWikiRecallContent,
+  WikiCoverageResponse,
+  WikiDomainDocsResponse,
   WikiRecallHeatmapResponse,
   WikiRecallListResponse,
   WikiRecallRange,
@@ -51,6 +53,8 @@ import {
 } from './sdd-query.repository';
 import { SddWriteRepository } from './sdd-write.repository';
 import { deriveRepoName, resolveWikiContentPath } from './wiki-content';
+import { buildCoverage, classifyDoc, type RecallAgg } from './wiki-coverage';
+import { scanKnowledgeBase, type ScanResult } from './wiki-scan';
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
 
@@ -68,6 +72,45 @@ export class SddQueryService {
   @Config('knowledgeBase')
   knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number; scanCacheTtlMs: number; deadKnowledgeGraceDays: number };
 
+  private scanCache: { at: number; result: ScanResult } | null = null;
+
+  private async getScan(): Promise<ScanResult> {
+    const ttl = this.knowledgeBaseConfig.scanCacheTtlMs;
+    if (this.scanCache && Date.now() - this.scanCache.at < ttl) return this.scanCache.result;
+    const result = await scanKnowledgeBase(this.knowledgeBaseConfig.rootPath);
+    this.scanCache = { at: Date.now(), result };
+    return result;
+  }
+
+  private async readWikiContent(
+    repoName: string | null,
+    relativePath: string | null,
+    rawPath: string | null,
+  ): Promise<SddWikiRecallContent> {
+    const root = this.knowledgeBaseConfig.rootPath;
+    if (!root) return emptyWikiContent('not_configured', repoName, relativePath, rawPath);
+    if (!repoName || !relativePath) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    const target = resolveWikiContentPath(root, repoName, relativePath);
+    if (!target) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    const repoStat = await statOrNull(path.resolve(root, repoName));
+    if (!repoStat || !repoStat.isDirectory()) return emptyWikiContent('repo_missing', repoName, relativePath, rawPath);
+    const fileStat = await statOrNull(target);
+    if (!fileStat) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    if (!fileStat.isFile()) return emptyWikiContent('not_a_file', repoName, relativePath, rawPath);
+    const cap = this.knowledgeBaseConfig.contentMaxBytes;
+    const content = await readUpTo(target, cap);
+    return {
+      found: true,
+      reason: 'ok',
+      repoName,
+      relativePath,
+      rawPath,
+      isMarkdown: target.toLowerCase().endsWith('.md'),
+      content,
+      truncated: fileStat.size > cap,
+    };
+  }
+
   async getWikiRecallContent(toolCallId: string): Promise<SddWikiRecallContent> {
     const row = await this.sddQueryRepository.findWikiRecallForContent(toolCallId);
     if (!row) {
@@ -81,44 +124,55 @@ export class SddQueryService {
     if (row.action_type !== 'read') {
       return emptyWikiContent('not_readable_action', repoName, relativePath, rawPath);
     }
-    const root = this.knowledgeBaseConfig.rootPath;
-    if (!root) {
-      return emptyWikiContent('not_configured', repoName, relativePath, rawPath);
-    }
-    if (!repoName || !relativePath) {
-      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
-    }
+    return this.readWikiContent(repoName, relativePath, rawPath);
+  }
 
-    const target = resolveWikiContentPath(root, repoName, relativePath);
-    if (!target) {
-      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
-    }
+  async getWikiRecallContentByPath(repo: string, relativePath: string): Promise<SddWikiRecallContent> {
+    const repoName = repo.startsWith('bk-fe-knowledge-') ? repo : `bk-fe-knowledge-${repo}`;
+    return this.readWikiContent(repoName, relativePath, null);
+  }
 
-    const repoDir = path.resolve(root, repoName);
-    const repoStat = await statOrNull(repoDir);
-    if (!repoStat || !repoStat.isDirectory()) {
-      return emptyWikiContent('repo_missing', repoName, relativePath, rawPath);
-    }
-    const fileStat = await statOrNull(target);
-    if (!fileStat) {
-      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
-    }
-    if (!fileStat.isFile()) {
-      return emptyWikiContent('not_a_file', repoName, relativePath, rawPath);
-    }
-
-    const cap = this.knowledgeBaseConfig.contentMaxBytes;
-    const content = await readUpTo(target, cap);
+  async getWikiRecallCoverage(): Promise<WikiCoverageResponse> {
+    const scan = await this.getScan();
+    const rows = await this.sddQueryRepository.aggregateRecallPaths();
+    const recalls: RecallAgg[] = rows.map((r) => ({
+      repo: deriveRepoShortKey(r.raw_path, r.wiki_relative_path),
+      relativePath: r.wiki_relative_path,
+      recallCount: Number(r.recalls),
+      distinctUsers: Number(r.users),
+      lastRecallAt: r.last_at ? new Date(r.last_at).toISOString() : null,
+      lastToolCallId: null,
+    }));
+    const c = buildCoverage(scan.docs, recalls, Date.now(), this.knowledgeBaseConfig.deadKnowledgeGraceDays);
     return {
-      found: true,
-      reason: 'ok',
-      repoName,
-      relativePath,
-      rawPath,
-      isMarkdown: target.toLowerCase().endsWith('.md'),
-      content,
-      truncated: fileStat.size > cap,
+      scan: { configured: scan.configured, repos: scan.repos },
+      totals: c.totals,
+      repos: c.repos,
+      domains: c.domains,
     };
+  }
+
+  async getWikiRecallDomainDocs(repo: string, domain: string): Promise<WikiDomainDocsResponse> {
+    const scan = await this.getScan();
+    const now = Date.now();
+    const grace = this.knowledgeBaseConfig.deadKnowledgeGraceDays;
+    const rows = await this.sddQueryRepository.listDomainDocRecalls(domain);
+    const recallByRel = new Map(rows.map((r) => [r.wiki_relative_path, r]));
+    const docs = scan.docs.filter((d) => d.repo === repo && (d.domain ?? '(未识别)') === domain);
+    const items = docs.map((d) => {
+      const r = recallByRel.get(d.relativePath);
+      const count = r ? Number(r.recalls) : 0;
+      return {
+        relativePath: d.relativePath,
+        recallCount: count,
+        distinctUsers: r ? Number(r.users) : 0,
+        lastRecallAt: r?.last_at ? new Date(r.last_at).toISOString() : null,
+        lastToolCallId: r?.last_tool_call_id ? String(r.last_tool_call_id) : null,
+        status: classifyDoc(count, d.mtimeMs, now, grace),
+        addedAt: new Date(d.mtimeMs).toISOString(),
+      };
+    }).sort((a, b) => b.recallCount - a.recallCount);
+    return { repo, domain, items };
   }
 
   async listSemantics(): Promise<SddSemantic[]> {
@@ -1144,4 +1198,9 @@ async function readUpTo(file: string, cap: number): Promise<string> {
   } finally {
     await handle.close();
   }
+}
+
+function deriveRepoShortKey(rawPath: string, relativePath: string | null): string {
+  const name = deriveRepoName(rawPath, relativePath) ?? '';
+  return name.replace(/^bk-fe-knowledge-/, '') || 'unknown';
 }
