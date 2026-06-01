@@ -31,6 +31,8 @@ x-app-env: &app-env
   COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-sdd-telemetry}
   DEPLOY_VERSION: ${DEPLOY_VERSION:-}
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  KNOWLEDGE_BASE_ROOT: ${KNOWLEDGE_BASE_ROOT:-/knowledge}
+  WIKI_CONTENT_MAX_BYTES: ${WIKI_CONTENT_MAX_BYTES:-524288}
 
 services:
   mysql:
@@ -89,6 +91,8 @@ services:
     working_dir: /app/server
     environment: *app-env
     command: ["node", "dist/bootstrap.js"]
+    volumes:
+      - ${KNOWLEDGE_BASE_HOST_DIR:-./knowledge}:/knowledge:ro
     ports:
       - "${API_PUBLISHED_PORT:-4318}:4318"
     depends_on:
