@@ -66,7 +66,7 @@ export class SddQueryService {
   sddQueryRepository!: SddQueryRepository;
 
   @Config('knowledgeBase')
-  knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number };
+  knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number; scanCacheTtlMs: number; deadKnowledgeGraceDays: number };
 
   async getWikiRecallContent(toolCallId: string): Promise<SddWikiRecallContent> {
     const row = await this.sddQueryRepository.findWikiRecallForContent(toolCallId);

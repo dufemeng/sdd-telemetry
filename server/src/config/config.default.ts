@@ -55,5 +55,7 @@ export default {
   knowledgeBase: {
     rootPath: process.env.KNOWLEDGE_BASE_ROOT ?? '',
     contentMaxBytes: Number(process.env.WIKI_CONTENT_MAX_BYTES ?? 512 * 1024),
+    scanCacheTtlMs: Number(process.env.WIKI_SCAN_CACHE_TTL_MS ?? 600_000),
+    deadKnowledgeGraceDays: Number(process.env.WIKI_DEAD_GRACE_DAYS ?? 30),
   },
 };
