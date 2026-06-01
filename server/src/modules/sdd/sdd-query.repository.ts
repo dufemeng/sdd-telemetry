@@ -1108,4 +1108,53 @@ export class SddQueryRepository {
       [window.from, window.to, window.from, window.to, window.from, window.to],
     )) as SkillQualityAnalyticsRow[];
   }
+
+  async aggregateRecallPaths(): Promise<
+    Array<{
+      raw_path: string;
+      wiki_relative_path: string;
+      recalls: number;
+      users: number;
+      last_at: string | null;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return dataSource.query(`
+      SELECT MIN(raw_path) AS raw_path,
+             wiki_relative_path,
+             COUNT(*) AS recalls,
+             COUNT(DISTINCT user_id) AS users,
+             MAX(event_time) AS last_at
+      FROM sdd_wiki_recalls
+      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
+      GROUP BY wiki_relative_path
+    `);
+  }
+
+  async listDomainDocRecalls(
+    domain: string,
+  ): Promise<
+    Array<{
+      raw_path: string;
+      wiki_relative_path: string;
+      recalls: number;
+      users: number;
+      last_at: string | null;
+      last_tool_call_id: string | null;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return dataSource.query(
+      `SELECT MIN(r.raw_path) AS raw_path,
+              r.wiki_relative_path,
+              COUNT(*) AS recalls,
+              COUNT(DISTINCT r.user_id) AS users,
+              MAX(r.event_time) AS last_at,
+              SUBSTRING_INDEX(GROUP_CONCAT(r.tool_call_id ORDER BY r.event_time DESC), ',', 1) AS last_tool_call_id
+       FROM sdd_wiki_recalls r
+       WHERE r.action_type = 'read' AND r.wiki_domain = ? AND r.wiki_relative_path IS NOT NULL
+       GROUP BY r.wiki_relative_path`,
+      [domain],
+    );
+  }
 }
