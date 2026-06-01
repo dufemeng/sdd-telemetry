@@ -218,7 +218,7 @@ export class DailyReportRepository {
     limit: number,
   ): Promise<Array<{ domain: string; count: number }>> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return dataSource.query(
+    const rows = await dataSource.query(
       `SELECT wiki_domain AS domain, COUNT(*) AS count
        FROM sdd_wiki_recalls
        WHERE event_time >= ? AND event_time < ? AND wiki_domain IS NOT NULL
@@ -227,6 +227,10 @@ export class DailyReportRepository {
        LIMIT ?`,
       [periodStart, periodEnd, limit],
     );
+    return (rows as Array<{ domain: string; count: string | number }>).map(r => ({
+      domain: r.domain,
+      count: toNumber(r.count),
+    }));
   }
 
   async countStageCoverage(
@@ -350,16 +354,15 @@ export class DailyReportRepository {
          WHERE su.work_item_id = wi.id AND su.event_time >= ? AND su.event_time < ?
        )
        ORDER BY document_count DESC, usage_count DESC
-       LIMIT ?`,
+      LIMIT ?`,
       [
         periodStart, periodEnd,
         periodStart, periodEnd,
         periodStart, periodEnd,
         periodStart, periodEnd,
         periodStart, periodEnd,
-        periodStart, periodEnd,
         limit,
-      ],
+      ]
     );
   }
 

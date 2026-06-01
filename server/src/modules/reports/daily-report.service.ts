@@ -182,14 +182,19 @@ export class DailyReportService {
     const { items, total: rawTotal } = await this.repo.listReports(from, to, pageSize, offset);
     const total = typeof rawTotal === 'string' ? parseInt(rawTotal, 10) : rawTotal;
     return {
-      items: items.map((row): DailyReportListItem => ({
-        id: String(row.id),
-        reportDate: row.report_date,
-        status: row.status as DailyReportListItem['status'],
-        generatedAt: toIso(row.generated_at),
-        generatedBy: row.generated_by as DailyReportListItem['generatedBy'],
-        errorMessage: row.error_message,
-      })),
+      items: items.map((row): DailyReportListItem => {
+        const reportDate = typeof row.report_date === 'string'
+          ? row.report_date
+          : new Date(row.report_date as any).toISOString().slice(0, 10);
+        return {
+          id: String(row.id),
+          reportDate,
+          status: String(row.status) as DailyReportListItem['status'],
+          generatedAt: toIso(row.generated_at),
+          generatedBy: String(row.generated_by) as DailyReportListItem['generatedBy'],
+          errorMessage: row.error_message,
+        };
+      }),
       total,
       page,
       pageSize,
@@ -198,20 +203,24 @@ export class DailyReportService {
 
   private toDetail(row: import('./daily-report.repository').DailyReportRow): DailyReportDetailResponse {
     const isFailed = row.status === 'failed';
-    const metrics = isFailed ? null : JSON.parse(row.metrics_json) as DailyReportMetrics;
+    const rawMetrics = isFailed ? null : (typeof row.metrics_json === 'string' ? JSON.parse(row.metrics_json) : row.metrics_json);
+    const metrics = rawMetrics as DailyReportMetrics | null;
+    const reportDate = typeof row.report_date === 'string'
+      ? row.report_date
+      : new Date(row.report_date as any).toISOString().slice(0, 10);
     return {
       id: String(row.id),
-      reportDate: row.report_date,
-      timezone: row.timezone,
+      reportDate,
+      timezone: String(row.timezone),
       periodStart: toIso(row.period_start),
       periodEnd: toIso(row.period_end),
-      status: row.status as DailyReportDetailResponse['status'],
+      status: String(row.status) as DailyReportDetailResponse['status'],
       metrics,
-      markdownText: row.markdown_text,
-      templateVersion: row.template_version,
-      queryVersion: row.query_version,
+      markdownText: String(row.markdown_text),
+      templateVersion: String(row.template_version),
+      queryVersion: String(row.query_version),
       generatedAt: toIso(row.generated_at),
-      generatedBy: row.generated_by as DailyReportDetailResponse['generatedBy'],
+      generatedBy: String(row.generated_by) as DailyReportDetailResponse['generatedBy'],
       errorMessage: row.error_message,
     };
   }
