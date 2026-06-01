@@ -10,9 +10,11 @@ export const TIME_RANGES: readonly TimeRange[] = ['24h', '7d', '30d'] as const;
 interface TopBarProps {
   timeRange: TimeRange;
   onTimeRangeChange: (range: TimeRange) => void;
+  /** 累计/快照口径的页面传 false：选择器置灰不可点。默认 true。 */
+  rangeApplies?: boolean;
 }
 
-export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
+export function TopBar({ timeRange, onTimeRangeChange, rangeApplies = true }: TopBarProps) {
   const isFetching = useIsFetching() > 0;
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -45,15 +47,18 @@ export function TopBar({ timeRange, onTimeRangeChange }: TopBarProps) {
       <div className="flex items-center gap-2">
         {/* Time range */}
         <div
+          title={rangeApplies ? undefined : '本页为累计 / 快照口径，时间范围不适用'}
           className="flex items-center h-[30px] p-0.5 gap-0.5 rounded-[4px]"
-          style={{ border: '1px solid var(--color-border)', background: '#171717' }}
+          style={{ border: '1px solid var(--color-border)', background: '#171717', opacity: rangeApplies ? 1 : 0.4 }}
         >
           {TIME_RANGES.map((r) => (
             <button
               key={r}
-              onClick={() => onTimeRangeChange(r)}
+              disabled={!rangeApplies}
+              onClick={() => { if (rangeApplies) onTimeRangeChange(r); }}
               className={[
-                'h-6 px-[10px] rounded-[3px] text-[12px] border-0 cursor-pointer transition-colors duration-[120ms]',
+                'h-6 px-[10px] rounded-[3px] text-[12px] border-0 transition-colors duration-[120ms]',
+                rangeApplies ? 'cursor-pointer' : 'cursor-not-allowed',
                 r === timeRange
                   ? 'bg-[#222] text-[#f5f5f5]'
                   : 'bg-transparent text-[var(--color-secondary)]',

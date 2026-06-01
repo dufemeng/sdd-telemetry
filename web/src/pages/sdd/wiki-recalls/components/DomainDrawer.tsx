@@ -11,21 +11,21 @@ import { formatInteger } from '@/lib/format';
 const STATUS_BADGE: Record<string, { label: string; tone: 'good' | 'neutral' | 'bad' | 'info' }> = {
   hot: { label: '热', tone: 'good' },
   cold: { label: '冷', tone: 'neutral' },
-  dead: { label: '死', tone: 'bad' },
+  dead: { label: '沉睡', tone: 'bad' },
   new: { label: '新增未读', tone: 'info' },
 };
 
 export function DomainDrawer({ repo, domain, onClose }: { repo: string; domain: string; onClose: () => void }) {
   const navigate = useNavigate();
   const docsQuery = useWikiRecallDomainDocs(repo, domain);
-  const reqQuery = useWikiRecallWorkItemRanking('all', { businessDomain: domain });
+  const reqQuery = useWikiRecallWorkItemRanking('all', { wikiDomain: domain });
   const [doc, setDoc] = useState<{ toolCallId?: string | null; source?: { repo: string; relativePath: string } } | null>(null);
 
   const items = docsQuery.data?.items ?? [];
   const fields: RowInspectorField[] = [
     { label: '知识库', value: `bk-fe-knowledge-${repo}`, mono: true },
     { label: '库内文档', value: `${items.length} 篇` },
-    { label: '死知识', value: String(items.filter((i) => i.status === 'dead').length) },
+    { label: '沉睡文档', value: String(items.filter((i) => i.status === 'dead').length) },
   ];
 
   return (

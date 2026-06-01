@@ -854,7 +854,7 @@ export class SddQueryRepository {
 
   async listWikiRecallWorkItemRanking(
     rangeSinceDate: Date | null,
-    businessDomain: string | null,
+    wikiDomain: string | null,
     userId: string | null,
     limit: number,
     offset: number,
@@ -867,9 +867,9 @@ export class SddQueryRepository {
       clauses.push('wr.event_time >= ?');
       params.push(rangeSinceDate);
     }
-    if (businessDomain) {
-      clauses.push('wi.business_domain = ?');
-      params.push(businessDomain);
+    if (wikiDomain) {
+      clauses.push('wr.wiki_domain = ?');
+      params.push(wikiDomain);
     }
     if (userId) {
       clauses.push('wr.user_id = ?');

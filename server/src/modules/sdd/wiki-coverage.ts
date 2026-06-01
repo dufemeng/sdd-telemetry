@@ -59,6 +59,9 @@ export interface CoverageResult {
 
 export const HOT_THRESHOLD = 10;
 
+/** domain 为空（库根、非 domain-* 目录下的文档）时的展示名。前后端及 service 过滤须一致。 */
+export const ROOT_DOMAIN_LABEL = '（根目录）';
+
 const REPO_LABEL: Record<string, string> = { trade: '交易', loan: '融资', wealth: '理财' };
 
 export function repoLabel(repo: string): string {
@@ -97,7 +100,7 @@ export function buildCoverage(
 
   const domainUsers = new Map<string, number>();
   for (const d of domainUsersLookup) {
-    domainUsers.set(key(d.repo, d.domain ?? '(未识别)'), d.distinctUsers);
+    domainUsers.set(key(d.repo, d.domain ?? ROOT_DOMAIN_LABEL), d.distinctUsers);
   }
 
   const repoUsers = new Map<string, number>();
@@ -132,7 +135,7 @@ export function buildCoverage(
     const count = r?.recallCount ?? 0;
     const status = classifyDoc(count, doc.mtimeMs, nowMs, graceDays);
     const repo = repoOf(doc.repo);
-    const domain = domainOf(doc.repo, doc.domain ?? '(未识别)');
+    const domain = domainOf(doc.repo, doc.domain ?? ROOT_DOMAIN_LABEL);
 
     totals.totalDocs++;
     repo.totalDocs++;

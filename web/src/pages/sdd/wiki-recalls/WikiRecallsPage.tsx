@@ -10,7 +10,7 @@ import { CARD_STYLE, ICON_BOX } from './styles';
 import { formatInteger } from '@/lib/format';
 
 export default function WikiRecallsPage() {
-  const { data, isLoading } = useWikiRecallCoverage();
+  const { data, isLoading, error } = useWikiRecallCoverage();
   const [sel, setSel] = useState<{ repo: string; domain: string } | null>(null);
   const degraded = !isLoading && data?.scan.configured === false;
   const t = data?.totals;
@@ -22,11 +22,17 @@ export default function WikiRecallsPage() {
         <span className="text-[12px] text-[var(--color-muted)]">团队知识资产 · 累计口径 · 分母取服务器当前快照</span>
       </header>
 
+      {error ? (
+        <div className="rounded-[6px] px-[14px] py-3 text-[12px]" style={{ border: '1px solid var(--color-border)', background: 'var(--color-bad-bg)', color: 'var(--color-bad-text)' }}>
+          覆盖率数据加载失败：{error instanceof Error ? error.message : String(error)}
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-4 gap-3">
-        <Kpi icon={<BookOpen size={18} />} name="知识库规模" value={degraded ? '—' : formatInteger(t?.totalDocs ?? 0)} hint="3 库 .md 合计 · 当前快照" />
-        <Kpi icon={<Gauge size={18} />} name="知识利用率" value={degraded ? '—' : `${Math.round((t?.coverageRate ?? 0) * 100)}%`} hint={degraded ? '需服务器挂载知识库' : `${t?.recalledDocs ?? 0} / ${t?.totalDocs ?? 0}`} volt />
-        <Kpi icon={<FileText size={18} />} name="累计召回" value={formatInteger(t?.recalls ?? 0)} hint="全团队 wiki 读取次数" volt />
-        <Kpi icon={<TriangleAlert size={18} />} name="死知识" value={degraded ? '—' : String(t?.deadDocs ?? 0)} hint=">30 天且从无召回" bad />
+        <Kpi icon={<BookOpen size={18} />} name="知识库规模" value={isLoading ? '…' : degraded ? '—' : formatInteger(t?.totalDocs ?? 0)} hint="3 库 .md 合计 · 当前快照" />
+        <Kpi icon={<Gauge size={18} />} name="知识利用率" value={isLoading ? '…' : degraded ? '—' : `${Math.round((t?.coverageRate ?? 0) * 100)}%`} hint={degraded ? '需服务器挂载知识库' : `${t?.recalledDocs ?? 0} / ${t?.totalDocs ?? 0}`} volt />
+        <Kpi icon={<FileText size={18} />} name="累计召回" value={isLoading ? '…' : formatInteger(t?.recalls ?? 0)} hint="全团队 wiki 读取次数" volt />
+        <Kpi icon={<TriangleAlert size={18} />} name="沉睡文档" value={isLoading ? '…' : degraded ? '—' : String(t?.deadDocs ?? 0)} hint="超 30 天未被召回" bad />
       </div>
 
       <BusinessLineCompare repos={data?.repos ?? []} degraded={!!degraded} />

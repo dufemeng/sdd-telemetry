@@ -5,10 +5,14 @@ import { Sidebar } from './Sidebar';
 import { TopBar, type TimeRange } from './TopBar';
 import { ShellContext } from './useShellContext';
 
+// 累计 / 快照口径的看板，不消费全局时间范围（顶栏选择器在这些页禁用）
+const RANGE_EXEMPT_PREFIXES = ['/sdd/users', '/sdd/work-items', '/sdd/wiki-recalls'];
+
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const { pathname } = useLocation();
   const prefersReducedMotion = useReducedMotion();
+  const rangeApplies = !RANGE_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
 
   return (
     <div
@@ -24,6 +28,7 @@ export function AppShell() {
       <TopBar
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
+        rangeApplies={rangeApplies}
       />
       <main
         className="overflow-hidden"

@@ -53,7 +53,7 @@ import {
 } from './sdd-query.repository';
 import { SddWriteRepository } from './sdd-write.repository';
 import { deriveRepoName, resolveWikiContentPath } from './wiki-content';
-import { buildCoverage, classifyDoc, type RecallAgg } from './wiki-coverage';
+import { buildCoverage, classifyDoc, ROOT_DOMAIN_LABEL, type RecallAgg } from './wiki-coverage';
 import { scanKnowledgeBase, type ScanResult } from './wiki-scan';
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
@@ -169,7 +169,7 @@ export class SddQueryService {
     const grace = this.knowledgeBaseConfig.deadKnowledgeGraceDays;
     const rows = await this.sddQueryRepository.listDomainDocRecalls(domain);
     const recallByRel = new Map(rows.map((r) => [r.wiki_relative_path, r]));
-    const docs = scan.docs.filter((d) => d.repo === repo && (d.domain ?? '(未识别)') === domain);
+    const docs = scan.docs.filter((d) => d.repo === repo && (d.domain ?? ROOT_DOMAIN_LABEL) === domain);
     const items = docs.map((d) => {
       const r = recallByRel.get(d.relativePath);
       const count = r ? Number(r.recalls) : 0;
@@ -798,7 +798,7 @@ export class SddQueryService {
 
   async getWikiRecallWorkItemRanking(
     range: WikiRecallRange,
-    businessDomain: string | null,
+    wikiDomain: string | null,
     userId: string | null,
     page = 1,
     pageSize = 50,
@@ -806,7 +806,7 @@ export class SddQueryService {
     const since = rangeToSinceDate(range);
     const { items, total } = await this.sddQueryRepository.listWikiRecallWorkItemRanking(
       since,
-      businessDomain,
+      wikiDomain,
       userId,
       pageSize,
       (page - 1) * pageSize,

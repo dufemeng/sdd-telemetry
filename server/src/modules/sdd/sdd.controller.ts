@@ -209,7 +209,7 @@ export class SddController {
     const data: WikiRecallWorkItemRankingResponse =
       await this.sddQueryService.getWikiRecallWorkItemRanking(
         this.parseWikiRecallRange(),
-        firstQueryValue(this.ctx.query.businessDomain) ?? null,
+        firstQueryValue(this.ctx.query.wikiDomain) ?? null,
         firstQueryValue(this.ctx.query.userId) ?? null,
         parsePage(firstQueryValue(this.ctx.query.page), 1, 10_000),
         parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 200),

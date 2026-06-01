@@ -36,7 +36,7 @@ export function BusinessLineCompare({ repos, degraded }: { repos: WikiCoverageRe
               )}
               <div className="flex gap-[14px] text-[11px] text-[var(--color-secondary)]">
                 <span>召回 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text)' }}>{formatInteger(r.recalls)}</span></span>
-                <span style={{ color: 'var(--color-bad-text)' }}>死知识 {r.deadDocs}</span>
+                <span style={{ color: 'var(--color-bad-text)' }}>沉睡 {r.deadDocs}</span>
               </div>
             </div>
           );

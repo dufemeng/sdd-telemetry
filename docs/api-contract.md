@@ -903,12 +903,12 @@ export const WikiDomainDocsResponseSchema = z.object({
 
 说明：
 
-1. `status` 按阈值分类：`hot`（≥10 次）、`cold`（1-9 次）、`dead`（0 次 + mtime 超宽限期）、`new`（0 次 + mtime ≤7 天）。
+1. `status` 按阈值分类：`hot`（≥10 次）、`cold`（1-9 次）、`dead`（0 次 + mtime 超宽限期，默认 >30 天）、`new`（0 次 + mtime 在宽限期内，默认 ≤30 天）。
 2. `distinctUsers` 是该文档级别的 `COUNT(DISTINCT user_id)`，不含跨文档累加。
 
 ### 6.23 GET /api/sdd/wiki-recalls/content/by-path
 
-按 repo + relativePath 直接读取知识库文档当前版本。不依赖 `sdd_wiki_recalls` 记录，适用于无召回历史的新文档或死知识文档查看。
+按 repo + relativePath 直接读取知识库文档当前版本。不依赖 `sdd_wiki_recalls` 记录，适用于无召回历史的新文档或沉睡文档查看。
 
 Query：
 

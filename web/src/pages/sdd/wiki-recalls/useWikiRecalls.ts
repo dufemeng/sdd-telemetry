@@ -42,7 +42,7 @@ export function useWikiRecallList(
 
 export function useWikiRecallWorkItemRanking(
   range: WikiRecallRange,
-  filters: { businessDomain?: string; userId?: string },
+  filters: { wikiDomain?: string; userId?: string },
 ) {
   return useQuery({
     queryKey: ['wiki-recalls', 'work-items', range, filters],
