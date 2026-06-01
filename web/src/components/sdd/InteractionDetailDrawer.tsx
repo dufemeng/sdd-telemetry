@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeftCircle, ArrowRightCircle, BookOpen, TerminalSquare, Wrench } from 'lucide-react';
 import {
   useSddInteractionDetail,
@@ -13,6 +14,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDateTime, formatInteger, formatUsd } from '@/lib/format';
 import { truncate } from '@/lib/format';
 import type { SddInteractionDetail, SddInteractionItem, SddInteractionToolCall } from '@sdd-telemetry/api';
+import { WikiDocModal } from './WikiDocModal';
 
 export function InteractionDetailDrawer({
   interactionId,
@@ -30,35 +32,46 @@ export function InteractionDetailDrawer({
 
   const inspectorRow = detailQuery.data ?? initialRow ?? null;
   const fallbackRow = interactionId ? { id: interactionId } : null;
+  const [wikiDocToolCallId, setWikiDocToolCallId] = useState<string | null>(null);
 
   return (
-    <RowInspectorDrawer
-      open={open}
-      onOpenChange={onOpenChange}
-      title={inspectorRow?.interactionKey ?? interactionId ?? '交互详情'}
-      subtitle={
-        inspectorRow?.sessionId
-          ? `session ${inspectorRow.sessionId}`
-          : interactionId
-            ? `row ${interactionId}`
-            : undefined
-      }
-      icon={<TerminalSquare size={18} />}
-      badge={inspectorRow ? <StatusBadge status={inspectorRow.status} /> : null}
-      row={inspectorRow ?? fallbackRow}
-      overview={inspectorRow ? toOverviewFields(inspectorRow) : []}
-      fields={inspectorRow ? toDetailFields(inspectorRow) : []}
-      textBlocks={inspectorRow ? toTextBlocks(inspectorRow) : []}
-      rawData={inspectorRow ?? fallbackRow}
-      loading={detailQuery.isLoading}
-      error={detailQuery.error instanceof Error ? detailQuery.error.message : null}
-    >
-      <ToolCallsSection
-        calls={toolCallsQuery.data?.items ?? []}
-        loading={toolCallsQuery.isLoading}
-        error={toolCallsQuery.error instanceof Error ? toolCallsQuery.error.message : null}
+    <>
+      <RowInspectorDrawer
+        open={open}
+        onOpenChange={onOpenChange}
+        title={inspectorRow?.interactionKey ?? interactionId ?? '交互详情'}
+        subtitle={
+          inspectorRow?.sessionId
+            ? `session ${inspectorRow.sessionId}`
+            : interactionId
+              ? `row ${interactionId}`
+              : undefined
+        }
+        icon={<TerminalSquare size={18} />}
+        badge={inspectorRow ? <StatusBadge status={inspectorRow.status} /> : null}
+        row={inspectorRow ?? fallbackRow}
+        overview={inspectorRow ? toOverviewFields(inspectorRow) : []}
+        fields={inspectorRow ? toDetailFields(inspectorRow) : []}
+        textBlocks={inspectorRow ? toTextBlocks(inspectorRow) : []}
+        rawData={inspectorRow ?? fallbackRow}
+        loading={detailQuery.isLoading}
+        error={detailQuery.error instanceof Error ? detailQuery.error.message : null}
+      >
+        <ToolCallsSection
+          calls={toolCallsQuery.data?.items ?? []}
+          loading={toolCallsQuery.isLoading}
+          error={toolCallsQuery.error instanceof Error ? toolCallsQuery.error.message : null}
+          onOpenWikiDoc={setWikiDocToolCallId}
+        />
+      </RowInspectorDrawer>
+      <WikiDocModal
+        toolCallId={wikiDocToolCallId}
+        open={Boolean(wikiDocToolCallId)}
+        onOpenChange={(o) => {
+          if (!o) setWikiDocToolCallId(null);
+        }}
       />
-    </RowInspectorDrawer>
+    </>
   );
 }
 
@@ -237,10 +250,12 @@ function ToolCallsSection({
   calls,
   loading,
   error,
+  onOpenWikiDoc,
 }: {
   calls: SddInteractionToolCall[];
   loading: boolean;
   error: string | null;
+  onOpenWikiDoc: (toolCallId: string) => void;
 }) {
   return (
     <section className="space-y-2">
@@ -255,7 +270,7 @@ function ToolCallsSection({
       {!loading && !error ? (
         <DataTable
           headers={['#', '工具', 'wiki', '决策', '状态', '耗时', '入参', '结果']}
-          rows={calls.map(toToolCallRow)}
+          rows={calls.map((call) => toToolCallRow(call, onOpenWikiDoc))}
           emptyText="暂无工具调用"
         />
       ) : null}
@@ -263,21 +278,43 @@ function ToolCallsSection({
   );
 }
 
-function toToolCallRow(call: SddInteractionToolCall): DataTableRow {
+function toToolCallRow(
+  call: SddInteractionToolCall,
+  onOpenWikiDoc: (toolCallId: string) => void,
+): DataTableRow {
+  const wikiBadgeClass =
+    'inline-flex items-center gap-1 rounded-[4px] px-2 py-[2px] text-[11px] text-[var(--color-primary)]';
+  const wikiBadgeStyle = {
+    background: 'rgba(250,255,105,0.08)',
+    border: '1px solid rgba(250,255,105,0.18)',
+  };
   return {
     key: call.toolUseId,
     cells: [
       call.sequence,
       call.toolName,
       call.isWikiRecall ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-[4px] px-2 py-[2px] text-[11px] text-[var(--color-primary)]"
-          style={{ background: 'rgba(250,255,105,0.08)', border: '1px solid rgba(250,255,105,0.18)' }}
-          title={call.skillUsageId ? `skill_usage_id: ${call.skillUsageId}` : '召回 wiki 文件'}
-        >
-          <BookOpen size={12} />
-          wiki
-        </span>
+        call.toolName === 'Read' ? (
+          <button
+            type="button"
+            onClick={() => onOpenWikiDoc(call.id)}
+            className={`${wikiBadgeClass} cursor-pointer hover:brightness-125`}
+            style={wikiBadgeStyle}
+            title="查看知识库文档内容"
+          >
+            <BookOpen size={12} />
+            wiki
+          </button>
+        ) : (
+          <span
+            className={wikiBadgeClass}
+            style={wikiBadgeStyle}
+            title={call.skillUsageId ? `skill_usage_id: ${call.skillUsageId}` : '召回 wiki 文件'}
+          >
+            <BookOpen size={12} />
+            wiki
+          </span>
+        )
       ) : (
         '—'
       ),
