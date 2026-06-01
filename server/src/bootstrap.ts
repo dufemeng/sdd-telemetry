@@ -15,6 +15,9 @@ import { OpsQueryService } from './modules/ops/ops-query.service';
 import { SddQueryRepository } from './modules/sdd/sdd-query.repository';
 import { SddQueryService } from './modules/sdd/sdd-query.service';
 import { SddWriteRepository } from './modules/sdd/sdd-write.repository';
+import { DailyReportRepository } from './modules/reports/daily-report.repository';
+import { DailyReportService } from './modules/reports/daily-report.service';
+import { DailyReportScheduler } from './modules/reports/daily-report-scheduler';
 import { AuthRepository } from './modules/auth/auth.repository';
 import { AuthService } from './modules/auth/auth.service';
 
@@ -36,5 +39,8 @@ void Bootstrap.configure({
     SddQueryRepository,
     SddQueryService,
     SddWriteRepository,
+    DailyReportRepository,
+    DailyReportService,
+    DailyReportScheduler,
   ],
 }).run();

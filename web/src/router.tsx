@@ -34,6 +34,7 @@ const ResourcesPage     = lazy(() => import('./pages/ops/resources/ResourcesPage
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
 const LoginPage         = lazy(() => import('./pages/auth/LoginPage'));
 const AuthUsersPage     = lazy(() => import('./pages/admin/users/AuthUsersPage'));
+const DailyReportsPage  = lazy(() => import('./pages/reports/daily/DailyReportsPage'));
 
 export const router = createBrowserRouter([
   {
@@ -59,6 +60,9 @@ export const router = createBrowserRouter([
           { path: 'sdd/work-items',       element: wrap(WorkItemsPage),       errorElement: <RouteError /> },
           { path: 'sdd/work-items/:id',   element: wrap(WorkItemDetailPage),  errorElement: <RouteError /> },
           { path: 'sdd/wiki-recalls',     element: wrap(WikiRecallsPage),  errorElement: <RouteError /> },
+          { path: 'reports/daily',          element: wrap(DailyReportsPage), errorElement: <RouteError /> },
+          { path: 'reports/daily/latest',   element: wrap(DailyReportsPage), errorElement: <RouteError /> },
+          { path: 'reports/daily/:date',    element: wrap(DailyReportsPage), errorElement: <RouteError /> },
           { path: 'sdd/semantics',        element: wrap(SemanticsPage),    errorElement: <RouteError /> },
           { path: 'troubleshoot',         element: wrap(TroubleshootPage), errorElement: <RouteError /> },
           {

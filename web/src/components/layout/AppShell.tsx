@@ -6,7 +6,7 @@ import { TopBar, type TimeRange } from './TopBar';
 import { ShellContext } from './useShellContext';
 
 // 累计 / 快照口径的看板，不消费全局时间范围（顶栏选择器在这些页禁用）
-const RANGE_EXEMPT_PREFIXES = ['/sdd/users', '/sdd/work-items', '/sdd/wiki-recalls'];
+const RANGE_EXEMPT_PREFIXES = ['/sdd/users', '/sdd/work-items', '/sdd/wiki-recalls', '/reports/daily'];
 
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');

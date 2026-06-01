@@ -16,6 +16,7 @@ export * from './sdd-work-item-artifact.entity';
 export * from './sdd-work-item-artifact-write.entity';
 export * from './sdd-work-item-artifact-turn.entity';
 export * from './sdd-work-item.entity';
+export * from './sdd-daily-report.entity';
 
 import { AuthUserEntity } from './auth-user.entity';
 import { IngestOutboxEntity } from './ingest-outbox.entity';
@@ -35,6 +36,7 @@ import { SddWorkItemArtifactEntity } from './sdd-work-item-artifact.entity';
 import { SddWorkItemArtifactWriteEntity } from './sdd-work-item-artifact-write.entity';
 import { SddWorkItemArtifactTurnEntity } from './sdd-work-item-artifact-turn.entity';
 import { SddWorkItemEntity } from './sdd-work-item.entity';
+import { SddDailyReportEntity } from './sdd-daily-report.entity';
 
 export const appEntities = [
   AuthUserEntity,
@@ -55,4 +57,5 @@ export const appEntities = [
   SddWorkItemArtifactTurnEntity,
   SddWikiRecallEntity,
   SddErrorEntity,
+  SddDailyReportEntity,
 ];

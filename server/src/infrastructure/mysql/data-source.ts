@@ -12,6 +12,7 @@ import { CreateWikiRecalls1780000001000 } from './migrations/1780000001000-creat
 import { CreateOpsResourceSnapshots1780000002000 } from './migrations/1780000002000-create-ops-resource-snapshots';
 import { CreateArtifactWrites1780000003000 } from './migrations/1780000003000-create-artifact-writes';
 import { CreateArtifactTurns1780000004000 } from './migrations/1780000004000-create-artifact-turns';
+import { CreateSddDailyReports1780000005000 } from './migrations/1780000005000-create-sdd-daily-reports';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -40,6 +41,7 @@ export function createAppDataSource(): DataSource {
       CreateOpsResourceSnapshots1780000002000,
       CreateArtifactWrites1780000003000,
       CreateArtifactTurns1780000004000,
+      CreateSddDailyReports1780000005000,
     ],
   });
 }

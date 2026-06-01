@@ -3,7 +3,7 @@ import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   Activity, BookOpen,
   CheckSquare, Database, Gauge,
-  GitBranch, Layers3, ListFilter, Search, Settings, ShieldCheck, Table2, UserRound, Workflow,
+  GitBranch, Layers3, ListFilter, Newspaper, Search, Settings, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth/useAuth';
 
@@ -21,6 +21,7 @@ const NAV_GROUPS = [
       { to: '/sdd/skills',     label: '技能分析', icon: Layers3 },
       { to: '/sdd/work-items', label: '产出分析', icon: GitBranch },
       { to: '/sdd/wiki-recalls', label: '知识库分析', icon: BookOpen },
+      { to: '/reports/daily', label: '每日简报', icon: Newspaper },
     ],
   },
   {

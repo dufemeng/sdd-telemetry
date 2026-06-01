@@ -58,4 +58,10 @@ export default {
     scanCacheTtlMs: Number(process.env.WIKI_SCAN_CACHE_TTL_MS ?? 600_000),
     deadKnowledgeGraceDays: Number(process.env.WIKI_DEAD_GRACE_DAYS ?? 30),
   },
+  dailyReport: {
+    scheduleEnabled: process.env.DAILY_REPORT_SCHEDULE_ENABLED !== 'false',
+    scheduleTime: process.env.DAILY_REPORT_SCHEDULE_TIME ?? '12:00',
+    timezone: process.env.DAILY_REPORT_TIMEZONE ?? 'Asia/Shanghai',
+    baseUrl: process.env.DAILY_REPORT_BASE_URL ?? '',
+  },
 };

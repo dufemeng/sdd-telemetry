@@ -18,6 +18,7 @@ const expectedTables = [
   'sdd_work_item_artifact_turns',
   'sdd_wiki_recalls',
   'sdd_errors',
+  'sdd_daily_reports',
 ];
 
 const expectedUniqueIndexes = [
@@ -37,6 +38,7 @@ const expectedUniqueIndexes = [
   'uk_artifact_write_key',
   'uk_recall_key',
   'uk_sdd_errors_error_key',
+  'uk_daily_report_date_timezone',
 ];
 
 const expectedColumns: Record<string, string[]> = {
@@ -61,6 +63,19 @@ const expectedColumns: Record<string, string[]> = {
     'event_sequence',
     'event_time',
     'rule_version',
+  ],
+  sdd_daily_reports: [
+    'report_date',
+    'timezone',
+    'period_start',
+    'period_end',
+    'status',
+    'metrics_json',
+    'markdown_text',
+    'template_version',
+    'query_version',
+    'generated_at',
+    'generated_by',
   ],
 };
 

@@ -18,3 +18,7 @@ import './sdd/sdd.controller';
 import './sdd/sdd-query.repository';
 import './sdd/sdd-query.service';
 import './sdd/sdd-write.repository';
+import './reports/daily-report.repository';
+import './reports/daily-report.service';
+import './reports/daily-report.controller';
+import './reports/daily-report-scheduler';
