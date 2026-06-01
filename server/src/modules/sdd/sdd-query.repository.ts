@@ -292,6 +292,12 @@ export interface WikiRecallListRow {
   eventTime: Date | string | null;
 }
 
+export interface WikiRecallContentSourceRow {
+  raw_path: string;
+  wiki_relative_path: string | null;
+  action_type: string;
+}
+
 export interface ResolvedTimeWindow {
   from: string;
   to: string;
@@ -603,6 +609,19 @@ export class SddQueryRepository {
        ORDER BY tc.sequence ASC, tc.id ASC`,
       [interactionId],
     )) as InteractionToolCallRow[];
+  }
+
+  async findWikiRecallForContent(toolCallId: string): Promise<WikiRecallContentSourceRow | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT raw_path, wiki_relative_path, action_type
+       FROM sdd_wiki_recalls
+       WHERE tool_call_id = ?
+       ORDER BY id ASC
+       LIMIT 1`,
+      [toolCallId],
+    )) as WikiRecallContentSourceRow[];
+    return rows[0] ?? null;
   }
 
   async listErrors(clauses: string[], params: unknown[], limit: number): Promise<ErrorRow[]> {
