@@ -52,4 +52,8 @@ export default {
     host: process.env.REDIS_HOST ?? '127.0.0.1',
     port: Number(process.env.REDIS_PORT ?? 46379),
   },
+  knowledgeBase: {
+    rootPath: process.env.KNOWLEDGE_BASE_ROOT ?? '',
+    contentMaxBytes: Number(process.env.WIKI_CONTENT_MAX_BYTES ?? 512 * 1024),
+  },
 };
