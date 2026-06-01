@@ -4,6 +4,8 @@ import { classifyDoc, buildCoverage, type ScannedDoc, type RecallAgg } from '../
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 5, 1);
 
+const emptyUsers = { domainUsers: [], repoUsers: [] };
+
 describe('classifyDoc', () => {
   it('召回 >= 热门阈值 → hot', () => {
     expect(classifyDoc(10, NOW - 100 * DAY, NOW, 30)).toBe('hot');
@@ -33,7 +35,7 @@ describe('buildCoverage', () => {
   ];
 
   it('利用率 = 被召回 ∩ 库内 / 库内总数', () => {
-    const c = buildCoverage(scanned, recalls, NOW, 30);
+    const c = buildCoverage(scanned, recalls, emptyUsers.domainUsers, emptyUsers.repoUsers, NOW, 30);
     expect(c.totals.totalDocs).toBe(4);
     expect(c.totals.recalledDocs).toBe(2);
     expect(c.totals.coverageRate).toBeCloseTo(0.5);
@@ -44,7 +46,7 @@ describe('buildCoverage', () => {
   });
 
   it('按 repo 汇总与中文 label', () => {
-    const c = buildCoverage(scanned, recalls, NOW, 30);
+    const c = buildCoverage(scanned, recalls, emptyUsers.domainUsers, emptyUsers.repoUsers, NOW, 30);
     const trade = c.repos.find((r) => r.repo === 'trade')!;
     expect(trade.label).toBe('交易');
     expect(trade.totalDocs).toBe(4);
@@ -52,9 +54,19 @@ describe('buildCoverage', () => {
   });
 
   it('按 domain 汇总', () => {
-    const c = buildCoverage(scanned, recalls, NOW, 30);
+    const c = buildCoverage(scanned, recalls, emptyUsers.domainUsers, emptyUsers.repoUsers, NOW, 30);
     const d = c.domains.find((x) => x.domain === 'cashier')!;
     expect(d.deadDocs).toBe(1);
     expect(d.recalledDocs).toBe(2);
+  });
+
+  it('domain distinctUsers 来自 lookup 而非逐文档累加', () => {
+    const domainUsers = [{ domain: 'cashier', repo: 'trade', distinctUsers: 7 }];
+    const repoUsers = [{ repo: 'trade', distinctUsers: 12 }];
+    const c = buildCoverage(scanned, recalls, domainUsers, repoUsers, NOW, 30);
+    const d = c.domains.find((x) => x.domain === 'cashier')!;
+    expect(d.distinctUsers).toBe(7);
+    const trade = c.repos.find((r) => r.repo === 'trade')!;
+    expect(trade.distinctUsers).toBe(12);
   });
 });

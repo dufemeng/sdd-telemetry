@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-05-27
+更新时间：2026-06-01
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -809,6 +809,117 @@ export const SddWikiRecallContentSchema = z.object({
   truncated: z.boolean(),
 });
 ```
+
+### 6.21 GET /api/sdd/wiki-recalls/coverage
+
+知识库资产覆盖率快照。服务端扫描 `KNOWLEDGE_BASE_ROOT` 下三个知识库目录，与 `sdd_wiki_recalls` 做交叉比对，返回按 repo / domain / 文档级别的覆盖统计。
+
+Query：无。
+
+Response：
+
+```ts
+export const WikiCoverageResponseSchema = z.object({
+  scan: z.object({
+    configured: z.boolean(),
+    repos: z.array(z.object({
+      repo: z.string(),
+      label: z.string(),
+      gitRef: z.string().nullable(),
+      scannedAt: z.string(),
+    })),
+  }),
+  totals: z.object({
+    totalDocs: z.number(),
+    recalledDocs: z.number(),
+    coverageRate: z.number(),
+    recalls: z.number(),
+    coldDocs: z.number(),
+    deadDocs: z.number(),
+    newUnreadDocs: z.number(),
+    orphanPaths: z.number(),
+  }),
+  repos: z.array(z.object({
+    repo: z.string(),
+    label: z.string(),
+    totalDocs: z.number(),
+    recalledDocs: z.number(),
+    coverageRate: z.number(),
+    recalls: z.number(),
+    deadDocs: z.number(),
+    newUnreadDocs: z.number(),
+    distinctUsers: z.number(), // 该知识库独立去重人数（非逐文档累加）
+  })),
+  domains: z.array(z.object({
+    repo: z.string(),
+    domain: z.string(),
+    totalDocs: z.number(),
+    recalledDocs: z.number(),
+    recalls: z.number(),
+    deadDocs: z.number(),
+    newUnreadDocs: z.number(),
+    distinctUsers: z.number(), // 该领域独立去重人数
+    lastRecallAt: z.string().nullable(),
+  })),
+});
+```
+
+说明：
+
+1. `configured` 为 `false` 时 `KNOWLEDGE_BASE_ROOT` 未设置，前端展示降级占位。
+2. `deadDocs`：mtime 超过 `deadKnowledgeGraceDays`（默认 30）且召回数为 0 的文档。
+3. `newUnreadDocs`：mtime 在 `deadKnowledgeGraceDays`（默认 30 天）内且召回数为 0 的文档。
+4. `distinctUsers` 来自独立的 `COUNT(DISTINCT user_id)` SQL 查询，按 domain 和 repo 分别聚合，**不是**逐文档 distinctUsers 的算术和。
+5. 扫描结果缓存在进程内存，TTL 由 `scanCacheTtlMs`（默认 600s / 10 分钟）控制。
+
+### 6.22 GET /api/sdd/wiki-recalls/docs
+
+单领域文档清单。返回指定 repo + domain 下所有文档的召回统计和状态标签。
+
+Query：
+
+```text
+repo    string (trade | loan | wealth)
+domain  string (如 cashier、portfolio)
+```
+
+Response：
+
+```ts
+export const WikiDomainDocsResponseSchema = z.object({
+  repo: z.string(),
+  domain: z.string(),
+  items: z.array(z.object({
+    relativePath: z.string(),
+    recallCount: z.number(),
+    distinctUsers: z.number(),
+    lastRecallAt: z.string().nullable(),
+    lastToolCallId: z.string().nullable(),
+    status: z.enum(['hot', 'cold', 'dead', 'new']),
+    addedAt: z.string().nullable(),
+  })),
+});
+```
+
+说明：
+
+1. `status` 按阈值分类：`hot`（≥10 次）、`cold`（1-9 次）、`dead`（0 次 + mtime 超宽限期）、`new`（0 次 + mtime ≤7 天）。
+2. `distinctUsers` 是该文档级别的 `COUNT(DISTINCT user_id)`，不含跨文档累加。
+
+### 6.23 GET /api/sdd/wiki-recalls/content/by-path
+
+按 repo + relativePath 直接读取知识库文档当前版本。不依赖 `sdd_wiki_recalls` 记录，适用于无召回历史的新文档或死知识文档查看。
+
+Query：
+
+```text
+repo          string (trade | loan | wealth)
+relativePath  string (URL-encoded)
+```
+
+Response：与 6.20 相同的 `SddWikiRecallContentSchema`。
+
+说明：与 6.20 的区别在于入口——6.20 以 `toolCallId` 从 DB 查路径再读文件，6.23 直接以路径读文件。6.23 返回的始终是「当前挂载版本」，前端显示版本提示。
 
 ## 7. ops API
 

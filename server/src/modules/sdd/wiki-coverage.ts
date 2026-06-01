@@ -71,16 +71,39 @@ export function classifyDoc(recallCount: number, mtimeMs: number, nowMs: number,
   return nowMs - mtimeMs <= graceDays * 86_400_000 ? 'new' : 'dead';
 }
 
+export interface DomainDistinctUsers {
+  domain: string | null;
+  repo: string;
+  distinctUsers: number;
+}
+
+export interface RepoDistinctUsers {
+  repo: string;
+  distinctUsers: number;
+}
+
 const key = (repo: string, rel: string) => `${repo}\0${rel}`;
 
 export function buildCoverage(
   scanned: ScannedDoc[],
   recalls: RecallAgg[],
+  domainUsersLookup: DomainDistinctUsers[],
+  repoUsersLookup: RepoDistinctUsers[],
   nowMs: number,
   graceDays: number,
 ): CoverageResult {
   const recallByKey = new Map<string, RecallAgg>();
   for (const r of recalls) recallByKey.set(key(r.repo, r.relativePath), r);
+
+  const domainUsers = new Map<string, number>();
+  for (const d of domainUsersLookup) {
+    domainUsers.set(key(d.repo, d.domain ?? '(未识别)'), d.distinctUsers);
+  }
+
+  const repoUsers = new Map<string, number>();
+  for (const r of repoUsersLookup) {
+    repoUsers.set(r.repo, r.distinctUsers);
+  }
 
   const repoAgg = new Map<string, CoverageRepo>();
   const domainAgg = new Map<string, CoverageDomain>();
@@ -121,8 +144,6 @@ export function buildCoverage(
       totals.recalls += count;
       repo.recalls += count;
       domain.recalls += count;
-      repo.distinctUsers += r!.distinctUsers;
-      domain.distinctUsers += r!.distinctUsers;
       if (status === 'cold') totals.coldDocs++;
       if (r!.lastRecallAt && (!domain.lastRecallAt || r!.lastRecallAt > domain.lastRecallAt)) {
         domain.lastRecallAt = r!.lastRecallAt;
@@ -138,6 +159,13 @@ export function buildCoverage(
       repo.newUnreadDocs++;
       domain.newUnreadDocs++;
     }
+  }
+
+  for (const domain of domainAgg.values()) {
+    domain.distinctUsers = domainUsers.get(key(domain.repo, domain.domain)) ?? 0;
+  }
+  for (const repo of repoAgg.values()) {
+    repo.distinctUsers = repoUsers.get(repo.repo) ?? 0;
   }
 
   const scannedKeys = new Set(scanned.map((d) => key(d.repo, d.relativePath)));

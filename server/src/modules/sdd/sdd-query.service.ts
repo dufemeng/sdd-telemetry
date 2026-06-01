@@ -135,6 +135,8 @@ export class SddQueryService {
   async getWikiRecallCoverage(): Promise<WikiCoverageResponse> {
     const scan = await this.getScan();
     const rows = await this.sddQueryRepository.aggregateRecallPaths();
+    const domainUsersRows = await this.sddQueryRepository.aggregateRecallDistinctUsers();
+    const repoUsersRows = await this.sddQueryRepository.aggregateRecallRepoDistinctUsers();
     const recalls: RecallAgg[] = rows.map((r) => ({
       repo: deriveRepoShortKey(r.raw_path, r.wiki_relative_path),
       relativePath: r.wiki_relative_path,
@@ -143,7 +145,16 @@ export class SddQueryService {
       lastRecallAt: r.last_at ? new Date(r.last_at).toISOString() : null,
       lastToolCallId: null,
     }));
-    const c = buildCoverage(scan.docs, recalls, Date.now(), this.knowledgeBaseConfig.deadKnowledgeGraceDays);
+    const domainUsers = domainUsersRows.map((r) => ({
+      domain: r.wiki_domain,
+      repo: r.repo,
+      distinctUsers: Number(r.distinct_users),
+    }));
+    const repoUsers = repoUsersRows.map((r) => ({
+      repo: r.repo,
+      distinctUsers: Number(r.distinct_users),
+    }));
+    const c = buildCoverage(scan.docs, recalls, domainUsers, repoUsers, Date.now(), this.knowledgeBaseConfig.deadKnowledgeGraceDays);
     return {
       scan: { configured: scan.configured, repos: scan.repos },
       totals: c.totals,

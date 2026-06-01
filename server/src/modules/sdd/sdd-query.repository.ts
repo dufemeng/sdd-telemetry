@@ -1131,6 +1131,50 @@ export class SddQueryRepository {
     `);
   }
 
+  async aggregateRecallDistinctUsers(): Promise<
+    Array<{
+      wiki_domain: string | null;
+      repo: string;
+      distinct_users: number;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return dataSource.query(`
+      SELECT wiki_domain,
+             CASE
+               WHEN raw_path LIKE '%bk-fe-knowledge-trade%' THEN 'trade'
+               WHEN raw_path LIKE '%bk-fe-knowledge-loan%' THEN 'loan'
+               WHEN raw_path LIKE '%bk-fe-knowledge-wealth%' THEN 'wealth'
+               ELSE 'unknown'
+             END AS repo,
+             COUNT(DISTINCT user_id) AS distinct_users
+      FROM sdd_wiki_recalls
+      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
+      GROUP BY wiki_domain, repo
+    `);
+  }
+
+  async aggregateRecallRepoDistinctUsers(): Promise<
+    Array<{
+      repo: string;
+      distinct_users: number;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return dataSource.query(`
+      SELECT CASE
+               WHEN raw_path LIKE '%bk-fe-knowledge-trade%' THEN 'trade'
+               WHEN raw_path LIKE '%bk-fe-knowledge-loan%' THEN 'loan'
+               WHEN raw_path LIKE '%bk-fe-knowledge-wealth%' THEN 'wealth'
+               ELSE 'unknown'
+             END AS repo,
+             COUNT(DISTINCT user_id) AS distinct_users
+      FROM sdd_wiki_recalls
+      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
+      GROUP BY repo
+    `);
+  }
+
   async listDomainDocRecalls(
     domain: string,
   ): Promise<
