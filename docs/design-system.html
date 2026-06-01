@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>设计系统 · SDD 质量观测台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --paper: #ffffff;
+    --ink: #0e1322;
+    --muted: #5a647a;
+    --line: #e2e6ee;
+    --line-strong: #c8cfdb;
+    --accent: #4a4700;
+    --accent-soft: #fffde6;
+    --positive: #1f7a3e;
+    --negative: #9c2a1a;
+    --display: Inter, 'PingFang SC', -apple-system, sans-serif;
+    --body: Inter, 'PingFang SC', -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* SDD brand tokens (for swatches / mini previews) */
+    --brand-base: #0a0a0a;
+    --brand-surface: #101010;
+    --brand-panel: #14140b;
+    --brand-primary: #faff69;
+    --brand-text: #e5e3d3;
+    --brand-muted: #93927c;
+    --brand-border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14.5px; line-height: 1.6; }
+  .page { max-width: 1080px; margin: 28px auto; padding: 0 32px 80px; }
+
+  /* ── Top bar ── */
+  header.top { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  .top-left { display: flex; align-items: center; gap: 14px; }
+  .crumb { font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pill.live { background: #e6f4ed; color: #1a6e3a; }
+  .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .top-actions { display: flex; gap: 8px; font-size: 12px; color: var(--muted); }
+  .top-actions span { padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; white-space: nowrap; }
+
+  /* ── Hero ── */
+  h1 { font-family: var(--display); font-size: 40px; line-height: 1.08; letter-spacing: -0.02em; margin: 8px 0 10px; font-weight: 700; }
+  .north-star { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .north-star .label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .north-star .value { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 3px 10px; border-radius: 6px; }
+  .summary { font-size: 16.5px; color: var(--muted); max-width: 64ch; margin: 0 0 22px; line-height: 1.6; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 24px; margin: 14px 0 40px; padding: 16px 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .meta-row span strong { display: block; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  .meta-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 4px; border: 1px solid rgba(0,0,0,0.12); }
+
+  /* ── Sections ── */
+  section { margin-top: 44px; }
+  h2 { font-family: var(--display); font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; font-weight: 700; }
+  h2 small { display: block; font-family: var(--body); font-size: 13px; color: var(--muted); font-weight: 400; margin-top: 4px; line-height: 1.5; letter-spacing: 0; }
+  .section-divider { height: 1px; background: var(--line); margin: 44px 0 0; }
+
+  /* ── Panels / cards ── */
+  .panel { padding: 20px 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+  .panel p { margin: 0 0 10px; }
+  .panel p:last-child { margin: 0; }
+  .panel h3 { font-size: 13px; font-weight: 600; color: var(--ink); margin: 0 0 8px; }
+  .callout { padding: 18px 22px; background: var(--accent-soft); border-left: 3px solid #b5a800; border-radius: 6px; margin-top: 14px; }
+  .callout .rule-name { font-family: var(--mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #5a5100; margin-bottom: 6px; }
+  .callout p { margin: 0; font-size: 14px; line-height: 1.6; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px; }
+
+  /* ── Color swatches ── */
+  .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 14px; }
+  .swatch-card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .swatch-block { height: 56px; width: 100%; }
+  .swatch-block.border-inset { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+  .swatch-info { padding: 10px 12px; }
+  .swatch-name { font-size: 12px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 2px; }
+  .swatch-hex { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .swatch-desc { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+
+  /* ── Typography table ── */
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13.5px; }
+  th, td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); background: #f8fafd; font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  td.sample-ui { font-family: Inter, 'PingFang SC', sans-serif; }
+  td.sample-mono { font-family: 'JetBrains Mono', monospace; }
+  td code { font-family: var(--mono); font-size: 11.5px; background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+
+  /* ── Elevation diagram ── */
+  .elevation-stack { display: flex; flex-direction: column; gap: 0; margin-top: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .elevation-layer { display: flex; align-items: center; gap: 20px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
+  .elevation-layer:last-child { border-bottom: none; }
+  .elevation-swatch { width: 40px; height: 40px; border-radius: 6px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
+  .elevation-label strong { display: block; font-size: 13.5px; font-weight: 600; }
+  .elevation-label .hex { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .elevation-label .use { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Component previews ── */
+  .components-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .component-card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .component-preview { background: #0a0a0a; padding: 24px; display: flex; align-items: center; justify-content: center; min-height: 100px; }
+  .component-meta { padding: 14px 16px; }
+  .component-meta strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .component-meta p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+  /* Mini component previews (inside dark bg) */
+  .mini-stat { display: flex; gap: 10px; align-items: flex-start; background: #101010; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; width: 200px; }
+  .mini-icon { width: 28px; height: 28px; background: #202016; border-radius: 4px; display: grid; place-items: center; flex-shrink: 0; }
+  .mini-icon svg { width: 14px; height: 14px; stroke: #faff69; fill: none; stroke-width: 2; }
+  .mini-label { font-family: Inter, sans-serif; font-size: 10px; color: #c9c8af; }
+  .mini-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 600; color: #f5f5f5; margin-top: 4px; line-height: 1; }
+  .mini-hint { font-size: 9.5px; color: #93927c; margin-top: 4px; }
+
+  .mini-badge { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 500; white-space: nowrap; font-family: Inter, sans-serif; }
+  .mini-badge.good { background: rgba(34,197,94,0.10); color: #22c55e; }
+  .mini-badge.warn { background: rgba(245,158,11,0.10); color: #f59e0b; }
+  .mini-badge.bad  { background: rgba(239,68,68,0.16); color: #ffb4ab; }
+  .mini-badge.neu  { background: rgba(255,255,255,0.08); color: #c9c8af; }
+
+  .mini-btn { height: 28px; padding: 0 10px; background: #171717; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; color: #c9c8af; font-size: 11px; font-family: Inter, sans-serif; cursor: default; display: inline-flex; align-items: center; gap: 5px; }
+  .mini-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .mini-btn:hover { background: #222; color: #faff69; }
+
+  .mini-nav { background: #14140b; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 6px; width: 160px; }
+  .mini-nav-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; font-size: 11px; font-family: Inter, sans-serif; color: #c9c8af; position: relative; }
+  .mini-nav-item.active { color: #faff69; background: #2b2b20; }
+  .mini-nav-pill { position: absolute; left: 0; top: 7px; width: 3px; height: 12px; background: #faff69; border-radius: 0 3px 3px 0; }
+  .mini-nav-dot { width: 5px; height: 5px; border-radius: 50%; background: #faff69; margin-left: auto; animation: ds-pulse 2s ease-in-out infinite; }
+  @keyframes ds-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .mini-seg { display: flex; background: #171717; border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 2px; gap: 2px; }
+  .mini-seg-btn { height: 20px; padding: 0 8px; border-radius: 3px; font-size: 10px; font-family: Inter, sans-serif; color: #c9c8af; }
+  .mini-seg-btn.active { background: #222; color: #f5f5f5; }
+
+  .mini-barlist { width: 200px; }
+  .mini-bar-row { display: grid; grid-template-columns: 80px 1fr 36px; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .mini-bar-row:last-child { margin-bottom: 0; }
+  .mini-bar-label { font-size: 10px; color: #e5e3d3; font-family: Inter, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-bar-track { height: 5px; background: #202016; border-radius: 999px; overflow: hidden; }
+  .mini-bar-fill { height: 100%; background: #c9ce3c; border-radius: 999px; }
+  .mini-bar-count { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #f5f5f5; text-align: right; }
+
+  /* ── Do / Don't ── */
+  .dodont { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .do-list, .dont-list { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+  .do-list h3 { color: #1f7a3e; font-size: 13px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .dont-list h3 { color: #9c2a1a; font-size: 13px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .do-list h3 svg, .dont-list h3 svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.5; flex-shrink: 0; }
+  .do-list ul, .dont-list ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+  .do-list li, .dont-list li { font-size: 13.5px; line-height: 1.55; padding-left: 18px; position: relative; color: var(--ink); }
+  .do-list li::before { content: '✓'; position: absolute; left: 0; color: #1f7a3e; font-weight: 700; font-size: 12px; }
+  .dont-list li::before { content: '✕'; position: absolute; left: 0; color: #9c2a1a; font-weight: 700; font-size: 11px; }
+
+  /* ── Footer ── */
+  footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  @media (max-width: 860px) {
+    .two-col, .dodont, .components-grid { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 30px; }
+    .palette-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  }
+  @media (max-width: 600px) {
+    .page { padding: 0 18px 60px; }
+    .top-actions { display: none; }
+    .three-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Top bar -->
+  <header class="top">
+    <div class="top-left">
+      <span class="crumb">SDD / 设计系统</span>
+      <span class="pill live"><span class="pill-dot"></span>已发布</span>
+    </div>
+    <div class="top-actions">
+      <span>创建 · 2026-05-31</span>
+      <span>主题 · 深色终端</span>
+      <span>Register · Product</span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="north-star">
+    <span class="label">创意北极星</span>
+    <span class="value">终端信号 / The Terminal Signal</span>
+  </div>
+  <h1>设计系统 · SDD 质量观测台</h1>
+  <p class="summary">一套服务于工程师内部数据仪表盘的视觉规范。单一高频主色穿透近黑底面，每个数据点都是一次播报——这是仪器，不是界面。</p>
+
+  <div class="meta-row">
+    <span><strong>主色</strong><span class="meta-swatch" style="background:#faff69"></span>#faff69 电子黄</span>
+    <span><strong>底面</strong><span class="meta-swatch" style="background:#0a0a0a"></span>#0a0a0a 近黑</span>
+    <span><strong>UI 字体</strong>Inter + PingFang SC</span>
+    <span><strong>数值字体</strong>JetBrains Mono</span>
+    <span><strong>圆角</strong>4px / 6px</span>
+    <span><strong>阴影</strong>无（纯色调分层）</span>
+  </div>
+
+  <!-- ── 1. Overview ── -->
+  <section>
+    <h2>1. Overview<small>视觉哲学与设计意图</small></h2>
+    <div class="two-col" style="margin-top:14px">
+      <div class="panel">
+        <p>本设计系统是一条穿透噪声的信号——一道电子黄色频率扫过纯黑底面，每一个数据点都是一次播报。它不是界面，是仪器。工程师坐在这块屏幕前，读取数字，做决策，离开。</p>
+        <p>视觉语言起点是终端美学：近黑底面三层堆叠，全部带有极微弱的暖黄色调——电子黄主色的余温渗进了整个中性色调栈。这不是"深色主题"，是一套发光体系：背景吸光，数字发光。</p>
+        <p>本系统明确拒绝：SaaS 营销系的渐变堆砌；厚重企业感（SAP / Oracle）的蓝灰主色；任何浅色底面的诱惑。这是工程师为工程师构建的工具。</p>
+      </div>
+      <div class="panel">
+        <h3>Key Characteristics</h3>
+        <ul style="padding-left:18px;margin:0;display:flex;flex-direction:column;gap:8px;font-size:13.5px">
+          <li>近黑三层底面，带统一的暖黄余温</li>
+          <li>单一主色频率：#faff69 用于信号，不用于装饰</li>
+          <li>信息密度优先，余白服务于扫读而非审美</li>
+          <li>数值永远用等宽字体（JetBrains Mono）</li>
+          <li>交互有重量感：hover/active 状态明确</li>
+        </ul>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+          <h3>品牌三词</h3>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <span style="padding:4px 12px;background:var(--accent-soft);color:var(--accent);border-radius:6px;font-size:12.5px;font-weight:600">实验性</span>
+            <span style="padding:4px 12px;background:var(--accent-soft);color:var(--accent);border-radius:6px;font-size:12.5px;font-weight:600">锐利</span>
+            <span style="padding:4px 12px;background:var(--accent-soft);color:var(--accent);border-radius:6px;font-size:12.5px;font-weight:600">黑客气质</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2. Colors ── -->
+  <div class="section-divider"></div>
+  <section>
+    <h2>2. Colors<small>终端色板——近黑三层 + 单一高频主色 + 语义三色</small></h2>
+
+    <div style="margin-top:18px;margin-bottom:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Primary</div>
+    <div class="palette-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#faff69"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">电子黄 / Electric Volt</span>
+          <span class="swatch-hex">#faff69</span>
+          <p class="swatch-desc">唯一主色。激活态、icon 前景、交互 hover、进度条。对比度 ~16:1（在底面上）。</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#c9ce3c"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">条形填充 / Bar Fill</span>
+          <span class="swatch-hex">#c9ce3c</span>
+          <p class="swatch-desc">Electric Volt 的亚光版本。密集图表环境中减少视觉张力。</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;margin-bottom:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Neutral Stack（由深到浅）</div>
+    <div class="elevation-stack">
+      <div class="elevation-layer">
+        <div class="elevation-swatch" style="background:#0a0a0a"></div>
+        <div class="elevation-label">
+          <strong>虚空 / Void <code style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:2px 6px;border-radius:4px">#0a0a0a</code></strong>
+          <div class="use">页面底面。接近纯黑，带极微弱暖色调。吸光体，让所有层次发光。</div>
+        </div>
+      </div>
+      <div class="elevation-layer">
+        <div class="elevation-swatch" style="background:#101010"></div>
+        <div class="elevation-label">
+          <strong>浮层 / Surface <code style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:2px 6px;border-radius:4px">#101010</code></strong>
+          <div class="use">卡片、Panel 背景。比底面亮一档，与 border 配合构成边界。</div>
+        </div>
+      </div>
+      <div class="elevation-layer">
+        <div class="elevation-swatch" style="background:#14140b"></div>
+        <div class="elevation-label">
+          <strong>暖板 / Panel <code style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:2px 6px;border-radius:4px">#14140b</code></strong>
+          <div class="use">侧边栏、顶栏。带明显暖黄偏色，从色调上区分导航区与内容区。</div>
+        </div>
+      </div>
+      <div class="elevation-layer">
+        <div class="elevation-swatch" style="background:#171717"></div>
+        <div class="elevation-label">
+          <strong>悬停态 / Hover <code style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:2px 6px;border-radius:4px">#171717</code></strong>
+          <div class="use">交互元素 hover 背景、DataTable 表头背景。</div>
+        </div>
+      </div>
+      <div class="elevation-layer">
+        <div class="elevation-swatch" style="background:#222222"></div>
+        <div class="elevation-label">
+          <strong>激活态 / Active <code style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:2px 6px;border-radius:4px">#222222</code></strong>
+          <div class="use">按钮 active 背景、Segment 已选项背景。</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;margin-bottom:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Text Ramp</div>
+    <div class="palette-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#f5f5f5"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">高亮数字</span><span class="swatch-hex">#f5f5f5</span>
+          <p class="swatch-desc">统计数值，接近纯白</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#e5e3d3"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">主文字</span><span class="swatch-hex">#e5e3d3</span>
+          <p class="swatch-desc">正文，略带暖色，避免刺眼</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#c9c8af"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">次文字</span><span class="swatch-hex">#c9c8af</span>
+          <p class="swatch-desc">标签、导航默认态</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:#93927c"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">静音文字</span><span class="swatch-hex">#93927c</span>
+          <p class="swatch-desc">辅助信息、时间戳</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;margin-bottom:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Semantic</div>
+    <div class="three-col">
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center">
+          <span style="color:#22c55e;font-weight:700;font-size:18px">✓</span>
+        </div>
+        <div class="swatch-info">
+          <span class="swatch-name">成功 / Good</span>
+          <span class="swatch-hex">#22c55e · rgba(34,197,94,0.10)</span>
+          <p class="swatch-desc">ingest 成功、数据质量正常</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center">
+          <span style="color:#f59e0b;font-weight:700;font-size:18px">⚠</span>
+        </div>
+        <div class="swatch-info">
+          <span class="swatch-name">警告 / Warn</span>
+          <span class="swatch-hex">#f59e0b · rgba(245,158,11,0.10)</span>
+          <p class="swatch-desc">降级、延迟、阈值临界</p>
+        </div>
+      </div>
+      <div class="swatch-card">
+        <div class="swatch-block" style="background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center">
+          <span style="color:#ffb4ab;font-weight:700;font-size:18px">✕</span>
+        </div>
+        <div class="swatch-info">
+          <span class="swatch-name">异常 / Bad</span>
+          <span class="swatch-hex">#ffb4ab · rgba(239,68,68,0.16)</span>
+          <p class="swatch-desc">ingest 失败、数据缺失（粉红，深色底可读性优于纯红）</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px">
+      <div class="callout">
+        <div class="rule-name">The Single Frequency Rule</div>
+        <p>Electric Volt (#faff69) 在任意屏幕上的覆盖面积不超过 5%。它的稀缺性是它作为信号的原因。出现在三个以上视觉区域时必须审查——可能有一处是装饰，不是信号。</p>
+      </div>
+      <div class="callout" style="margin-top:10px">
+        <div class="rule-name">The Warm Stack Rule</div>
+        <p>所有中性色（底面 → 浮层 → 暖板 → 导航激活底）都带有对齐 Electric Volt 色调的微量暖偏色。新增中性色层次时，必须沿这条暖轴插值，不得添加冷灰或蓝灰色。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3. Typography ── -->
+  <div class="section-divider"></div>
+  <section>
+    <h2>3. Typography<small>Inter（文字）+ JetBrains Mono（数值）——两者对比轴清晰，绝不混用</small></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>层级</th><th>字体</th><th>尺寸 / 字重</th><th>示例</th><th>用途</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Display</code></td>
+          <td>JetBrains Mono</td>
+          <td>24px · 600</td>
+          <td class="sample-mono" style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:#0e1322">1,248</td>
+          <td>StatCard 核心数字，等宽对齐</td>
+        </tr>
+        <tr>
+          <td><code>Title</code></td>
+          <td>Inter</td>
+          <td>18px · 700</td>
+          <td class="sample-ui" style="font-size:17px;font-weight:700">SDD 质量观测台</td>
+          <td>侧边栏品牌名，全局唯一</td>
+        </tr>
+        <tr>
+          <td><code>Headline</code></td>
+          <td>Inter</td>
+          <td>14px · 600</td>
+          <td class="sample-ui" style="font-size:14px;font-weight:600">技能使用分布</td>
+          <td>Panel 标题、页面区块</td>
+        </tr>
+        <tr>
+          <td><code>Body</code></td>
+          <td>Inter</td>
+          <td>13px · 400</td>
+          <td class="sample-ui" style="font-size:13px">导航标签、表格内容、描述文字</td>
+          <td>主要阅读内容</td>
+        </tr>
+        <tr>
+          <td><code>Label</code></td>
+          <td>Inter</td>
+          <td>12px · 400</td>
+          <td class="sample-ui" style="font-size:12px">技能调用次数</td>
+          <td>指标名称、次要信息行</td>
+        </tr>
+        <tr>
+          <td><code>Caption</code></td>
+          <td>Inter</td>
+          <td>10px · 700 · uppercase</td>
+          <td class="sample-ui" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">USER NAME</td>
+          <td>表格列标题、导航分组标签</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:14px">
+      <div class="callout">
+        <div class="rule-name">The Mono-for-Numbers Rule</div>
+        <p>任何数值（统计数字、百分比、行号、时间戳数字部分）都使用 JetBrains Mono 渲染。等宽是数字可读性的前提，不因"看起来一致"而改为 Inter。</p>
+      </div>
+      <div class="callout" style="margin-top:10px">
+        <div class="rule-name">The Fixed Scale Rule</div>
+        <p>字号固定（px），不使用 clamp() 或 vw 单位。仪表盘用户在固定 DPI 下操作，流式字号在侧边栏或窄面板中产生视觉噪声。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. Elevation ── -->
+  <div class="section-divider"></div>
+  <section>
+    <h2>4. Elevation<small>纯色调分层——无任何 box-shadow，深度由底面色阶和 border 传达</small></h2>
+    <div class="two-col" style="margin-top:14px">
+      <div class="panel">
+        <p>系统严格使用色调分层替代阴影。三层结构（由深到浅）：</p>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;background:#0a0a0a;border-radius:5px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0"></div>
+            <div><strong style="font-size:13px">底面层</strong><div style="font-size:12px;color:var(--muted)">Void · #0a0a0a · 页面画布</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;background:#101010;border-radius:5px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0"></div>
+            <div><strong style="font-size:13px">内容层</strong><div style="font-size:12px;color:var(--muted)">Surface · #101010 · 卡片、Panel</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;background:#14140b;border-radius:5px;border:1px solid rgba(0,0,0,0.2);flex-shrink:0"></div>
+            <div><strong style="font-size:13px">导航层</strong><div style="font-size:12px;color:var(--muted)">Panel · #14140b · 侧边栏、顶栏</div></div>
+          </div>
+        </div>
+        <p style="margin-top:14px;font-size:13px">唯一分隔工具：<code style="font-family:var(--mono);font-size:11.5px;background:var(--bg);padding:2px 6px;border-radius:4px">rgba(255,255,255,0.08)</code> 边界线，在三层任意组合中保持一致重量。</p>
+      </div>
+      <div>
+        <div class="callout">
+          <div class="rule-name">The No-Shadow Rule</div>
+          <p>禁止使用任何 box-shadow。层次感来自色阶，投影会破坏终端美学的纯净感。</p>
+        </div>
+        <div class="callout" style="margin-top:10px">
+          <div class="rule-name">The Flat-By-Default Rule</div>
+          <p>表面在静止状态完全平坦。状态变化来自背景色切换（hover: #171717；active: #222222），不通过投影或模糊表示激活。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 5. Components ── -->
+  <div class="section-divider"></div>
+  <section>
+    <h2>5. Components<small>组件哲学：沉稳有力——静止消隐，激活时用 Electric Volt 切割出存在感</small></h2>
+    <div class="components-grid">
+
+      <!-- StatCard -->
+      <div class="component-card">
+        <div class="component-preview">
+          <div class="mini-stat">
+            <div class="mini-icon">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+            <div>
+              <div class="mini-label">技能调用次数</div>
+              <div class="mini-value">1,248</div>
+              <div class="mini-hint">较上周期 ↑ 12%</div>
+            </div>
+          </div>
+        </div>
+        <div class="component-meta">
+          <strong>StatCard</strong>
+          <p>Surface 背景，6px 圆角，border。图标井 34×34（#202016，4px 圆角）。数值用 JetBrains Mono 24px。</p>
+        </div>
+      </div>
+
+      <!-- StatusBadge -->
+      <div class="component-card">
+        <div class="component-preview" style="gap:10px;flex-wrap:wrap">
+          <span class="mini-badge good">成功</span>
+          <span class="mini-badge warn">警告</span>
+          <span class="mini-badge bad">异常</span>
+          <span class="mini-badge neu">未知</span>
+        </div>
+        <div class="component-meta">
+          <strong>StatusBadge</strong>
+          <p>Pill 形（rounded-full），11px，4 种语义变体。文字颜色 + 对应低透明度背景。</p>
+        </div>
+      </div>
+
+      <!-- GhostButton -->
+      <div class="component-card">
+        <div class="component-preview" style="gap:8px">
+          <div class="mini-btn">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-3.51"></path></svg>
+            刷新
+          </div>
+          <div class="mini-seg">
+            <span class="mini-seg-btn active">24h</span>
+            <span class="mini-seg-btn">7d</span>
+            <span class="mini-seg-btn">30d</span>
+          </div>
+        </div>
+        <div class="component-meta">
+          <strong>GhostButton + SegmentControl</strong>
+          <p>Ghost: 32px, #171717 bg, border。Hover: #222 bg + Electric Volt 文字，120ms 过渡。Segment: 组合而非独立按钮。</p>
+        </div>
+      </div>
+
+      <!-- Sidebar Nav -->
+      <div class="component-card">
+        <div class="component-preview">
+          <div class="mini-nav">
+            <div class="mini-nav-item active">
+              <span class="mini-nav-pill"></span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#faff69" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              总览
+              <span class="mini-nav-dot"></span>
+            </div>
+            <div class="mini-nav-item" style="color:#c9c8af">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+              用户分析
+            </div>
+          </div>
+        </div>
+        <div class="component-meta">
+          <strong>Sidebar Nav Item</strong>
+          <p>激活态：#2b2b20 bg（spring 动画）+ 左侧 Electric Volt 竖条 pill + 右侧脉冲圆点。图标 scale 110%。</p>
+        </div>
+      </div>
+
+      <!-- BarList -->
+      <div class="component-card">
+        <div class="component-preview">
+          <div class="mini-barlist">
+            <div class="mini-bar-row">
+              <div class="mini-bar-label">bk-fe-design</div>
+              <div class="mini-bar-track"><div class="mini-bar-fill" style="width:80%"></div></div>
+              <div class="mini-bar-count">328</div>
+            </div>
+            <div class="mini-bar-row">
+              <div class="mini-bar-label">bk-fe-code</div>
+              <div class="mini-bar-track"><div class="mini-bar-fill" style="width:62%"></div></div>
+              <div class="mini-bar-count">256</div>
+            </div>
+            <div class="mini-bar-row">
+              <div class="mini-bar-label">bk-fe-task</div>
+              <div class="mini-bar-track"><div class="mini-bar-fill" style="width:35%"></div></div>
+              <div class="mini-bar-count">144</div>
+            </div>
+          </div>
+        </div>
+        <div class="component-meta">
+          <strong>BarList</strong>
+          <p>三列 grid：标签 / 进度条 / 数值。轨道 #202016，填充 #c9ce3c（Bar Fill）。计数右对齐 JetBrains Mono。</p>
+        </div>
+      </div>
+
+      <!-- DataTable -->
+      <div class="component-card">
+        <div class="component-preview" style="padding:0;align-items:stretch">
+          <table style="margin:0;background:transparent;border:none;border-radius:0;font-size:11px;width:100%">
+            <thead>
+              <tr>
+                <th style="background:#171717;color:#93927c;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;font-family:'JetBrains Mono',monospace">用户名</th>
+                <th style="background:#171717;color:#93927c;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;font-family:'JetBrains Mono',monospace">调用次数</th>
+                <th style="background:#171717;color:#93927c;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;font-family:'JetBrains Mono',monospace">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background:rgba(250,255,105,0.06)">
+                <td style="color:#e5e3d3;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,0.06)">张三</td>
+                <td style="color:#f5f5f5;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,0.06);font-family:'JetBrains Mono',monospace">248</td>
+                <td style="padding:7px 10px;border-bottom:1px solid rgba(255,255,255,0.06)"><span class="mini-badge good">成功</span></td>
+              </tr>
+              <tr>
+                <td style="color:#e5e3d3;padding:7px 10px">李四</td>
+                <td style="color:#f5f5f5;padding:7px 10px;font-family:'JetBrains Mono',monospace">112</td>
+                <td style="padding:7px 10px"><span class="mini-badge warn">警告</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="component-meta">
+          <strong>DataTable</strong>
+          <p>4px 圆角，sticky 列标题（#171717 背景），选中行用 Electric Volt 极低透明度背景（rgba(250,255,105,0.06)）。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 6. Do's and Don'ts ── -->
+  <div class="section-divider"></div>
+  <section>
+    <h2>6. Do's and Don'ts<small>PRODUCT.md 的策略线在这里落地为视觉守则</small></h2>
+    <div class="dodont">
+      <div class="do-list">
+        <h3>
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          Do
+        </h3>
+        <ul>
+          <li>用 Electric Volt (#faff69) 表示信号：激活态、交互 hover、需要注意的读数</li>
+          <li>数值永远用 JetBrains Mono（统计数字、百分比、行号、时间戳数字）</li>
+          <li>新增中性色时沿暖黄色轴插值，不添加冷灰或蓝灰色</li>
+          <li>状态变化通过背景色切换表达，不用阴影或模糊</li>
+          <li>错误状态比成功状态更醒目——bad-text (#ffb4ab) 这是对的</li>
+          <li>页面切换使用 opacity + translate + blur 过渡（300ms），并响应 prefers-reduced-motion</li>
+          <li>用 rgba(255,255,255,0.08) 作为唯一边框颜色，不用实心颜色</li>
+        </ul>
+      </div>
+      <div class="dont-list">
+        <h3>
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          Don't
+        </h3>
+        <ul>
+          <li>SaaS 营销系设计（渐变堆砌、五彩斑斓插图、大面积圆角卡片网格）</li>
+          <li>厚重企业感（SAP / Oracle 蓝灰主色、多层 Tab 嵌套、宽实线边框）</li>
+          <li>浅色或白色底面——任何 L &gt; 0.2 的背景色都背离终端信号美学</li>
+          <li>任何 box-shadow——深度来自色阶，不来自投影</li>
+          <li>在三个以上位置同时使用 Electric Volt，审查是否有装饰性用法</li>
+          <li>为装饰目的使用 backdrop-filter / 毛玻璃效果</li>
+          <li>border-left &gt; 1px 的彩色竖条做卡片或列表的视觉强调</li>
+          <li>渐变文字（background-clip: text + gradient）</li>
+          <li>在 UI 标签、按钮、数据单元格中使用 Display 字体</li>
+          <li>在不表示数据序列的地方用编号标记（01 / 02 / 03 眉头样式）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>SDD 质量观测台 · Design System v1.0</span>
+    <span>2026-05-31 · 终端信号 / The Terminal Signal</span>
+  </footer>
+
+</div>
+</body>
+</html>
