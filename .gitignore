@@ -14,3 +14,5 @@ sdd-telemetry-images-*.tar.gz.sha256
 .superpowers/
 .agents
 references/
+.claude/
+.opencode/
