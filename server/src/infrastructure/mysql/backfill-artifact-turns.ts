@@ -54,9 +54,9 @@ async function main(): Promise<void> {
             WHERE awr.session_id = w.session_id AND awr.interaction_id IS NOT NULL
           )
         ON DUPLICATE KEY UPDATE
-          skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
-          user_id = COALESCE(VALUES(user_id), user_id),
-          session_id = COALESCE(VALUES(session_id), session_id),
+          skill_usage_id = COALESCE(VALUES(skill_usage_id), sdd_work_item_artifact_turns.skill_usage_id),
+          user_id = COALESCE(VALUES(user_id), sdd_work_item_artifact_turns.user_id),
+          session_id = COALESCE(VALUES(session_id), sdd_work_item_artifact_turns.session_id),
           anchor_event_time = VALUES(anchor_event_time),
           write_event_time = VALUES(write_event_time),
           event_time = VALUES(event_time),
