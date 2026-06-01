@@ -7,7 +7,6 @@ import { SoftBadge } from './WikiRecallControls';
 import { useWikiRecallDomainDocs } from '../useWikiRecalls';
 import { useSddWorkItems } from '@/pages/sdd/work-items/useSddWorkItems';
 import { REPO_LABEL } from '../styles';
-import { formatInteger } from '@/lib/format';
 
 const ROOT_DOMAIN_LABEL = '（根目录）';
 
@@ -104,9 +103,6 @@ export function DomainDrawer({ repo, domain, onClose }: { repo: string; domain: 
                     </span>
                   )}
                 </div>
-                <span className="text-right text-[11px] text-[var(--color-muted)] shrink-0" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {formatInteger(w.artifactCount)} 文档
-                </span>
               </button>
             ))}
           </div>
