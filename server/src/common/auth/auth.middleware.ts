@@ -59,7 +59,7 @@ export function requiresSuperAdmin(method: string, path: string): boolean {
   if (path === '/api/sdd/user-settings') {
     return true;
   }
-  if (path.match(/^\/api\/reports\/daily\/\d{4}-\d{2}-\d{2}\/regenerate$/)) {
+  if (method === 'POST' && path.startsWith('/api/reports/daily/') && path.endsWith('/regenerate')) {
     return true;
   }
   return path.startsWith('/api/sdd/semantics') && method !== 'GET';

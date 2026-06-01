@@ -288,10 +288,12 @@ export class DailyReportRepository {
          FROM sdd_skill_usages su
          WHERE su.event_time >= ? AND su.event_time < ?
          GROUP BY su.work_item_id
-         HAVING (
-           SELECT COUNT(DISTINCT a.artifact_type)
-           FROM sdd_work_item_artifacts a WHERE a.work_item_id = su.work_item_id
-         ) >= 2
+          HAVING (
+            SELECT COUNT(DISTINCT
+              CASE WHEN a.artifact_type = 'codereview' THEN 'review' ELSE a.artifact_type END
+            )
+            FROM sdd_work_item_artifacts a WHERE a.work_item_id = su.work_item_id
+          ) >= 2
        ) sub`,
       [periodStart, periodEnd],
     )) as Array<{ cnt: string | number }>;
@@ -335,7 +337,8 @@ export class DailyReportRepository {
           WHERE su.work_item_id = wi.id AND su.event_time >= ? AND su.event_time < ?) AS contributor_count,
           (SELECT COUNT(*)
            FROM sdd_wiki_recalls wr
-           WHERE wr.work_item_id = wi.id
+           LEFT JOIN sdd_skill_usages su2 ON su2.id = wr.skill_usage_id
+           WHERE COALESCE(wr.work_item_id, su2.work_item_id) = wi.id
              AND wr.event_time >= ? AND wr.event_time < ?
           ) AS wiki_recall_count,
          (SELECT COUNT(*)

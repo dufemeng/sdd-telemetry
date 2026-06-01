@@ -11,6 +11,8 @@ import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
 import { DailyReportService } from './daily-report.service';
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 @Controller('/api/reports/daily')
 export class DailyReportController {
   @Inject()
@@ -43,6 +45,11 @@ export class DailyReportController {
   @Get('/:date')
   async getByDate() {
     const date = this.ctx.params.date as string;
+    if (!DATE_RE.test(date)) {
+      this.ctx.status = 400;
+      this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
+      return;
+    }
     const data: DailyReportDetailResponse | null = await this.dailyReportService.getByDate(date);
     if (!data) {
       return ok(null);
@@ -53,6 +60,11 @@ export class DailyReportController {
   @Post('/:date/regenerate')
   async regenerate() {
     const date = this.ctx.params.date as string;
+    if (!DATE_RE.test(date)) {
+      this.ctx.status = 400;
+      this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
+      return;
+    }
     await this.dailyReportService.generateDailyReport(date, 'regenerate');
     const data: DailyReportDetailResponse | null = await this.dailyReportService.getByDate(date);
     return ok(data ? parseWithSchema(DailyReportDetailResponseSchema, data) : null);
@@ -61,6 +73,11 @@ export class DailyReportController {
   @Get('/:date/export')
   async exportMarkdown() {
     const date = this.ctx.params.date as string;
+    if (!DATE_RE.test(date)) {
+      this.ctx.status = 400;
+      this.ctx.body = { success: false, error: { code: 'INVALID_DATE', message: 'date must be YYYY-MM-DD' } };
+      return;
+    }
     const format = firstQueryValue(this.ctx.query.format) ?? 'markdown';
     const data = await this.dailyReportService.getByDate(date);
     if (!data) {

@@ -43,8 +43,8 @@ Dashboard 使用独立的 `auth_users` 登录成员表，不复用遥测侧的 `
 
 | 角色 | 权限 |
 | --- | --- |
-| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面 |
-| `viewer` | 登录后查看 dashboard 只读数据 |
+| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面、重新生成日报 |
+| `viewer` | 登录后查看 dashboard 只读数据、查看/复制/打印日报 |
 
 首次 migration 后初始化唯一的首位超级管理员：
 
@@ -61,6 +61,19 @@ pnpm auth:bootstrap-admin -- --username admin --display-name 管理员
 export AUTH_SESSION_SECRET="$(openssl rand -base64 48)"
 export AUTH_SESSION_MAX_AGE_SECONDS=604800 # 可选，默认 7 天
 ```
+
+### 每日简报调度
+
+日报默认启用自动调度，每天 12:00（Asia/Shanghai）生成昨天日报。可配置：
+
+```bash
+DAILY_REPORT_SCHEDULE_ENABLED=1    # 是否启用，默认 1
+DAILY_REPORT_SCHEDULE_TIME=12:00   # 调度时间，默认 12:00
+DAILY_REPORT_TIMEZONE=Asia/Shanghai # 时区，默认 Asia/Shanghai
+DAILY_REPORT_BASE_URL=             # 日报内链接的 baseUrl，默认 /
+```
+
+服务启动时会自动检查昨天日报是否存在，缺失则补生成。`super_admin` 可在页面手动重新生成指定日期的日报。
 
 网页登录只保护 dashboard 与其 API；Claude Code 的 `POST /api/ingest/otlp-logs` 自动上报入口不依赖浏览器 session。
 

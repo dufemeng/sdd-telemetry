@@ -147,7 +147,7 @@ export function DailyReportDocument({ metrics }: Props) {
           <PanelB title="全链路状态">
             <ul>
               <li><strong>{m.chain.fullChainWorkItemCount} 个需求</strong> 覆盖 3 个及以上 SDD 阶段</li>
-              <li>多阶段需求共 <strong>{m.chain.multiStageWorkItemCount}</strong> 类阶段有覆盖</li>
+              <li>多阶段需求共 <strong>{m.chain.multiStageWorkItemCount} 个</strong>，均覆盖 2+ 阶段</li>
               {m.chain.stages.filter(s => s.workItemCount > 0).length < m.chain.stages.length && (
                 <li>{m.chain.stages.filter(s => s.workItemCount === 0).map(s => s.label).join('、')} 暂无覆盖</li>
               )}

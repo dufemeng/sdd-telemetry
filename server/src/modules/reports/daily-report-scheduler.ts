@@ -1,10 +1,14 @@
 import { Config, Inject, Provide, Init } from '@midwayjs/core';
+import { DailyReportRepository } from './daily-report.repository';
 import { DailyReportService } from './daily-report.service';
 
 @Provide('dailyReportScheduler')
 export class DailyReportScheduler {
   @Inject('dailyReportService')
   dailyReportService!: DailyReportService;
+
+  @Inject('dailyReportRepository')
+  repo!: DailyReportRepository;
 
   @Config('dailyReport')
   config!: {
@@ -19,6 +23,7 @@ export class DailyReportScheduler {
   @Init()
   init() {
     if (!this.config?.scheduleEnabled) return;
+    void this.backfill();
     const [hour, minute] = (this.config.scheduleTime ?? '12:00').split(':').map(Number);
     this.timer = setInterval(() => {
       const now = new Date();
@@ -34,7 +39,26 @@ export class DailyReportScheduler {
           void this.fire(dateStr);
         }
       }
+      void this.backfill();
     }, 60_000);
+  }
+
+  private async backfill() {
+    try {
+      const now = new Date();
+      const shanghai = new Date(now.toLocaleString('en-US', { timeZone: this.config.timezone ?? 'Asia/Shanghai' }));
+      const yesterday = new Date(shanghai);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = formatDate(yesterday);
+      if (this.lastFiredDate === dateStr) return;
+      const existing = await this.repo.findByDate(dateStr);
+      if (!existing) {
+        this.lastFiredDate = dateStr;
+        await this.fire(dateStr);
+      }
+    } catch {
+      // backfill failure is non-fatal
+    }
   }
 
   private async fire(reportDate: string) {
