@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SDD 团队工程效能简报 · 文档审计风格预览</title>
+<style>
+  :root {
+    --bg: #efefec;
+    --paper: #fffdf8;
+    --ink: #111827;
+    --muted: #667085;
+    --faint: #8a918f;
+    --line: #ded8ca;
+    --line-strong: #bfb8a6;
+    --a: #7c3aed;
+    --a-soft: #f4efff;
+    --b: #0076ff;
+    --b-soft: #eef5ff;
+    --judge: #0b78ff;
+    --judge-soft: #f0f6ff;
+    --good: #0b8f57;
+    --good-soft: #e9f8f1;
+    --warn: #aa7815;
+    --warn-soft: #fff4d8;
+    --bad: #cc3d3d;
+    --bad-soft: #ffeaea;
+    --display: 'Iowan Old Style', 'Charter', Georgia, 'Songti SC', serif;
+    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, 'PingFang SC', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.62;
+  }
+
+  .page {
+    width: min(100%, 980px);
+    margin: 0 auto;
+    min-height: 100vh;
+    padding: 58px 62px 64px;
+    background: var(--paper);
+    border: 1px solid #d8d1bf;
+    border-radius: 10px;
+  }
+
+  .masthead {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 28px;
+    align-items: end;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  h1 {
+    margin: 8px 0 5px;
+    font-family: var(--display);
+    font-size: 32px;
+    line-height: 1.14;
+    letter-spacing: -0.012em;
+  }
+
+  .badge-outline {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 11px;
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .intro {
+    max-width: 72ch;
+    margin: 30px 0 38px;
+    color: var(--muted);
+  }
+
+  .intro strong {
+    color: var(--ink);
+    font-weight: 750;
+  }
+
+  h2 {
+    margin: 0 0 16px;
+    font-family: var(--display);
+    font-size: 20px;
+    line-height: 1.25;
+  }
+
+  .overview {
+    margin-bottom: 34px;
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .kpi {
+    min-height: 126px;
+    padding: 16px 17px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.55);
+  }
+
+  .kpi .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .kpi .value {
+    margin-top: 7px;
+    font-family: var(--display);
+    font-size: 31px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .kpi .sub {
+    margin-top: 7px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .rule {
+    height: 1px;
+    background: var(--line-strong);
+    margin: 34px 0 32px;
+  }
+
+  .section {
+    margin-top: 0;
+    margin-bottom: 38px;
+  }
+
+  .section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    margin-bottom: 16px;
+  }
+
+  .section-title .num {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .section-title .text {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .panel {
+    position: relative;
+    min-height: 156px;
+    padding: 18px 19px 17px;
+    border: 1px solid var(--line);
+    border-top-width: 3px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .panel.a { border-top-color: var(--a); }
+  .panel.b { border-top-color: var(--b); }
+
+  .panel-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .stamp {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .a .stamp { background: var(--a); }
+  .b .stamp { background: var(--b); }
+
+  ul {
+    margin: 0;
+    padding-left: 17px;
+    color: var(--muted);
+  }
+
+  li + li { margin-top: 6px; }
+
+  li strong {
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  .judge {
+    margin: 14px 0 0;
+    padding: 15px 18px;
+    border-left: 3px solid var(--judge);
+    border-radius: 7px;
+    background: var(--judge-soft);
+    color: var(--muted);
+  }
+
+  .judge strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--judge);
+  }
+
+  table {
+    width: 100%;
+    margin-top: 12px;
+    border-collapse: collapse;
+  }
+
+  th, td {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: middle;
+    font-size: 13px;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom-color: var(--line-strong);
+  }
+
+  .num-cell {
+    text-align: right;
+    font-family: var(--mono);
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    height: 21px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .tag.good { color: var(--good); background: var(--good-soft); }
+  .tag.warn { color: var(--warn); background: var(--warn-soft); }
+  .tag.bad { color: var(--bad); background: var(--bad-soft); }
+  .tag.info { color: var(--judge); background: var(--b-soft); }
+
+  .stage {
+    display: inline-flex;
+    gap: 4px;
+  }
+
+  .stage i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #d6d3cb;
+  }
+
+  .stage i.on { background: var(--judge); }
+
+  .footer {
+    margin-top: 46px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  @media print {
+    body { background: var(--paper); }
+    .page { border: 0; border-radius: 0; width: 100%; }
+  }
+
+  @media (max-width: 760px) {
+    body { background: var(--paper); }
+    .page { padding: 32px 24px; border: 0; border-radius: 0; }
+    .masthead, .compare { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="meta">SDD Daily Brief · 2026-06-01</div>
+      <h1>SDD 团队工程效能简报</h1>
+      <div class="meta">MySQL 派生层 vs Dashboard Links · Generated 2026-06-02 12:00</div>
+    </div>
+    <div class="badge-outline">Internal</div>
+  </header>
+
+  <p class="intro">
+    对昨日 SDD 使用情况进行每日审计。昨天 <strong>12 人</strong> 使用 SDD，覆盖
+    <strong>18 个需求</strong>，生成/更新 <strong>36 篇过程文档</strong>，
+    其中 <strong>5 个需求</strong> 已进入 3+ 阶段全链路。
+  </p>
+
+  <section class="overview">
+    <h2>总览 · Overview</h2>
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="label">活跃用户</div>
+        <div class="value">12</div>
+        <div class="sub">较前日 +3</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Skill 调用</div>
+        <div class="value">86</div>
+        <div class="sub">较前日 +24.6%</div>
+      </div>
+      <div class="kpi">
+        <div class="label">覆盖需求</div>
+        <div class="value">18</div>
+        <div class="sub">新增覆盖 4 个</div>
+      </div>
+      <div class="kpi">
+        <div class="label">文档产出</div>
+        <div class="value">36</div>
+        <div class="sub">四类阶段均有新增</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section class="section">
+    <div class="section-title"><span class="num">1.</span><span class="text">采用规模</span></div>
+    <div class="compare">
+      <article class="panel a">
+        <div class="panel-head"><span class="stamp">A</span><span>昨日规模</span></div>
+        <ul>
+          <li><strong>12 位活跃用户</strong> 触发过 SDD skill</li>
+          <li><strong>86 次 skill 调用</strong>，覆盖 proposal / design / task / review</li>
+          <li><strong>18 个需求</strong> 在昨日出现 SDD 活动</li>
+        </ul>
+      </article>
+      <article class="panel b">
+        <div class="panel-head"><span class="stamp">B</span><span>较前日变化</span></div>
+        <ul>
+          <li>活跃用户增加 <strong>3 人</strong></li>
+          <li>Skill 调用增加 <strong>24.6%</strong></li>
+          <li>覆盖需求新增 <strong>4 个</strong>，说明推广不是停留在存量需求</li>
+        </ul>
+      </article>
+    </div>
+    <div class="judge">
+      <strong>判定：采用升温</strong>
+      昨日用户数、调用量、覆盖需求均上升，可以作为日报头部的一句话结论。但这仍是采用规模信号，不直接等价于质量提升。
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span class="num">2.</span><span class="text">SDD 链路</span></div>
+    <div class="compare">
+      <article class="panel a">
+        <div class="panel-head"><span class="stamp">A</span><span>阶段覆盖</span></div>
+        <ul>
+          <li>需求撰写覆盖 <strong>15</strong> 个需求</li>
+          <li>系统设计覆盖 <strong>10</strong> 个需求</li>
+          <li>任务拆分覆盖 <strong>8</strong> 个需求</li>
+          <li>代码评审覆盖 <strong>3</strong> 个需求</li>
+        </ul>
+      </article>
+      <article class="panel b">
+        <div class="panel-head"><span class="stamp">B</span><span>全链路状态</span></div>
+        <ul>
+          <li><strong>5 个需求</strong> 覆盖 3 个及以上 SDD 阶段</li>
+          <li>Design 到 Task 的推进开始出现稳定样本</li>
+          <li>Review 仍是当前链路最薄的环节</li>
+        </ul>
+      </article>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>阶段</th>
+          <th class="num-cell">需求数</th>
+          <th class="num-cell">较前日</th>
+          <th>说明</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>需求撰写</td><td class="num-cell">15</td><td class="num-cell">+2</td><td>proposal artifact 覆盖</td><td><span class="tag good">健康</span></td></tr>
+        <tr><td>系统设计</td><td class="num-cell">10</td><td class="num-cell">+3</td><td>design artifact 覆盖</td><td><span class="tag good">增长</span></td></tr>
+        <tr><td>任务拆分</td><td class="num-cell">8</td><td class="num-cell">+2</td><td>task artifact 覆盖</td><td><span class="tag info">推进</span></td></tr>
+        <tr><td>代码评审</td><td class="num-cell">3</td><td class="num-cell">+0</td><td>review artifact 覆盖</td><td><span class="tag warn">偏弱</span></td></tr>
+      </tbody>
+    </table>
+    <div class="judge">
+      <strong>判定：链路开始加深</strong>
+      Design 和 Task 的覆盖增长比单纯调用量更有管理价值。日报应优先突出“需求从写出来到拆成任务”的推进。
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span class="num">3.</span><span class="text">今日标杆</span></div>
+    <div class="compare">
+      <article class="panel a">
+        <div class="panel-head"><span class="stamp">A</span><span>完整链路样本</span></div>
+        <ul>
+          <li><strong>账户解冻组件重构</strong> 覆盖 4 / 4 阶段</li>
+          <li>产出 <strong>6</strong> 篇过程文档，<strong>3</strong> 人参与</li>
+          <li>适合作为老板汇报里的第一案例</li>
+        </ul>
+      </article>
+      <article class="panel b">
+        <div class="panel-head"><span class="stamp">B</span><span>知识召回样本</span></div>
+        <ul>
+          <li><strong>交易确认页性能治理</strong> 召回 Wiki <strong>12</strong> 次</li>
+          <li>覆盖 trade / cashier 相关知识</li>
+          <li>说明 SDD 正在复用已有团队知识</li>
+        </ul>
+      </article>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>需求</th>
+          <th>业务域</th>
+          <th>阶段</th>
+          <th class="num-cell">文档</th>
+          <th class="num-cell">参与人</th>
+          <th class="num-cell">Wiki</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>账户解冻组件重构</td>
+          <td>cashier</td>
+          <td><span class="stage"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></td>
+          <td class="num-cell">6</td>
+          <td class="num-cell">3</td>
+          <td class="num-cell">8</td>
+          <td><span class="tag good">全链路</span></td>
+        </tr>
+        <tr>
+          <td>交易确认页性能治理</td>
+          <td>trade</td>
+          <td><span class="stage"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></td>
+          <td class="num-cell">5</td>
+          <td class="num-cell">2</td>
+          <td class="num-cell">12</td>
+          <td><span class="tag info">知识召回</span></td>
+        </tr>
+        <tr>
+          <td>财富产品卡片规范补齐</td>
+          <td>wealth</td>
+          <td><span class="stage"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></td>
+          <td class="num-cell">4</td>
+          <td class="num-cell">2</td>
+          <td class="num-cell">5</td>
+          <td><span class="tag warn">推进到 task</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span class="num">4.</span><span class="text">知识库使用</span></div>
+    <div class="compare">
+      <article class="panel a">
+        <div class="panel-head"><span class="stamp">A</span><span>召回规模</span></div>
+        <ul>
+          <li>昨日 Wiki 召回 <strong>42</strong> 次</li>
+          <li>覆盖 <strong>18</strong> 个知识文档</li>
+          <li>涉及 <strong>4</strong> 个业务域</li>
+        </ul>
+      </article>
+      <article class="panel b">
+        <div class="panel-head"><span class="stamp">B</span><span>Top 领域</span></div>
+        <ul>
+          <li>cashier：16 次</li>
+          <li>trade：12 次</li>
+          <li>wealth：9 次</li>
+          <li>loan：5 次</li>
+        </ul>
+      </article>
+    </div>
+    <div class="judge">
+      <strong>判定：团队知识开始进入 SDD 流程</strong>
+      召回不只是数量指标，它说明设计和任务拆分正在引用已有知识资产。日报里应保留这段解释，帮助老板理解 SDD 不是普通聊天工具。
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span class="num">5.</span><span class="text">查看详情</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th>入口</th>
+          <th>用途</th>
+          <th>URL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>总览</td><td>查看采用规模和近期趋势</td><td>/</td></tr>
+        <tr><td>产出分析</td><td>查看需求、阶段覆盖和标杆需求</td><td>/sdd/work-items</td></tr>
+        <tr><td>知识库分析</td><td>查看 Wiki 召回、业务域和知识文件</td><td>/sdd/wiki-recalls</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="footer">
+    <span>SDD 质量观测台 · Daily Brief Preview · Internal Use Only</span>
+    <span>Page 1 of 1</span>
+  </footer>
+</main>
+</body>
+</html>

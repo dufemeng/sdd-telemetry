@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SDD 团队工程效能简报｜Signal Finance Preview</title>
+<style>
+  :root {
+    --app-base: #0a0a0a;
+    --app-surface: #101010;
+    --app-panel: #14140b;
+    --app-hover: #171717;
+    --app-primary: #faff69;
+    --app-text: #e5e3d3;
+    --app-secondary: #c9c8af;
+    --app-muted: #93927c;
+    --app-border: rgba(255, 255, 255, 0.08);
+
+    --report-bg: #f6f4ec;
+    --report-paper: #fffdf8;
+    --report-ink: #11141a;
+    --report-muted: #606452;
+    --report-line: #e4dfcf;
+    --report-line-strong: #beb79e;
+    --report-accent: #69720f;
+    --report-accent-dark: #343a09;
+    --report-accent-soft: #eef0c5;
+    --report-blue: #1f6e8c;
+    --report-good: #1f8c5c;
+    --report-warn: #8a6912;
+    --report-bad: #b13b3b;
+    --report-display: 'Iowan Old Style', 'Charter', 'Iowan', Georgia, 'Songti SC', serif;
+    --report-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, 'PingFang SC', sans-serif;
+    --report-mono: ui-monospace, SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-width: 1180px;
+    background: var(--app-base);
+    color: var(--report-ink);
+    font-family: var(--report-body);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .workbench {
+    position: relative;
+    min-height: 100vh;
+    padding: 28px 32px 42px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 8% 4%, rgba(250, 255, 105, 0.12), transparent 300px),
+      radial-gradient(circle at 92% 12%, rgba(105, 114, 15, 0.18), transparent 360px),
+      linear-gradient(135deg, #0a0a0a 0%, #101006 48%, #080808 100%);
+  }
+
+  .workbench::before,
+  .workbench::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .workbench::before {
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at 50% 20%, black, transparent 76%);
+  }
+
+  .workbench::after {
+    width: 520px;
+    height: 520px;
+    right: -180px;
+    top: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(250,255,105,0.10), transparent 62%);
+    animation: signal-breathe 7s ease-in-out infinite;
+  }
+
+  .chrome {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 980px) 220px;
+    gap: 18px;
+    align-items: start;
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+
+  .date-rail,
+  .inspector {
+    position: sticky;
+    top: 28px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: rgba(16, 16, 16, 0.86);
+    color: var(--app-secondary);
+    overflow: hidden;
+  }
+
+  .rail-head,
+  .inspector-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px;
+    border-bottom: 1px solid var(--app-border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--app-text);
+  }
+
+  .signal-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--app-primary);
+    box-shadow: 0 0 18px rgba(250,255,105,0.6);
+    animation: signal-pulse 2.4s ease-in-out infinite;
+  }
+
+  .date-item {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .date-item.active {
+    background: rgba(250,255,105,0.07);
+    color: var(--app-text);
+  }
+
+  .date-item .day {
+    font: 700 20px/1 var(--report-mono);
+    color: var(--app-primary);
+  }
+
+  .date-item .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .date-item .meta span:first-child {
+    font-size: 12px;
+    color: var(--app-text);
+  }
+
+  .date-item .meta span:last-child {
+    font: 10.5px/1.2 var(--report-mono);
+    color: var(--app-muted);
+  }
+
+  .inspector-body {
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .inspector-kv {
+    display: grid;
+    gap: 3px;
+  }
+
+  .inspector-kv span:first-child {
+    font-size: 11px;
+    color: var(--app-muted);
+  }
+
+  .inspector-kv span:last-child {
+    font: 12px/1.35 var(--report-mono);
+    color: var(--app-text);
+  }
+
+  .actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .actions button {
+    height: 30px;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 4px;
+    background: var(--app-hover);
+    color: var(--app-text);
+    font: 12px/1 var(--report-body);
+    text-align: left;
+    padding: 0 10px;
+  }
+
+  .actions button.primary {
+    background: rgba(250,255,105,0.10);
+    color: var(--app-primary);
+    border-color: rgba(250,255,105,0.24);
+  }
+
+  .report-wrap {
+    position: relative;
+    min-width: 0;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    color: var(--app-secondary);
+    font-size: 12px;
+  }
+
+  .topbar .crumb {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .topbar .badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid rgba(250,255,105,0.22);
+    border-radius: 999px;
+    color: var(--app-primary);
+    background: rgba(250,255,105,0.06);
+    font: 11px/1 var(--report-mono);
+  }
+
+  .report {
+    position: relative;
+    padding: 56px 64px;
+    background:
+      linear-gradient(180deg, rgba(250,255,105,0.07), transparent 160px),
+      var(--report-paper);
+    border: 1px solid var(--report-line);
+    border-radius: 14px;
+    color: var(--report-ink);
+    overflow: hidden;
+    animation: report-enter 620ms cubic-bezier(.16, 1, .3, 1) both;
+  }
+
+  .report::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    background: linear-gradient(90deg, var(--report-accent-dark), var(--app-primary), var(--report-blue), var(--report-accent-dark));
+    background-size: 220% 100%;
+    animation: signal-sweep 5.6s linear infinite;
+  }
+
+  .report::after {
+    content: "SDD";
+    position: absolute;
+    right: 44px;
+    top: 22px;
+    font: 700 76px/1 var(--report-mono);
+    color: rgba(17, 20, 26, 0.035);
+    letter-spacing: -0.06em;
+  }
+
+  header.masthead {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 28px;
+    align-items: end;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--report-ink);
+    margin-bottom: 28px;
+  }
+
+  .mast-left { display: grid; gap: 7px; }
+
+  .mast-meta {
+    font-family: var(--report-mono);
+    font-size: 11.5px;
+    color: var(--report-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .mast-title {
+    font-family: var(--report-display);
+    font-size: 36px;
+    letter-spacing: -0.018em;
+    line-height: 1.08;
+    font-weight: 700;
+    text-wrap: balance;
+  }
+
+  .mast-actions {
+    display: grid;
+    justify-items: end;
+    gap: 10px;
+  }
+
+  .mast-badge {
+    font-family: var(--report-mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--report-ink);
+    color: var(--report-ink);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .health {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: 11.5px/1 var(--report-mono);
+    color: var(--report-accent-dark);
+  }
+
+  .health i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--report-good);
+  }
+
+  .lede {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    color: var(--report-muted);
+    max-width: 72ch;
+    font-size: 15px;
+    text-wrap: pretty;
+  }
+
+  .lede strong {
+    color: var(--report-ink);
+    font-weight: 750;
+  }
+
+  h2 {
+    font-family: var(--report-display);
+    font-size: 20px;
+    margin: 36px 0 14px;
+    letter-spacing: -0.01em;
+    font-weight: 700;
+  }
+
+  h2 .accent { color: var(--report-accent); }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 8px 0 28px;
+  }
+
+  .kpi {
+    position: relative;
+    min-height: 144px;
+    padding: 16px 18px;
+    background: rgba(255,255,255,0.56);
+    border: 1px solid var(--report-line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .kpi::after {
+    content: "";
+    position: absolute;
+    inset: auto 18px 13px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--report-accent-soft);
+  }
+
+  .kpi .spark {
+    position: absolute;
+    right: 16px;
+    top: 14px;
+    width: 34px;
+    height: 22px;
+    opacity: 0.86;
+  }
+
+  .kpi .label {
+    font-family: var(--report-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--report-muted);
+  }
+
+  .kpi .value {
+    font-family: var(--report-display);
+    font-size: 31px;
+    font-weight: 700;
+    margin-top: 8px;
+    line-height: 1;
+    letter-spacing: -0.012em;
+  }
+
+  .kpi .delta {
+    font-family: var(--report-mono);
+    font-size: 11.5px;
+    margin-top: 8px;
+  }
+
+  .delta.up { color: var(--report-good); }
+  .delta.down { color: var(--report-bad); }
+  .delta.flat { color: var(--report-muted); }
+
+  .kpi .note {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 22px;
+    font-size: 11.5px;
+    color: var(--report-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chart-row {
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 14px;
+  }
+
+  .card {
+    padding: 18px 20px;
+    background: rgba(255,255,255,0.54);
+    border: 1px solid var(--report-line);
+    border-radius: 10px;
+  }
+
+  .card h3 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .card .sub {
+    font-size: 12px;
+    color: var(--report-muted);
+  }
+
+  .chart svg {
+    width: 100%;
+    height: 212px;
+    display: block;
+    margin-top: 8px;
+  }
+
+  .draw-line {
+    stroke-dasharray: 720;
+    stroke-dashoffset: 720;
+    animation: draw-line 1.4s cubic-bezier(.16, 1, .3, 1) 240ms forwards;
+  }
+
+  .legend {
+    display: flex;
+    gap: 14px;
+    font-size: 11.5px;
+    color: var(--report-muted);
+    margin-top: 6px;
+  }
+
+  .legend .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  .legend .a { background: var(--report-accent); }
+  .legend .b { background: var(--report-ink); opacity: 0.55; }
+
+  .bars {
+    display: grid;
+    gap: 9px;
+    margin-top: 12px;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 84px 1fr 48px;
+    gap: 10px;
+    align-items: center;
+    font-size: 12.5px;
+  }
+
+  .bar-row .label { color: var(--report-muted); }
+
+  .bar-track {
+    height: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #e8eadf;
+  }
+
+  .bar-fill {
+    width: var(--w);
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--report-accent-dark), var(--report-accent));
+    transform-origin: left;
+    animation: bar-grow 780ms cubic-bezier(.16, 1, .3, 1) both;
+  }
+
+  .bar-value {
+    font-family: var(--report-mono);
+    font-size: 11.5px;
+    text-align: right;
+    color: var(--report-ink);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--report-line);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+
+  th {
+    font-family: var(--report-mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--report-muted);
+    border-bottom: 1px solid var(--report-line-strong);
+  }
+
+  td.num, th.num {
+    text-align: right;
+    font-family: var(--report-mono);
+  }
+
+  tr.total td {
+    font-weight: 700;
+    border-top: 2px solid var(--report-ink);
+    border-bottom: none;
+    padding-top: 14px;
+  }
+
+  .demand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mark {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--report-accent-dark), var(--report-blue));
+    color: #fff;
+    font: 700 10px/1 var(--report-mono);
+    flex: none;
+  }
+
+  .stage-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .stage-dots i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #d9d9cb;
+  }
+
+  .stage-dots i.on {
+    background: var(--report-accent);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    height: 21px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .pill.green { color: var(--report-good); background: #e7f4ee; }
+  .pill.amber { color: var(--report-warn); background: #fbf0d6; }
+  .pill.blue { color: var(--report-blue); background: #e7f0f4; }
+
+  .outlook {
+    display: grid;
+    grid-template-columns: 1.04fr 0.96fr;
+    gap: 14px;
+    margin-top: 12px;
+  }
+
+  .quote {
+    padding: 18px;
+    border: 1px solid #dbe0a4;
+    border-radius: 8px;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(250,255,105,0.28), transparent 180px),
+      var(--report-accent-soft);
+    font-family: var(--report-display);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  .summary-card {
+    padding: 18px;
+    border: 1px solid var(--report-line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.58);
+    color: var(--report-muted);
+    font-size: 13px;
+  }
+
+  .summary-card strong {
+    color: var(--report-ink);
+    display: block;
+    font-family: var(--report-display);
+    font-size: 17px;
+    margin-bottom: 2px;
+  }
+
+  .domain-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .domain-list span {
+    padding: 4px 8px;
+    border: 1px solid var(--report-line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--report-accent-dark);
+    font: 11px/1 var(--report-mono);
+  }
+
+  details {
+    margin-top: 28px;
+    border-top: 1px solid var(--report-line);
+    padding-top: 14px;
+    color: var(--report-muted);
+    font-size: 12px;
+  }
+
+  summary {
+    color: var(--report-ink);
+    cursor: pointer;
+    font-weight: 650;
+  }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--report-line);
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    font-family: var(--report-mono);
+    font-size: 11px;
+    color: var(--report-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .reveal {
+    animation: reveal-up 520ms cubic-bezier(.16, 1, .3, 1) both;
+  }
+  .delay-1 { animation-delay: 80ms; }
+  .delay-2 { animation-delay: 150ms; }
+  .delay-3 { animation-delay: 220ms; }
+  .delay-4 { animation-delay: 290ms; }
+
+  @keyframes report-enter {
+    from { opacity: 0; transform: translateY(14px) scale(.992); filter: blur(8px); }
+    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  @keyframes reveal-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes signal-sweep {
+    from { background-position: 0% 0; }
+    to { background-position: 220% 0; }
+  }
+  @keyframes signal-breathe {
+    0%, 100% { transform: scale(.92); opacity: .56; }
+    50% { transform: scale(1.05); opacity: .88; }
+  }
+  @keyframes signal-pulse {
+    0%, 100% { opacity: .58; transform: scale(.86); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes draw-line {
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes bar-grow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @media print {
+    body { min-width: 0; background: var(--report-paper); }
+    .workbench { padding: 0; background: var(--report-paper); }
+    .workbench::before, .workbench::after, .date-rail, .inspector, .topbar { display: none; }
+    .chrome { display: block; max-width: none; }
+    .report { border: 0; border-radius: 0; animation: none; }
+    .report::before { animation: none; }
+  }
+</style>
+</head>
+<body>
+<main class="workbench">
+  <div class="chrome">
+    <aside class="date-rail" aria-label="历史日报">
+      <div class="rail-head"><span class="signal-dot"></span><span>Daily archive</span></div>
+      <div class="date-item active">
+        <span class="day">01</span>
+        <span class="meta"><span>2026-06</span><span>generated · 12:00</span></span>
+      </div>
+      <div class="date-item">
+        <span class="day">31</span>
+        <span class="meta"><span>2026-05</span><span>generated · 12:00</span></span>
+      </div>
+      <div class="date-item">
+        <span class="day">30</span>
+        <span class="meta"><span>2026-05</span><span>generated · 12:00</span></span>
+      </div>
+      <div class="date-item">
+        <span class="day">29</span>
+        <span class="meta"><span>2026-05</span><span>generated · 12:00</span></span>
+      </div>
+    </aside>
+
+    <section class="report-wrap">
+      <div class="topbar">
+        <div class="crumb"><span class="signal-dot"></span><span>SDD 质量观测台 / 每日简报 / latest</span></div>
+        <span class="badge">snapshot · v1</span>
+      </div>
+
+      <article class="report" aria-label="SDD 团队工程效能简报">
+        <header class="masthead reveal">
+          <div class="mast-left">
+            <div class="mast-meta">SDD Telemetry · Daily Brief · 2026-06-01</div>
+            <h1 class="mast-title">SDD 团队工程效能简报</h1>
+            <div class="mast-meta">统计周期 2026-06-01 00:00-23:59 Asia/Shanghai · 生成 2026-06-02 12:00</div>
+          </div>
+          <div class="mast-actions">
+            <div class="mast-badge">Internal</div>
+            <div class="health"><i></i><span>data health: clean</span></div>
+          </div>
+        </header>
+
+        <p class="lede reveal delay-1">
+          昨天 <strong>12 人</strong> 使用 SDD，覆盖 <strong>18 个需求</strong>，
+          生成/更新 <strong>36 篇过程文档</strong>，其中 <strong>5 个需求</strong>
+          已进入 3+ 阶段全链路。团队正在从“工具调用”进入“过程资产沉淀”。
+        </p>
+
+        <h2 class="reveal delay-1">Headline KPIs</h2>
+        <div class="kpis reveal delay-2">
+          <div class="kpi">
+            <svg class="spark" viewBox="0 0 48 24" fill="none"><path d="M2 18L13 16L22 11L31 13L46 5" stroke="var(--report-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="label">Active users</div>
+            <div class="value">12</div>
+            <div class="delta up">▲ +3 vs 前日</div>
+            <div class="note">使用过任意 SDD skill</div>
+          </div>
+          <div class="kpi">
+            <svg class="spark" viewBox="0 0 48 24" fill="none"><path d="M2 19L10 15L17 17L25 10L34 8L46 4" stroke="var(--report-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="label">Skill usage</div>
+            <div class="value">86</div>
+            <div class="delta up">▲ 24.6% vs 前日</div>
+            <div class="note">proposal/design/task/review</div>
+          </div>
+          <div class="kpi">
+            <svg class="spark" viewBox="0 0 48 24" fill="none"><path d="M2 17L10 17L18 12L28 12L36 8L46 8" stroke="var(--report-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="label">Work items</div>
+            <div class="value">18</div>
+            <div class="delta up">▲ +4 新增覆盖</div>
+            <div class="note">当日有 SDD 活动</div>
+          </div>
+          <div class="kpi">
+            <svg class="spark" viewBox="0 0 48 24" fill="none"><path d="M2 20L10 14L18 15L27 9L35 12L46 5" stroke="var(--report-accent)" stroke-width="2" stroke-linecap="round"/></svg>
+            <div class="label">Artifacts</div>
+            <div class="value">36</div>
+            <div class="delta up">▲ +14 vs 前日</div>
+            <div class="note">过程文档生成或更新</div>
+          </div>
+        </div>
+
+        <h2 class="reveal delay-2">SDD 链路 <span class="accent">coverage</span></h2>
+        <div class="chart-row reveal delay-3">
+          <div class="card">
+            <h3>Skill usage · trailing 7 days</h3>
+            <div class="sub">技能调用量与上周均线，正式版接真实日报窗口数据</div>
+            <div class="chart">
+              <svg viewBox="0 0 720 212" preserveAspectRatio="none" aria-label="近 7 天技能调用趋势">
+                <defs>
+                  <linearGradient id="lineFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="var(--report-accent)" stop-opacity="0.28"/>
+                    <stop offset="100%" stop-color="var(--report-accent)" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M20 190V160C130 148 240 134 350 122C460 106 570 90 680 58H700V190Z" fill="url(#lineFill)" />
+                <path class="draw-line" d="M20 160C130 148 240 134 350 122C460 106 570 90 680 58" fill="none" stroke="var(--report-accent)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M20 166C130 156 240 146 350 136C460 126 570 116 680 106" fill="none" stroke="var(--report-ink)" stroke-opacity="0.42" stroke-width="1.5" stroke-dasharray="3 4"/>
+                <circle cx="680" cy="58" r="4" fill="var(--report-accent)"/>
+              </svg>
+              <div class="legend">
+                <span><span class="swatch a"></span>Skill 调用</span>
+                <span><span class="swatch b"></span>上周均线</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>阶段覆盖</h3>
+            <div class="sub">昨日活跃需求已覆盖的 SDD 阶段</div>
+            <div class="bars">
+              <div class="bar-row"><span class="label">需求撰写</span><div class="bar-track"><div class="bar-fill" style="--w:83%"></div></div><span class="bar-value">15</span></div>
+              <div class="bar-row"><span class="label">系统设计</span><div class="bar-track"><div class="bar-fill" style="--w:56%"></div></div><span class="bar-value">10</span></div>
+              <div class="bar-row"><span class="label">任务拆分</span><div class="bar-track"><div class="bar-fill" style="--w:44%"></div></div><span class="bar-value">8</span></div>
+              <div class="bar-row"><span class="label">代码评审</span><div class="bar-track"><div class="bar-fill" style="--w:17%"></div></div><span class="bar-value">3</span></div>
+              <div class="bar-row"><span class="label">3+ 阶段</span><div class="bar-track"><div class="bar-fill" style="--w:28%"></div></div><span class="bar-value">5</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="reveal delay-3">Core metrics</h2>
+        <table class="reveal delay-3">
+          <thead>
+            <tr>
+              <th>指标</th>
+              <th class="num">昨日</th>
+              <th class="num">前日</th>
+              <th class="num">变化</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>活跃用户</td><td class="num">12</td><td class="num">9</td><td class="num" style="color: var(--report-good);">+3</td><td>使用过任意 SDD skill 的用户</td></tr>
+            <tr><td>Skill 调用</td><td class="num">86</td><td class="num">69</td><td class="num" style="color: var(--report-good);">+24.6%</td><td>SDD skill usage 总量</td></tr>
+            <tr><td>覆盖需求</td><td class="num">18</td><td class="num">14</td><td class="num" style="color: var(--report-good);">+4</td><td>有 SDD 活动的需求</td></tr>
+            <tr><td>文档产出</td><td class="num">36</td><td class="num">22</td><td class="num" style="color: var(--report-good);">+14</td><td>生成或更新的过程文档</td></tr>
+            <tr class="total"><td>全链路需求</td><td class="num">5</td><td class="num">3</td><td class="num" style="color: var(--report-good);">+2</td><td>覆盖 3 个及以上 SDD 阶段</td></tr>
+          </tbody>
+        </table>
+
+        <h2 class="reveal delay-4">今日标杆</h2>
+        <table class="reveal delay-4">
+          <thead>
+            <tr>
+              <th>需求</th>
+              <th>业务域</th>
+              <th class="num">阶段</th>
+              <th class="num">文档</th>
+              <th class="num">参与人</th>
+              <th class="num">Wiki</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="demand"><span class="mark">01</span>账户解冻组件重构</span></td>
+              <td>cashier</td>
+              <td class="num"><span class="stage-dots"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span></td>
+              <td class="num">6</td>
+              <td class="num">3</td>
+              <td class="num">8</td>
+              <td><span class="pill green">全链路</span></td>
+            </tr>
+            <tr>
+              <td><span class="demand"><span class="mark">02</span>交易确认页性能治理</span></td>
+              <td>trade</td>
+              <td class="num"><span class="stage-dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></td>
+              <td class="num">5</td>
+              <td class="num">2</td>
+              <td class="num">12</td>
+              <td><span class="pill blue">知识召回</span></td>
+            </tr>
+            <tr>
+              <td><span class="demand"><span class="mark">03</span>财富产品卡片规范补齐</span></td>
+              <td>wealth</td>
+              <td class="num"><span class="stage-dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span></td>
+              <td class="num">4</td>
+              <td class="num">2</td>
+              <td class="num">5</td>
+              <td><span class="pill amber">推进到 task</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 class="reveal delay-4">知识库使用</h2>
+        <div class="outlook reveal delay-4">
+          <div class="quote">昨天 SDD 流程共召回知识库 42 次，覆盖 18 个文件、4 个业务域，团队知识正在进入设计和任务拆分过程。</div>
+          <div class="summary-card">
+            <strong>Top domains</strong>
+            cashier、trade、wealth 是昨日最常被召回的知识域。正式版会把 Top 业务域、系统模块和标杆需求关联起来，帮助判断哪些知识资产正在被真实使用。
+            <div class="domain-list">
+              <span>cashier · 16</span>
+              <span>trade · 12</span>
+              <span>wealth · 9</span>
+              <span>loan · 5</span>
+            </div>
+          </div>
+        </div>
+
+        <details>
+          <summary>统计口径</summary>
+          <p>时区：Asia/Shanghai。活跃用户来自当日 SDD skill usage 去重用户数；覆盖需求来自当日有 SDD 活动的 work item；文档产出来自 artifact write 去重 artifact；全链路需求指覆盖 proposal/design/task/review 任意 3 个及以上阶段的需求；Wiki 召回来自 sdd_wiki_recalls。</p>
+        </details>
+
+        <footer>
+          <span>SDD 质量观测台 · finance-report signal preview · internal use only</span>
+          <span>Page 1 of 1</span>
+        </footer>
+      </article>
+    </section>
+
+    <aside class="inspector" aria-label="导出操作">
+      <div class="inspector-head"><span class="signal-dot"></span><span>Report ops</span></div>
+      <div class="inspector-body">
+        <div class="inspector-kv"><span>Snapshot</span><span>2026-06-01 · generated</span></div>
+        <div class="inspector-kv"><span>Timezone</span><span>Asia/Shanghai</span></div>
+        <div class="inspector-kv"><span>Template</span><span>finance-report/signal-v2</span></div>
+        <div class="actions">
+          <button class="primary" type="button">复制 Markdown</button>
+          <button type="button">导出 HTML</button>
+          <button type="button">打印 PDF</button>
+          <button type="button">重新生成</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</main>
+</body>
+</html>
