@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知识库分析 redesign · 示意 · SDD 质量观测台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --base: #0a0a0a;
+    --surface: #101010;
+    --panel: #14140b;
+    --hover: #171717;
+    --active: #222222;
+    --icon-well: #202016;
+    --nav-active: #2b2b20;
+    --primary: #faff69;
+    --bar-fill: #c9ce3c;
+    --text: #e5e3d3;
+    --secondary: #c9c8af;
+    --muted: #93927c;
+    --bright: #f5f5f5;
+    --border: rgba(255,255,255,0.08);
+    --good-text: #22c55e;  --good-bg: rgba(34,197,94,0.10);
+    --warn-text: #f59e0b;  --warn-bg: rgba(245,158,11,0.10);
+    --bad-text: #ffb4ab;   --bad-bg: rgba(239,68,68,0.16);
+    --info: #60a5fa;       --info-bg: rgba(96,165,250,0.10);
+    --body: Inter, 'PingFang SC', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* z-index scale */
+    --z-drawer-backdrop: 40; --z-drawer: 50; --z-modal-backdrop: 60; --z-modal: 70;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--base); color: var(--text); font-family: var(--body); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--mono); }
+  h1,h2,h3 { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* ── App shell ── */
+  .shell { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+  /* ── Sidebar ── */
+  aside { grid-row: 1 / -1; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 10px; min-height: 88px; padding: 18px; border-bottom: 1px solid var(--border); }
+  .brand-logo { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 6px; background: var(--primary); color: var(--base); }
+  .brand h1 { font-size: 18px; font-weight: 700; color: var(--bright); line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav { padding: 10px 0; overflow-y: auto; }
+  .nav-group { margin-top: 10px; }
+  .nav-group > .label { padding: 8px 18px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .nav-item { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: 0 8px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--secondary); position: relative; transition: all .15s; }
+  .nav-item:hover { color: var(--bright); background: var(--icon-well); }
+  .nav-item svg { width: 18px; height: 18px; flex: none; }
+  .nav-item.active { color: var(--primary); background: var(--nav-active); }
+  .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 9px; width: 4px; height: 16px; border-radius: 0 4px 4px 0; background: var(--primary); }
+  .nav-item.active::after { content: ''; position: absolute; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+  /* ── Topbar ── */
+  header.top { grid-column: 2; display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .crumb { font-size: 12px; color: var(--muted); }
+  .crumb b { color: var(--secondary); font-weight: 500; }
+  .snapshot { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--secondary); background: var(--surface); }
+  .snapshot .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good-text); }
+  .snapshot .ver { color: var(--muted); }
+
+  /* ── Main ── */
+  main { grid-column: 2; padding: 16px 20px 60px; display: grid; gap: 12px; align-content: start; }
+  .page-head { display: flex; align-items: baseline; gap: 12px; }
+  .page-head h2 { font-size: 22px; font-weight: 600; color: var(--bright); font-family: var(--mono); letter-spacing: -0.01em; }
+  .page-head .desc { font-size: 12px; color: var(--muted); }
+  .sec-note { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+  /* cards / panels */
+  .card { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; }
+  .pad { padding: 14px; }
+  .sec-title { display: flex; align-items: center; gap: 8px; color: var(--primary); }
+  .sec-title svg { width: 18px; height: 18px; }
+  .sec-title h3 { font-size: 14px; font-weight: 600; color: var(--bright); }
+
+  /* ① KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { display: flex; gap: 12px; min-height: 100px; }
+  .kpi .well { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--icon-well); color: var(--primary); }
+  .kpi .well svg { width: 18px; height: 18px; }
+  .kpi .body { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; flex: 1; }
+  .kpi .name { font-size: 12px; color: var(--secondary); }
+  .kpi .val { font-size: 24px; font-weight: 600; color: var(--bright); font-family: var(--mono); line-height: 1; }
+  .kpi .val.volt { color: var(--primary); }
+  .kpi .val.bad { color: var(--bad-text); }
+  .kpi .hint { font-size: 11px; color: var(--muted); }
+  .progress { height: 3px; width: 100%; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 6px 0; }
+  .progress > span { display: block; height: 100%; border-radius: 999px; background: var(--good-text); }
+  .num-sub { font-size: 15px; color: var(--muted); font-family: var(--mono); }
+
+  /* ② business-line compare */
+  .line-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .line { padding: 14px; border-radius: 6px; background: var(--hover); border: 1px solid var(--border); display: grid; gap: 10px; }
+  .line .head { display: flex; align-items: center; justify-content: space-between; }
+  .line .repo { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--bright); }
+  .line .repo .swatch { width: 8px; height: 8px; border-radius: 2px; }
+  .line .scale { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .line .util { display: flex; align-items: baseline; gap: 6px; }
+  .line .util b { font-size: 20px; font-family: var(--mono); color: var(--bright); font-weight: 600; }
+  .line .stats { display: flex; gap: 14px; font-size: 11px; color: var(--secondary); }
+  .line .stats .mono { color: var(--text); }
+  .line .stats .dead { color: var(--bad-text); }
+
+  /* ③ trends + benchmark */
+  .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 8px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .chart .stack { width: 16px; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
+  .chart .seg { width: 100%; }
+  .chart .tick { font-size: 9px; color: var(--muted); transform: rotate(-35deg); white-space: nowrap; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--secondary); border: 1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 3px 8px; }
+  .legend .d { width: 8px; height: 8px; border-radius: 50%; }
+  .seg-ctl { display: inline-flex; gap: 4px; padding: 2px; border-radius: 6px; background: var(--base); border: 1px solid var(--border); }
+  .seg-ctl button { height: 24px; padding: 0 9px; border: 1px solid transparent; border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--muted); background: transparent; }
+  .seg-ctl button.on { background: rgba(250,255,105,0.10); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+
+  .top3 { display: grid; gap: 8px; }
+  .rank { position: relative; padding: 10px 12px 10px 14px; border-radius: 6px; background: var(--hover); border: 1px solid var(--border); overflow: hidden; }
+  .rank .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .rank .badge-no { position: absolute; top: 0; right: 0; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 0 6px 0 6px; }
+  .rank .title { font-size: 13px; font-weight: 500; color: var(--bright); display: flex; align-items: center; gap: 6px; }
+  .rank .repo-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+  .rank .meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--secondary); font-family: var(--mono); }
+
+  /* ④ table */
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .search { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; width: 240px; border: 1px solid rgba(255,255,255,0.10); background: var(--base); border-radius: 4px; }
+  .search svg { width: 13px; height: 13px; color: var(--muted); flex: none; }
+  .search input { border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; width: 100%; }
+  .search input::placeholder { color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin-left: auto; }
+  .tabs button { height: 26px; padding: 0 12px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+  .tabs button.on { background: rgba(250,255,105,0.08); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+  .tabs button .c { margin-left: 6px; font-size: 10px; opacity: 0.65; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #141414; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th.r { text-align: right; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; }
+  tbody tr:hover td { background: var(--hover); }
+  tbody td { padding: 10px 12px; font-size: 13px; color: var(--text); }
+  tbody td.r { text-align: right; font-family: var(--mono); }
+  .domain-cell { display: flex; align-items: center; gap: 9px; }
+  .repo-badge { font-size: 10px; padding: 2px 7px; border-radius: 3px; white-space: nowrap; flex: none; }
+  .domain-name { font-size: 13px; color: var(--bright); font-weight: 500; }
+  .domain-name .mono { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+  .cover { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .cover .track { width: 54px; height: 5px; border-radius: 999px; background: var(--icon-well); overflow: hidden; }
+  .cover .fill { height: 100%; border-radius: 999px; background: var(--good-text); }
+  .cover .frac { font-family: var(--mono); font-size: 12px; color: var(--secondary); min-width: 46px; text-align: right; }
+  .dead-pill { font-family: var(--mono); }
+  .dead-pill.zero { color: var(--muted); }
+  .dead-pill.has { color: var(--bad-text); }
+  .table-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+  /* badges */
+  .badge { display: inline-flex; align-items: center; height: 19px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge.good { background: var(--good-bg); color: var(--good-text); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn-text); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad-text); }
+  .badge.info { background: var(--info-bg); color: var(--info); }
+  .badge.neu { background: rgba(255,255,255,0.06); color: var(--secondary); }
+
+  /* repo color helpers (trade / loan / wealth) */
+  .c-trade { color: var(--primary); }     .bg-trade { background: rgba(250,255,105,0.10); color: var(--primary); }   .sw-trade { background: var(--bar-fill); }
+  .c-loan  { color: var(--info); }         .bg-loan  { background: rgba(96,165,250,0.12); color: var(--info); }        .sw-loan  { background: var(--info); }
+  .c-wealth{ color: var(--good-text); }    .bg-wealth{ background: rgba(34,197,94,0.12); color: var(--good-text); }    .sw-wealth{ background: var(--good-text); }
+
+  /* ── Drawer ── */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  #drawerBackdrop { z-index: var(--z-drawer-backdrop); }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 460px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--border); z-index: var(--z-drawer); transform: translateX(100%); transition: transform .24s cubic-bezier(0.22,1,0.36,1); display: flex; flex-direction: column; }
+  .drawer.show { transform: translateX(0); }
+  .drawer-head { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .drawer-head .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .drawer-head h3 { font-size: 16px; color: var(--bright); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .drawer-head h3 svg { width: 18px; height: 18px; color: var(--primary); }
+  .close-btn { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--hover); border: 1px solid var(--border); color: var(--secondary); }
+  .close-btn:hover { background: var(--active); color: var(--primary); }
+  .close-btn svg { width: 15px; height: 15px; }
+  .meta-grid { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .meta-grid .k { font-size: 11px; color: var(--muted); }
+  .meta-grid .v { font-size: 13px; color: var(--text); font-family: var(--mono); }
+  .meta-grid .v.dead { color: var(--bad-text); }
+  .drawer-body { overflow-y: auto; padding: 4px 0 18px; }
+  .drawer-sec { padding: 14px 18px; }
+  .drawer-sec .sh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .drawer-sec .sh svg { width: 14px; height: 14px; color: var(--primary); }
+  .drawer-sec .sh b { font-size: 12px; color: var(--bright); font-weight: 600; }
+  .drawer-sec .sh .n { font-size: 11px; color: var(--muted); }
+  .doc { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; padding: 7px 8px; border-radius: 4px; }
+  .doc:hover { background: var(--hover); }
+  .doc.clk { cursor: pointer; }
+  .doc .path { font-family: var(--mono); font-size: 12px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc .path.dim { color: var(--muted); }
+  .doc .right { display: inline-flex; align-items: center; gap: 8px; }
+  .doc .recall { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 56px; text-align: right; }
+  .req { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 4px; }
+  .req:hover { background: var(--hover); }
+  .req .name { font-size: 12px; color: var(--secondary); }
+  .req .name b { color: var(--text); font-weight: 500; }
+  .req .go { color: var(--muted); display: inline-flex; }
+  .req:hover .go { color: var(--primary); }
+  .req .go svg { width: 14px; height: 14px; }
+
+  /* ── Content Modal ── */
+  #modalBackdrop { z-index: var(--z-modal-backdrop); }
+  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -48%); width: 720px; max-width: 92vw; max-height: 84vh; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; z-index: var(--z-modal); display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; }
+  .modal.show { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+  .modal-head { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .modal-head .info { min-width: 0; }
+  .modal-head .info .t { font-size: 13px; color: var(--bright); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .modal-head .info .p { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-head .acts { display: flex; align-items: center; gap: 8px; flex: none; }
+  .copy-btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; background: var(--hover); border: 1px solid var(--border); border-radius: 4px; color: var(--secondary); font-size: 11px; }
+  .copy-btn:hover { background: var(--active); color: var(--primary); }
+  .copy-btn svg { width: 13px; height: 13px; }
+  .ver-note { padding: 8px 16px; background: var(--warn-bg); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--warn-text); display: flex; align-items: center; gap: 7px; }
+  .ver-note svg { width: 13px; height: 13px; flex: none; }
+  .md { overflow-y: auto; padding: 18px 20px; }
+  .md h1 { font-size: 19px; color: var(--bright); margin: 0 0 12px; }
+  .md h2 { font-size: 15px; color: var(--bright); margin: 18px 0 8px; }
+  .md p { font-size: 13px; color: var(--text); margin: 0 0 10px; line-height: 1.65; }
+  .md ul { margin: 0 0 10px; padding-left: 20px; }
+  .md li { font-size: 13px; color: var(--text); margin-bottom: 5px; line-height: 1.6; }
+  .md code { font-family: var(--mono); font-size: 12px; background: var(--base); padding: 1px 6px; border-radius: 3px; color: var(--secondary); }
+  .md pre { background: var(--base); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 0 0 12px; }
+  .md pre code { background: none; padding: 0; color: var(--text); line-height: 1.6; }
+  .md .img-alt { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px dashed var(--border); border-radius: 4px; font-size: 11px; color: var(--muted); }
+
+  /* degrade demo strip */
+  .demo-bar { grid-column: 2; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 20px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  .demo-bar b { color: var(--secondary); font-weight: 600; }
+  .demo-bar button { font-size: 11px; padding: 4px 9px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: var(--secondary); }
+  .demo-bar button:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .scan-off main .needs-scan { position: relative; }
+  .scan-off main .needs-scan .val,
+  .scan-off main .needs-scan .line .util b,
+  .scan-off main .needs-scan .cover .fill { visibility: hidden; }
+  .scan-off main .needs-scan::after { content: '需服务器挂载知识库'; position: absolute; left: 14px; bottom: 12px; font-size: 11px; color: var(--warn-text); }
+  .line.needs-scan { position: relative; }
+</style>
+</head>
+<body>
+<div class="shell" id="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside>
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div><h1>SDD 质量观测台</h1><div class="sub">Data Observation</div></div>
+    </div>
+    <nav>
+      <div class="nav-group"><div class="label">总览</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M2 12h4m12 0h4M5 19l2-2m10 0l2 2"/><circle cx="12" cy="13" r="4"/></svg>总览</div>
+      </div>
+      <div class="nav-group"><div class="label">看板</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>用户分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>技能分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>产出分析</div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>知识库分析</div>
+      </div>
+      <div class="nav-group"><div class="label">配置</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4 12H1m22 0h-3"/></svg>语义映射</div>
+      </div>
+      <div class="nav-group"><div class="label">监控</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>交互明细</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>排障明细</div>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ── Topbar ── -->
+  <header class="top">
+    <div class="crumb">看板 / <b>知识库分析</b></div>
+    <div class="snapshot">
+      <span class="dot"></span>知识库快照
+      <span class="ver mono">trade@3a9f1 · loan@7c2e0 · wealth@b41d8 · 6-01 09:12</span>
+    </div>
+  </header>
+
+  <!-- demo control: toggle weak-dependency degrade -->
+  <div class="demo-bar">
+    <b>示意操作：</b>点击任意领域行打开下钻抽屉，点抽屉内文档打开内容 Modal。
+    <button onclick="document.getElementById('shell').classList.toggle('scan-off')">切换「未挂载知识库」降级态</button>
+    <span>（演示弱依赖：分母相关 KPI 降级，③ 标杆与召回数照常）</span>
+  </div>
+
+  <!-- ── Main ── -->
+  <main>
+    <div class="page-head">
+      <h2>知识库分析</h2>
+      <span class="desc">团队知识资产：盘子多大 · 用上了多少 · 消费多少 · 有多少在烂（累计口径，分母取服务器当前快照）</span>
+    </div>
+
+    <!-- ① 经营指标 -->
+    <div class="kpi-row">
+      <section class="card pad kpi needs-scan">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+        <div class="body">
+          <span class="name">知识库规模</span>
+          <strong class="val">342</strong>
+          <em class="hint">3 库 .md 合计 · 服务器当前快照</em>
+        </div>
+      </section>
+      <section class="card pad kpi needs-scan">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12 7 7"/></svg></div>
+        <div class="body">
+          <span class="name">知识利用率</span>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:4px">
+              <span class="val volt" style="font-size:24px">64<span style="font-size:15px">%</span></span>
+              <span class="num-sub">219 / 342</span>
+            </div>
+            <div class="progress"><span style="width:64%"></span></div>
+          </div>
+          <em class="hint">库内文档「被读过」占比</em>
+        </div>
+      </section>
+      <section class="card pad kpi">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></div>
+        <div class="body">
+          <span class="name">累计召回</span>
+          <strong class="val volt">8,432</strong>
+          <em class="hint">全团队 wiki 读取次数（不依赖挂载）</em>
+        </div>
+      </section>
+      <section class="card pad kpi needs-scan">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg></div>
+        <div class="body">
+          <span class="name">死知识</span>
+          <strong class="val bad">23</strong>
+          <em class="hint">库内存在 &gt;30 天且从无召回</em>
+        </div>
+      </section>
+    </div>
+
+    <!-- ② 三业务线资产对比 -->
+    <section class="card pad">
+      <div class="sec-title" style="margin-bottom:12px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="8"/><rect x="12" y="6" width="3" height="12"/><rect x="17" y="13" width="3" height="5"/></svg>
+        <h3>三业务线知识资产对比</h3>
+        <span class="sec-note">每条线一个知识库 git 仓库，利用率 = 被读 ∩ 库内现存 / 库内总数</span>
+      </div>
+      <div class="line-row">
+        <div class="line needs-scan">
+          <div class="head">
+            <span class="repo"><span class="swatch sw-trade"></span>交易 <span class="mono" style="color:var(--muted);font-weight:400">trade</span></span>
+            <span class="scale">规模 186</span>
+          </div>
+          <div class="util"><b>72%</b><span class="num-sub">134 / 186</span></div>
+          <div class="progress"><span style="width:72%"></span></div>
+          <div class="stats"><span>召回 <span class="mono">5,210</span></span><span class="dead">死知识 9</span></div>
+        </div>
+        <div class="line needs-scan">
+          <div class="head">
+            <span class="repo"><span class="swatch sw-loan"></span>融资 <span class="mono" style="color:var(--muted);font-weight:400">loan</span></span>
+            <span class="scale">规模 88</span>
+          </div>
+          <div class="util"><b>51%</b><span class="num-sub">45 / 88</span></div>
+          <div class="progress"><span style="width:51%;background:var(--warn-text)"></span></div>
+          <div class="stats"><span>召回 <span class="mono">1,640</span></span><span class="dead">死知识 11</span></div>
+        </div>
+        <div class="line needs-scan">
+          <div class="head">
+            <span class="repo"><span class="swatch sw-wealth"></span>理财 <span class="mono" style="color:var(--muted);font-weight:400">wealth</span></span>
+            <span class="scale">规模 68</span>
+          </div>
+          <div class="util"><b>59%</b><span class="num-sub">40 / 68</span></div>
+          <div class="progress"><span style="width:59%"></span></div>
+          <div class="stats"><span>召回 <span class="mono">1,582</span></span><span class="dead">死知识 3</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 趋势 + 标杆领域 -->
+    <div class="grid-2-1">
+      <section class="card pad">
+        <div class="sec-title" style="justify-content:space-between;margin-bottom:4px">
+          <div class="sec-title" style="margin:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <h3>召回趋势</h3>
+          </div>
+          <div class="seg-ctl"><button class="on">按日</button><button>按小时</button></div>
+        </div>
+        <div class="chart" id="chart"></div>
+        <div class="legend">
+          <span><span class="d sw-trade"></span>交易 trade</span>
+          <span><span class="d sw-loan"></span>融资 loan</span>
+          <span><span class="d sw-wealth"></span>理财 wealth</span>
+          <span style="border:0;color:var(--muted)">近 14 天 · 共 <span class="mono">8,432</span> 次</span>
+        </div>
+      </section>
+
+      <section class="card pad">
+        <div class="sec-title" style="margin-bottom:12px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6m12 5h1.5a2.5 2.5 0 0 0 0-5H18M6 4h12v6a6 6 0 0 1-12 0z"/><path d="M9 18h6M10 22h4M12 16v2"/></svg>
+          <h3>标杆领域</h3>
+          <span class="badge neu" style="border:1px solid rgba(250,255,105,0.22);color:var(--primary);background:rgba(250,255,105,0.06)">TOP 3</span>
+        </div>
+        <div class="top3">
+          <div class="rank">
+            <span class="bar" style="background:var(--primary)"></span>
+            <span class="badge-no" style="background:var(--primary);color:#0a0a0a">#1</span>
+            <div class="title"><span class="repo-tag bg-trade">交易</span>cashier</div>
+            <div class="meta"><span>召回 1,240</span><span>覆盖 48/60</span><span>9 人</span><span>关联 7 需求</span></div>
+          </div>
+          <div class="rank">
+            <span class="bar" style="background:var(--secondary)"></span>
+            <span class="badge-no" style="background:var(--secondary);color:#101010">#2</span>
+            <div class="title"><span class="repo-tag bg-trade">交易</span>settlement</div>
+            <div class="meta"><span>召回 880</span><span>覆盖 22/28</span><span>6 人</span><span>关联 4 需求</span></div>
+          </div>
+          <div class="rank">
+            <span class="bar" style="background:var(--muted)"></span>
+            <span class="badge-no" style="background:var(--muted);color:#101010">#3</span>
+            <div class="title"><span class="repo-tag bg-wealth">理财</span>portfolio</div>
+            <div class="meta"><span>召回 612</span><span>覆盖 18/25</span><span>5 人</span><span>关联 3 需求</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ④ 知识资产一览 -->
+    <section class="card">
+      <div class="toolbar">
+        <div class="sec-title" style="margin:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4H4zM4 12h16v4H4zM4 20h10"/></svg><h3>知识资产一览</h3></div>
+        <div class="seg-ctl"><button>知识库</button><button class="on">业务域</button><button>系统模块</button></div>
+        <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="搜索领域 / 系统名"/></div>
+        <div class="tabs"><button class="on">全部<span class="c">9</span></button><button>有死知识<span class="c">4</span></button></div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>业务域</th><th class="r">覆盖（已读/库内）</th><th class="r">召回</th><th class="r">文档</th><th class="r">参与人</th><th class="r">死知识</th><th>最近召回</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="table-foot"><span>共 9 个业务域 · 跨 3 个知识库</span><span>累计口径 · 分母取快照</span></div>
+    </section>
+  </main>
+</div>
+
+<!-- ── Drill-down drawer ── -->
+<div class="backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="row">
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span class="repo-tag bg-trade" style="font-size:11px;padding:2px 7px">交易</span>cashier</h3>
+      <button class="close-btn" onclick="closeDrawer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="meta-grid">
+      <div><div class="k">知识库</div><div class="v">bk-fe-knowledge-trade</div></div>
+      <div><div class="k">库内文档</div><div class="v">60 篇</div></div>
+      <div><div class="k">利用率</div><div class="v">80% (48/60)</div></div>
+      <div><div class="k">死知识</div><div class="v dead">3 篇</div></div>
+      <div><div class="k">参与人</div><div class="v">9 人</div></div>
+      <div><div class="k">关联需求</div><div class="v">7 个</div></div>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><b>文档清单</b><span class="n">按召回排 · 点开看正文</span></div>
+      <div class="doc clk" onclick="openModal('hot')">
+        <span class="path">domain-cashier/business/INDEX.md</span>
+        <span class="right"><span class="badge good">热</span><span class="recall">210 次</span></span>
+      </div>
+      <div class="doc clk" onclick="openModal('hot')">
+        <span class="path">domain-cashier/business/unfreeze.md</span>
+        <span class="right"><span class="badge good">热</span><span class="recall">88 次</span></span>
+      </div>
+      <div class="doc clk" onclick="openModal('cold')">
+        <span class="path">domain-cashier/system/apps/cashier-web/README.md</span>
+        <span class="right"><span class="badge neu">冷</span><span class="recall">4 次</span></span>
+      </div>
+      <div class="doc clk" onclick="openModal('dead')">
+        <span class="path dim">domain-cashier/business/legacy-refund.md</span>
+        <span class="right"><span class="badge bad">死</span><span class="recall">0 次</span></span>
+      </div>
+      <div class="doc clk" onclick="openModal('new')">
+        <span class="path dim">domain-cashier/business/new-batch-pay.md</span>
+        <span class="right"><span class="badge info">新增未读</span><span class="recall">0 次</span></span>
+      </div>
+    </div>
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg><b>关联需求</b><span class="n">本域 wiki 被哪些需求用过 · 接入 wiki → 产出链路</span></div>
+      <div class="req"><span class="name">交易 / <b>2026-04-10-unfreeze-component</b></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+      <div class="req"><span class="name">交易 / <b>2026-03-22-batch-payout</b></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+      <div class="req"><span class="name">交易 / <b>2026-03-05-refund-flow</b></span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── Content Modal ── -->
+<div class="backdrop" id="modalBackdrop" onclick="closeModal()"></div>
+<div class="modal" id="modal">
+  <div class="modal-head">
+    <div class="info">
+      <div class="t"><span class="repo-tag bg-trade" style="font-size:10px;padding:1px 6px">交易</span><span id="mTitle">cashier · business</span></div>
+      <div class="p" id="mPath">domain-cashier/business/INDEX.md</div>
+    </div>
+    <div class="acts">
+      <button class="copy-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制原始路径</button>
+      <button class="close-btn" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+  </div>
+  <div class="ver-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>显示的是知识库当前挂载版本，可能与历史读取时的版本不同。</div>
+  <div class="md" id="mBody"></div>
+</div>
+
+<script>
+  // ── ④ table rows (mock) ──
+  const rows = [
+    { repo:'trade',  name:'cashier',        read:48, total:60, recall:1240, docs:60, users:9, dead:3, last:'2 小时前' },
+    { repo:'trade',  name:'settlement',     read:22, total:28, recall:880,  docs:28, users:6, dead:1, last:'5 小时前' },
+    { repo:'wealth', name:'portfolio',      read:18, total:25, recall:612,  docs:25, users:5, dead:0, last:'3 小时前' },
+    { repo:'loan',   name:'credit-review',  read:18, total:40, recall:540,  docs:40, users:4, dead:8, last:'1 天前' },
+    { repo:'trade',  name:'market-data',    read:14, total:22, recall:320,  docs:22, users:4, dead:2, last:'6 小时前' },
+    { repo:'loan',   name:'risk-control',   read:9,  total:30, recall:210,  docs:30, users:3, dead:6, last:'4 天前' },
+    { repo:'wealth', name:'advisor',        read:12, total:21, recall:188,  docs:21, users:3, dead:1, last:'2 天前' },
+    { repo:'trade',  name:'reconciliation', read:16, total:34, recall:170,  docs:34, users:5, dead:2, last:'8 小时前' },
+    { repo:'wealth', name:'fund-ops',       read:10, total:22, recall:142,  docs:22, users:2, dead:2, last:'3 天前' },
+  ];
+  const repoLabel = { trade:'交易', loan:'融资', wealth:'理财' };
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = rows.map(r => {
+    const pct = Math.round(r.read / r.total * 100);
+    const fillColor = pct >= 65 ? 'var(--good-text)' : pct >= 45 ? 'var(--warn-text)' : 'var(--bad-text)';
+    const dead = r.dead > 0
+      ? '<span class="dead-pill has">'+r.dead+'</span>'
+      : '<span class="dead-pill zero">0</span>';
+    return `<tr onclick="openDrawer()">
+      <td><div class="domain-cell">
+        <span class="repo-badge bg-${r.repo}">${repoLabel[r.repo]}</span>
+        <span class="domain-name">${r.name}<span class="mono">${r.repo}</span></span>
+      </div></td>
+      <td class="r"><div class="cover">
+        <span class="track"><span class="fill" style="width:${pct}%;background:${fillColor}"></span></span>
+        <span class="frac">${r.read}/${r.total}</span>
+      </div></td>
+      <td class="r">${r.recall.toLocaleString()}</td>
+      <td class="r">${r.docs}</td>
+      <td class="r">${r.users}</td>
+      <td class="r">${dead}</td>
+      <td><span style="color:var(--secondary)">${r.last}</span></td>
+    </tr>`;
+  }).join('');
+
+  // ── ③ trend chart (mock, stacked by business line) ──
+  const series = ['trade','loan','wealth'];
+  const colorVar = { trade:'var(--bar-fill)', loan:'var(--info)', wealth:'var(--good-text)' };
+  const days = Array.from({length:14}, (_,i) => {
+    const t = { trade: 60+Math.round(Math.sin(i/2)*40)+i*4, loan: 18+Math.round(Math.cos(i/3)*10), wealth: 14+Math.round(Math.sin(i/2.5)*8) };
+    return t;
+  });
+  const maxTotal = Math.max(...days.map(d => d.trade+d.loan+d.wealth));
+  const chart = document.getElementById('chart');
+  chart.innerHTML = days.map((d,i) => {
+    const total = d.trade+d.loan+d.wealth;
+    const h = Math.max(total/maxTotal*120, 4);
+    const segs = series.map(s => {
+      const sh = d[s]/total*100;
+      return `<span class="seg" style="height:${sh}%;background:${colorVar[s]}"></span>`;
+    }).join('');
+    const day = String(((i+18-1)%30)+1).padStart(2,'0');
+    return `<div class="col"><div class="stack" style="height:${h}px">${segs}</div><span class="tick">05-${day}</span></div>`;
+  }).join('');
+
+  // ── content modal variants ──
+  const docs = {
+    hot: {
+      title:'cashier · business', path:'domain-cashier/business/INDEX.md', degraded:false,
+      html:`<h1>收银台业务知识库</h1>
+        <p>本目录沉淀收银台（cashier）相关的业务规则、状态机与边界条件，供 <code>/bk-fe-proposal</code> 与 <code>/bk-fe-design</code> 强制召回。</p>
+        <h2>核心概念</h2>
+        <ul><li><b>冻结 / 解冻</b>：资金在风控命中后进入冻结态，解冻需双人复核。</li>
+        <li><b>批量代付</b>：单批上限 500 笔，超限自动分批并落 outbox。</li>
+        <li><b>对账窗口</b>：T+1 日切，跨日交易归属以事件时间为准。</li></ul>
+        <h2>状态机</h2>
+        <pre><code>created → frozen → review → released
+                  ↘ rejected</code></pre>
+        <p>图示见下（服务器上相对链接不可跳转）：</p>
+        <p><span class="img-alt">🖼 图片：cashier-state-machine.png</span></p>` },
+    cold: {
+      title:'cashier · system', path:'domain-cashier/system/apps/cashier-web/README.md', degraded:false,
+      html:`<h1>cashier-web 模块说明</h1>
+        <p>近 30 天仅 4 次召回，属冷门知识。多数读取集中在初次接入阶段。</p>
+        <h2>本地启动</h2>
+        <pre><code>pnpm i &amp;&amp; pnpm dev:cashier-web</code></pre>
+        <ul><li>依赖 <code>@trade/sdk</code> ≥ 2.3</li><li>Mock 网关：<code>MOCK_GATEWAY=1</code></li></ul>` },
+    dead: {
+      title:'cashier · business', path:'domain-cashier/business/legacy-refund.md', degraded:false, dead:true,
+      html:`<div class="badge bad" style="margin-bottom:12px">死知识 · 库内存在 &gt;30 天且从无召回</div>
+        <h1>旧版退款流程（已废弃）</h1>
+        <p>本文档描述 2025 年的旧退款链路。点开它的典型动机正是：判断它是<b>该删</b>，还是<b>写得没用所以没人读</b>。</p>
+        <p>当前可读到正文（库里仍有此文件），但没有任何召回事件指向它。</p>
+        <h2>建议</h2>
+        <ul><li>若已被 <code>refund-flow.md</code> 取代，提 PR 删除。</li><li>若仍有效，需在 INDEX 里建立入口，否则检索不到。</li></ul>` },
+    new: {
+      title:'cashier · business', path:'domain-cashier/business/new-batch-pay.md', degraded:false,
+      html:`<div class="badge info" style="margin-bottom:12px">新增未读 · 5 天前加入，处于 30 天宽限期内</div>
+        <h1>批量代付 v2</h1>
+        <p>新加入的知识，尚无召回属正常，不计为死知识。宽限期满仍无召回才会转入死知识。</p>
+        <ul><li>单批上限提升至 2000 笔</li><li>失败重试改为指数退避</li></ul>` },
+  };
+  const degraded = {
+    title:'cashier · business', path:'domain-cashier/business/INDEX.md',
+    html:`<div class="badge warn" style="margin-bottom:12px">未配置 / 未挂载知识库</div>
+      <p style="color:var(--muted)">服务器未挂载该知识库目录，无法读取正文。仍可见结构化元信息：</p>
+      <pre><code>库:    bk-fe-knowledge-trade
+相对:  domain-cashier/business/INDEX.md
+原始:  /Users/zhangsan/.../bk-fe-knowledge-trade/domain-cashier/business/INDEX.md</code></pre>
+      <p style="color:var(--muted)">读不到内容不影响主流程，覆盖率/冷热同样基于结构化召回数据。</p>` };
+
+  const isScanOff = () => document.getElementById('shell').classList.contains('scan-off');
+  function openModal(kind){
+    const d = isScanOff() ? degraded : docs[kind];
+    document.getElementById('mTitle').textContent = d.title;
+    document.getElementById('mPath').textContent = d.path;
+    document.getElementById('mBody').innerHTML = d.html;
+    document.getElementById('modal').classList.add('show');
+    document.getElementById('modalBackdrop').classList.add('show');
+  }
+  function closeModal(){ document.getElementById('modal').classList.remove('show'); document.getElementById('modalBackdrop').classList.remove('show'); }
+  function openDrawer(){ document.getElementById('drawer').classList.add('show'); document.getElementById('drawerBackdrop').classList.add('show'); }
+  function closeDrawer(){ document.getElementById('drawer').classList.remove('show'); document.getElementById('drawerBackdrop').classList.remove('show'); }
+  document.addEventListener('keydown', e => { if(e.key==='Escape'){ closeModal(); closeDrawer(); } });
+  // deep-link to open states (handy for review/screenshots): #drawer / #modal
+  if (location.hash === '#drawer') openDrawer();
+  if (location.hash === '#modal') { openDrawer(); openModal('hot'); }
+</script>
+</body>
+</html>
