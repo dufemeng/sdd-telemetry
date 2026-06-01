@@ -8,6 +8,30 @@ const MetricDeltaSchema = z.object({
   deltaRate: z.number().nullable(),
 });
 
+const EmptyCodeImpact = {
+  codeWriteCount: 0,
+  codeReadCount: 0,
+  touchedFileCount: 0,
+  contributorCount: 0,
+  topRepositories: [],
+  summary: '昨日未观测到 SDD 参与业务代码读写。',
+};
+
+const DailyReportCodeImpactSchema = z.object({
+  codeWriteCount: z.number(),
+  codeReadCount: z.number(),
+  touchedFileCount: z.number(),
+  contributorCount: z.number(),
+  topRepositories: z.array(
+    z.object({
+      repository: z.string(),
+      writeCount: z.number(),
+      readCount: z.number(),
+    }),
+  ),
+  summary: z.string(),
+});
+
 export const DailyReportMetricsSchema = z.object({
   reportDate: z.string(),
   timezone: z.literal('Asia/Shanghai'),
@@ -70,6 +94,7 @@ export const DailyReportMetricsSchema = z.object({
     ),
     summary: z.string(),
   }),
+  codeImpact: DailyReportCodeImpactSchema.default(EmptyCodeImpact),
   links: z.object({
     overview: z.string(),
     workItems: z.string(),
@@ -133,3 +158,4 @@ export type DailyReportListItem = z.infer<typeof DailyReportListItemSchema>;
 export type DailyReportListResponse = z.infer<typeof DailyReportListResponseSchema>;
 export type DailyReportListQuery = z.infer<typeof DailyReportListQuerySchema>;
 export type MetricDelta = z.infer<typeof MetricDeltaSchema>;
+export type DailyReportCodeImpact = z.infer<typeof DailyReportCodeImpactSchema>;

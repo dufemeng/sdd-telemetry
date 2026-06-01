@@ -1,16 +1,18 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
-import type {
-  DailyReportDetailResponse,
-  DailyReportListItem,
-  DailyReportListResponse,
-  DailyReportMetrics,
-  MetricDelta,
+import {
+  DailyReportMetricsSchema,
+  type DailyReportDetailResponse,
+  type DailyReportListItem,
+  type DailyReportListResponse,
+  type DailyReportMetrics,
+  type MetricDelta,
 } from '@sdd-telemetry/api';
 import { DailyReportRepository } from './daily-report.repository';
+import { summarizeCodeImpactRows } from './daily-report-code-impact';
 import { renderHeadline, renderMarkdown } from './daily-report-renderer';
 
-const TEMPLATE_VERSION = 'daily-report-v1';
-const QUERY_VERSION = 'daily-report-query-v1';
+const TEMPLATE_VERSION = 'daily-report-v2';
+const QUERY_VERSION = 'daily-report-query-v2';
 const STAGE_MAP: Record<string, { code: 'proposal' | 'design' | 'task' | 'review'; label: string }> = {
   proposal: { code: 'proposal', label: '需求撰写' },
   design: { code: 'design', label: '系统设计' },
@@ -38,7 +40,7 @@ export class DailyReportService {
         stageCoverageRows, fullChainCount, multiStageCount,
         prevStageCoverageRows, prevFullChainCount, prevMultiStageCount,
         wikiDistinctFiles, wikiDistinctDomains, topDomains,
-        benchmarks,
+        benchmarks, codeImpactRows,
         outboxPending, outboxFailed, failedBatches,
       ] = await Promise.all([
         this.repo.countDistinctUsers(periodStart, periodEnd),
@@ -61,6 +63,7 @@ export class DailyReportService {
         this.repo.countWikiDistinctDomains(periodStart, periodEnd),
         this.repo.topWikiDomains(periodStart, periodEnd, 5),
         this.repo.listBenchmarks(periodStart, periodEnd, 5),
+        this.repo.listCodeImpactRows(periodStart, periodEnd),
         this.repo.countOutboxPending(),
         this.repo.countOutboxFailed(),
         this.repo.countFailedBatches(periodStart, periodEnd),
@@ -68,6 +71,7 @@ export class DailyReportService {
 
       const stages = buildStages(stageCoverageRows, prevStageCoverageRows);
       const warnings = buildWarnings(outboxPending, outboxFailed, failedBatches);
+      const codeImpact = summarizeCodeImpactRows(codeImpactRows);
 
       const metrics: DailyReportMetrics = {
         reportDate,
@@ -102,6 +106,7 @@ export class DailyReportService {
           topDomains,
           summary: buildKnowledgeSummary(wikiRecalls, wikiDistinctFiles, wikiDistinctDomains),
         },
+        codeImpact,
         links: {
           overview: this.dailyReportConfig?.baseUrl ?? '/',
           workItems: `${this.dailyReportConfig?.baseUrl ?? ''}/sdd/work-items`,
@@ -204,7 +209,7 @@ export class DailyReportService {
   private toDetail(row: import('./daily-report.repository').DailyReportRow): DailyReportDetailResponse {
     const isFailed = row.status === 'failed';
     const rawMetrics = isFailed ? null : (typeof row.metrics_json === 'string' ? JSON.parse(row.metrics_json) : row.metrics_json);
-    const metrics = rawMetrics as DailyReportMetrics | null;
+    const metrics = rawMetrics ? DailyReportMetricsSchema.parse(rawMetrics) : null;
     const reportDate = typeof row.report_date === 'string'
       ? row.report_date
       : new Date(row.report_date as any).toISOString().slice(0, 10);

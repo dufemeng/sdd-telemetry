@@ -8,6 +8,14 @@ interface Props {
 }
 
 const STAGE_ORDER = ['proposal', 'design', 'task', 'review'] as const;
+const EMPTY_CODE_IMPACT: DailyReportMetrics['codeImpact'] = {
+  codeWriteCount: 0,
+  codeReadCount: 0,
+  touchedFileCount: 0,
+  contributorCount: 0,
+  topRepositories: [],
+  summary: '昨日未观测到 SDD 参与业务代码读写。',
+};
 
 function kpiProgress(v: number): number {
   if (v <= 0) return 0.05;
@@ -90,6 +98,7 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
   }, []);
 
   const m = metrics;
+  const codeImpact = (m as DailyReportMetrics & { codeImpact?: DailyReportMetrics['codeImpact'] }).codeImpact ?? EMPTY_CODE_IMPACT;
 
   return (
     <article className="daily-report-document" ref={setRef}>
@@ -140,7 +149,33 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       </section>
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">2.</span><span className="dr-text">SDD 链路</span></div>
+        <div className="dr-section-title"><span className="dr-num">2.</span><span className="dr-text">代码落地</span></div>
+        <div className="dr-compare">
+          <PanelA title="编码参与">
+            <ul>
+              <li><strong>{codeImpact.codeWriteCount} 次代码改动</strong> 来自 SDD 相关会话</li>
+              <li><strong>{codeImpact.codeReadCount} 次代码读取</strong> 支撑定位、理解与修改</li>
+              <li>涉及 <strong>{codeImpact.touchedFileCount} 个代码文件</strong>、<strong>{codeImpact.contributorCount} 位用户</strong></li>
+            </ul>
+          </PanelA>
+          <PanelB title="Top 代码仓库">
+            <ul>
+              {codeImpact.topRepositories.map((repo) => (
+                <li key={repo.repository}>
+                  <strong>{repo.repository}</strong> 改动 {repo.writeCount} 次，读取 {repo.readCount} 次
+                </li>
+              ))}
+              {codeImpact.topRepositories.length === 0 && (
+                <li>昨日无业务代码仓库读写</li>
+              )}
+            </ul>
+          </PanelB>
+        </div>
+        <JudgeBlock title="判定：SDD 进入编码环节" text={codeImpact.summary} />
+      </section>
+
+      <section className="dr-section">
+        <div className="dr-section-title"><span className="dr-num">3.</span><span className="dr-text">SDD 链路</span></div>
         <div className="dr-compare">
           <PanelA title="阶段覆盖">
             <ul>
@@ -188,7 +223,7 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
 
       {m.benchmarks.length > 0 && (
         <section className="dr-section">
-          <div className="dr-section-title"><span className="dr-num">3.</span><span className="dr-text">今日标杆</span></div>
+          <div className="dr-section-title"><span className="dr-num">4.</span><span className="dr-text">今日标杆</span></div>
           <div className="dr-compare">
             <PanelA title="完整链路样本">
               <ul>
@@ -249,7 +284,7 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       )}
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">{m.benchmarks.length > 0 ? '4' : '3'}.</span><span className="dr-text">知识库使用</span></div>
+        <div className="dr-section-title"><span className="dr-num">{m.benchmarks.length > 0 ? '5' : '4'}.</span><span className="dr-text">知识库使用</span></div>
         <div className="dr-compare">
           <PanelA title="召回规模">
             <ul>

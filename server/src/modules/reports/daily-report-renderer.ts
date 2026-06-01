@@ -7,6 +7,9 @@ export function renderHeadline(m: DailyReportMetrics): string {
   const parts: string[] = [];
   parts.push(`昨天 ${m.kpis.activeUsers.current} 人使用 SDD`);
   parts.push(`覆盖 ${m.kpis.coveredWorkItems.current} 个需求`);
+  if (m.codeImpact.codeWriteCount > 0) {
+    parts.push(`参与 ${m.codeImpact.codeWriteCount} 次代码改动`);
+  }
   if (m.kpis.documentOutputs.current > 0) {
     parts.push(`生成/更新 ${m.kpis.documentOutputs.current} 篇过程文档`);
   }
@@ -27,6 +30,9 @@ export function renderMarkdown(m: DailyReportMetrics): string {
   lines.push(`- Skill 调用：${m.kpis.skillUsages.current} 次${formatDelta(m.kpis.skillUsages)}`);
   lines.push(`- 覆盖需求：${m.kpis.coveredWorkItems.current} 个${formatDelta(m.kpis.coveredWorkItems)}`);
   lines.push(`- 文档产出：${m.kpis.documentOutputs.current} 篇${formatDelta(m.kpis.documentOutputs)}`);
+  lines.push(
+    `- 代码落地：改动 ${m.codeImpact.codeWriteCount} 次，读取 ${m.codeImpact.codeReadCount} 次，涉及 ${m.codeImpact.touchedFileCount} 个代码文件、${m.codeImpact.contributorCount} 位用户`,
+  );
   if (m.kpis.wikiRecalls.current > 0) {
     lines.push(
       `- Wiki 召回：${m.kpis.wikiRecalls.current} 次，覆盖 ${m.knowledge.distinctFileCount} 个文件、${m.knowledge.distinctDomainCount} 个业务域`,
@@ -47,6 +53,12 @@ export function renderMarkdown(m: DailyReportMetrics): string {
     }
     lines.push('');
   }
+  lines.push('## 代码落地');
+  lines.push(m.codeImpact.summary);
+  for (const repo of m.codeImpact.topRepositories) {
+    lines.push(`- ${repo.repository}：改动 ${repo.writeCount} 次，读取 ${repo.readCount} 次`);
+  }
+  lines.push('');
   lines.push('查看详情：');
   lines.push(`- 总览：${m.links.overview}`);
   lines.push(`- 产出分析：${m.links.workItems}`);

@@ -29,6 +29,14 @@ export interface DailyReportSummaryRow {
   error_message: string | null;
 }
 
+export interface DailyReportCodeImpactRow {
+  toolName: string;
+  toolInputPreview: string | null;
+  userId: string | number | null;
+  requirementsRootPath: string | null;
+  wikiRootPath: string | null;
+}
+
 @Provide('dailyReportRepository')
 export class DailyReportRepository {
   @Inject('mysqlDataSourceManager')
@@ -231,6 +239,34 @@ export class DailyReportRepository {
       domain: r.domain,
       count: toNumber(r.count),
     }));
+  }
+
+  async listCodeImpactRows(
+    periodStart: string,
+    periodEnd: string,
+  ): Promise<DailyReportCodeImpactRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT tc.tool_name AS toolName,
+              tc.tool_input_preview AS toolInputPreview,
+              i.user_id AS userId,
+              u.requirements_root_path AS requirementsRootPath,
+              u.wiki_root_path AS wikiRootPath
+       FROM sdd_interaction_tool_calls tc
+       JOIN sdd_interactions i ON i.id = tc.interaction_id
+       LEFT JOIN sdd_users u ON u.id = i.user_id
+       WHERE i.started_at >= ? AND i.started_at < ?
+         AND tc.tool_name IN ('Write', 'Edit', 'MultiEdit', 'Read', 'Grep', 'Glob')
+         AND (
+           tc.skill_usage_id IS NOT NULL
+           OR EXISTS (
+             SELECT 1 FROM sdd_skill_usages su
+             WHERE su.interaction_id = i.id
+             LIMIT 1
+           )
+         )`,
+      [periodStart, periodEnd],
+    )) as DailyReportCodeImpactRow[];
   }
 
   async countStageCoverage(
