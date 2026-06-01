@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { Inject, Provide } from '@midwayjs/core';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
   CreateSddSemanticRequest,
   UpdateSddSemanticRequest,
@@ -28,6 +30,7 @@ import type {
   SddVersionItem,
   SddWorkItem,
   SddWorkItemDetail,
+  SddWikiRecallContent,
   WikiRecallHeatmapResponse,
   WikiRecallListResponse,
   WikiRecallRange,
@@ -47,6 +50,7 @@ import {
   type WorkItemSummaryRow,
 } from './sdd-query.repository';
 import { SddWriteRepository } from './sdd-write.repository';
+import { deriveRepoName, resolveWikiContentPath } from './wiki-content';
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
 
@@ -60,6 +64,62 @@ export class SddQueryService {
 
   @Inject('sddQueryRepository')
   sddQueryRepository!: SddQueryRepository;
+
+  @Config('knowledgeBase')
+  knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number };
+
+  async getWikiRecallContent(toolCallId: string): Promise<SddWikiRecallContent> {
+    const row = await this.sddQueryRepository.findWikiRecallForContent(toolCallId);
+    if (!row) {
+      return emptyWikiContent('recall_not_found', null, null, null);
+    }
+
+    const rawPath = row.raw_path;
+    const relativePath = row.wiki_relative_path;
+    const repoName = deriveRepoName(rawPath, relativePath);
+
+    if (row.action_type !== 'read') {
+      return emptyWikiContent('not_readable_action', repoName, relativePath, rawPath);
+    }
+    const root = this.knowledgeBaseConfig.rootPath;
+    if (!root) {
+      return emptyWikiContent('not_configured', repoName, relativePath, rawPath);
+    }
+    if (!repoName || !relativePath) {
+      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    }
+
+    const target = resolveWikiContentPath(root, repoName, relativePath);
+    if (!target) {
+      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    }
+
+    const repoDir = path.resolve(root, repoName);
+    const repoStat = await statOrNull(repoDir);
+    if (!repoStat || !repoStat.isDirectory()) {
+      return emptyWikiContent('repo_missing', repoName, relativePath, rawPath);
+    }
+    const fileStat = await statOrNull(target);
+    if (!fileStat) {
+      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    }
+    if (!fileStat.isFile()) {
+      return emptyWikiContent('not_a_file', repoName, relativePath, rawPath);
+    }
+
+    const cap = this.knowledgeBaseConfig.contentMaxBytes;
+    const content = await readUpTo(target, cap);
+    return {
+      found: true,
+      reason: 'ok',
+      repoName,
+      relativePath,
+      rawPath,
+      isMarkdown: target.toLowerCase().endsWith('.md'),
+      content,
+      truncated: fileStat.size > cap,
+    };
+  }
 
   async listSemantics(): Promise<SddSemantic[]> {
     const rows = await this.sddQueryRepository.listSemantics();
@@ -1047,4 +1107,41 @@ function parseStringArray(value: unknown): string[] | null {
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+function emptyWikiContent(
+  reason: SddWikiRecallContent['reason'],
+  repoName: string | null,
+  relativePath: string | null,
+  rawPath: string | null,
+): SddWikiRecallContent {
+  return {
+    found: false,
+    reason,
+    repoName,
+    relativePath,
+    rawPath,
+    isMarkdown: false,
+    content: null,
+    truncated: false,
+  };
+}
+
+async function statOrNull(p: string): Promise<import('node:fs').Stats | null> {
+  try {
+    return await fs.stat(p);
+  } catch {
+    return null;
+  }
+}
+
+async function readUpTo(file: string, cap: number): Promise<string> {
+  const handle = await fs.open(file, 'r');
+  try {
+    const buf = Buffer.alloc(cap);
+    const { bytesRead } = await handle.read(buf, 0, cap, 0);
+    return buf.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
 }
