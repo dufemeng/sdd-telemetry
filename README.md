@@ -93,6 +93,26 @@ bundle 内包含镜像包、镜像 checksum、`compose.prod.yml` 和 `deploy-doc
 ALLOW_DIRTY=1 pnpm docker:package
 ```
 
+### 知识库文档挂载与零摩擦冷启动
+
+需求详情/交互抽屉里点 Read 类 **wiki** 标签可查看知识库文档内容（弱依赖：读不到只降级，不影响主流程）。知识库**不入仓、不入镜像**（在构建上下文之外，物理隔离），只在运行时由服务器以只读卷提供：
+
+```text
+~/project/sdd-telemetry-deploy/      # 部署目录（运行 deploy-docker.sh 处）
+  ├── deploy-docker.sh
+  ├── compose.prod.yml
+  ├── .env                           # 脚本自动维护
+  ├── releases/
+  └── knowledge/                     # 与脚本同级，git clone 三个知识库到此
+      ├── bk-fe-knowledge-trade/
+      ├── bk-fe-knowledge-wealth/
+      └── bk-fe-knowledge-loan/
+```
+
+`server` 容器以 `:ro` 挂载 `knowledge/` 为 `/knowledge`，`KNOWLEDGE_BASE_ROOT=/knowledge`（均有默认，可用 `KNOWLEDGE_BASE_HOST_DIR` / `KNOWLEDGE_BASE_ROOT` 覆盖）。未 clone 也不报错，功能仅降级。本机 dev 直接 `KNOWLEDGE_BASE_ROOT=<本机知识库父目录> pnpm dev:server`。
+
+**零摩擦冷启动**：部署包已在部署目录时，`./deploy/deploy-docker.sh` 即可起——脚本自动建 `knowledge/`、首次自动生成并落盘 `AUTH_SESSION_SECRET`（复用、不轮换）、从本地 bundle 文件名自动识别 `VERSION`。仅当走「服务器在线从 GitHub Release 下载」时才需显式 `VERSION=<版本>`。
+
 ### 三台机器发布流程
 
 有 Docker 的 Mac 同时完成打包、生成单文件 bundle 和 GitHub Release 上传：

@@ -781,6 +781,35 @@ export const ReportUserSettingsRequestSchema = z.object({
 });
 ```
 
+### 6.20 GET /api/sdd/wiki-recalls/content/:toolCallId
+
+按 `tool_call_id` 取该 wiki 召回对应知识库文档内容。后端从 `sdd_wiki_recalls` 取「仓库名 + 仓库内相对路径」，重映射到服务器 `KNOWLEDGE_BASE_ROOT` 后只读读取（越权守卫 + 大小上限）。**采集机绝对路径不可直接用**，只取仓库名与相对路径重拼。弱依赖：读不到按 `reason` 分级降级，不报错。
+
+仅 `action_type='read'` 的召回返回内容；`KNOWLEDGE_BASE_ROOT`（容器内默认 `/knowledge`）与大小上限 `WIKI_CONTENT_MAX_BYTES`（默认 512KB）由服务端配置，未配置即返回 `not_configured` 降级。
+
+Response：
+
+```ts
+export const SddWikiRecallContentSchema = z.object({
+  found: z.boolean(),
+  reason: z.enum([
+    'ok', // 读到
+    'recall_not_found', // 该 tool_call_id 无召回记录
+    'not_readable_action', // glob/grep，无单一文件
+    'not_configured', // 未配置 KNOWLEDGE_BASE_ROOT
+    'repo_missing', // 知识库仓库未 clone
+    'file_missing', // 文件不存在
+    'not_a_file', // 路径非常规文件
+  ]),
+  repoName: z.string().nullable(),
+  relativePath: z.string().nullable(),
+  rawPath: z.string().nullable(), // 采集机原始路径，仅展示/复制用
+  isMarkdown: z.boolean(),
+  content: z.string().nullable(), // 超过大小上限时按 truncated 截断
+  truncated: z.boolean(),
+});
+```
+
 ## 7. ops API
 
 ops API 面向本地和公司内网排障，不作为业务公开接口。
