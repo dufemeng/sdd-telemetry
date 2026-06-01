@@ -11,6 +11,7 @@ import {
   SddInteractionDetailSchema,
   SddInteractionItemSchema,
   SddInteractionToolCallListResponseSchema,
+  SddWikiRecallContentSchema,
   SddListQuerySchema,
   SddWorkItemListQuerySchema,
   SddOverviewQuerySchema,
@@ -39,6 +40,7 @@ import {
   type SddInteractionDetail,
   type SddInteractionItem,
   type SddInteractionToolCallListResponse,
+  type SddWikiRecallContent,
   type SddOverview,
   type SddSemantic,
   type SddSkillAnalytics,
@@ -247,6 +249,14 @@ export class SddController {
       parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 500),
     );
     return ok(parseWithSchema(WikiRecallListResponseSchema, data));
+  }
+
+  @Get('/wiki-recalls/content/:toolCallId')
+  async wikiRecallContent() {
+    const toolCallId = this.ctx.params.toolCallId as string;
+    const data: SddWikiRecallContent =
+      await this.sddQueryService.getWikiRecallContent(toolCallId);
+    return ok(parseWithSchema(SddWikiRecallContentSchema, data));
   }
 
   @Get('/work-items')
