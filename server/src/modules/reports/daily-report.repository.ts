@@ -285,11 +285,13 @@ export class DailyReportRepository {
          AND (
            tc.skill_usage_id IS NOT NULL
            OR EXISTS (
-             SELECT 1 FROM sdd_skill_usages su
-             WHERE su.interaction_id = i.id
-             LIMIT 1
-           )
-         )`,
+            SELECT 1 FROM sdd_skill_usages su
+              WHERE su.interaction_id = i.id
+              LIMIT 1
+            )
+          )
+        ORDER BY tc.id DESC
+        LIMIT 50000`,
     )) as DailyReportCodeImpactRow[];
   }
 

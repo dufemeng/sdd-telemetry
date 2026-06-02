@@ -38,7 +38,7 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
   const map = {
     live: { cls: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]', label: '活跃' },
     cold: { cls: 'text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]', label: '转冷' },
-    churn: { cls: 'text-[#f87171] bg-[rgba(248,113,113,0.10)]', label: '流失' },
+    churn: { cls: 'text-[var(--color-bad-text)] bg-[var(--color-bad-bg)]', label: '流失' },
   } as const;
   const { cls, label } = map[status];
   return (
@@ -47,7 +47,7 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
         {label}
       </span>
       {isNew ? (
-        <span className="inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap text-[#60a5fa] bg-[rgba(96,165,250,0.10)]">
+        <span className="inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap text-[var(--color-primary)] bg-[rgba(250,255,105,0.10)]">
           新成员
         </span>
       ) : null}
@@ -62,19 +62,13 @@ export default function UserProfilePage() {
   const profile = profileQuery.data;
 
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [openInteractionId, setOpenInteractionId] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedWorkItemId(null);
-    setSelectedArtifactId(null);
   }, [userId]);
 
-  const activityNodes = useUserActivity(
-    userId,
-    selectedWorkItemId,
-    selectedArtifactId,
-  );
+  const activityNodes = useUserActivity(userId, selectedWorkItemId);
 
   if (profileQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
@@ -93,13 +87,11 @@ export default function UserProfilePage() {
     ? Math.floor((Date.now() - new Date(user.firstSeenAt).getTime()) / DAY_MS)
     : null;
 
-  // 方法论完整度：4 个 canonical 阶段是否都达到
   const reachedStages = maturity.stages.filter((s) => s.firstReachedAt !== null).map((s) => s.stage);
   const isComplete = reachedStages.length === maturity.stages.length;
-
-  // 当选中 work item 时，从 workItems 取它的 artifacts 选项（这里简化为只展示活动，artifact 维度在产出分析侧）
-  void selectedArtifactId;
-  void setSelectedArtifactId;
+  const selectedTitle = selectedWorkItemId
+    ? workItems.find((wi) => wi.workItemId === selectedWorkItemId)?.title ?? '选中需求'
+    : null;
 
   return (
     <div className="grid gap-3">
@@ -131,7 +123,7 @@ export default function UserProfilePage() {
                 </span>
               ) : null}
               <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                成熟度 {reachedStages.length}/{maturity.stages.length}
+                阶段 {reachedStages.length}/{maturity.stages.length}
               </span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -162,10 +154,6 @@ export default function UserProfilePage() {
       {/* Two-column body */}
       <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
-          <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <span className="text-[12px] font-semibold text-[#f5f5f5]">他的需求</span>
-            <span className="text-[10px] text-[var(--color-muted)]">行点击出链 → 产出分析</span>
-          </div>
           <UserWorkItemList
             workItems={workItems}
             selectedId={selectedWorkItemId}
@@ -175,24 +163,19 @@ export default function UserProfilePage() {
 
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
           <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-[#f5f5f5]">
-                活动时间线
-                {selectedWorkItemId ? ` · ${workItems.find((wi) => wi.workItemId === selectedWorkItemId)?.title ?? '选中需求'}` : ' · 全部'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-[10px]">
-              <span
-                className="inline-flex items-center px-[6px] py-[1px] rounded-full"
-                style={{
-                  background: isComplete ? 'var(--color-good-bg)' : 'rgba(255,255,255,0.04)',
-                  color: isComplete ? 'var(--color-good-text)' : 'var(--color-secondary)',
-                  border: `1px solid ${isComplete ? 'var(--color-good-text)' : 'var(--color-border)'}`,
-                }}
-              >
-                方法论完整度 {reachedStages.length}/{maturity.stages.length}
-              </span>
-            </div>
+            <span className="text-[12px] font-semibold text-[#f5f5f5]">
+              活动时间线{selectedTitle ? ` · ${selectedTitle}` : ' · 全部'}
+            </span>
+            <span
+              className="inline-flex items-center px-[6px] py-[1px] rounded-full text-[10px] whitespace-nowrap"
+              style={{
+                background: isComplete ? 'var(--color-good-bg)' : 'rgba(255,255,255,0.04)',
+                color: isComplete ? 'var(--color-good-text)' : 'var(--color-secondary)',
+                border: `1px solid ${isComplete ? 'var(--color-good-text)' : 'var(--color-border)'}`,
+              }}
+            >
+              完整度 {reachedStages.length}/{maturity.stages.length}
+            </span>
           </div>
           <UserActivityTimeline
             nodes={activityNodes}

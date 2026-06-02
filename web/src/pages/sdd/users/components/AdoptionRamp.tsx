@@ -10,13 +10,6 @@ const STAGE_LABELS: Record<SddStage, string> = {
   codereview: '代码评审',
 };
 
-const STAGE_COLORS: Record<SddStage, string> = {
-  proposal: 'var(--color-primary)',
-  design: '#a78bfa',
-  task: '#60a5fa',
-  codereview: '#34d399',
-};
-
 function daysFromIso(iso: string | null, baseIso: string | null): number | null {
   if (!iso || !baseIso) return null;
   const ms = new Date(iso).getTime() - new Date(baseIso).getTime();
@@ -38,11 +31,15 @@ export function AdoptionRamp({
   const completionRate = stages.length > 0 ? reachedCount / stages.length : 0;
 
   return (
-    <section className="flex flex-col gap-[8px] p-[12px] rounded-[6px]" style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}>
+    <section
+      className="flex flex-col gap-[8px] p-[12px] rounded-[6px]"
+      style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
+    >
       <div className="flex items-center justify-between">
-        <span className="text-[12px] font-semibold text-[#f5f5f5]">采用爬坡</span>
+        <span className="text-[12px] font-semibold text-[#f5f5f5]">上手进度</span>
         <span className="text-[11px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-          {reachedCount}/{stages.length} · 通链 {rampDays !== null ? `${rampDays} 天` : '—'}
+          {reachedCount}/{stages.length}
+          {rampDays !== null ? ` · 走通全流程 ${rampDays} 天` : ''}
         </span>
       </div>
       <div className="grid grid-cols-4 gap-[6px]">
@@ -56,15 +53,15 @@ export function AdoptionRamp({
               className="rounded-[4px] px-[8px] py-[6px]"
               style={{
                 background: 'var(--color-surface)',
-                border: `1px solid ${reached ? STAGE_COLORS[stage] : 'var(--color-border)'}`,
+                border: `1px solid ${reached ? 'var(--color-primary)' : 'var(--color-border)'}`,
                 opacity: reached ? 1 : 0.55,
               }}
             >
-              <div className="flex items-center gap-[5px] mb-[3px]">
-                <span className="w-[5px] h-[5px] rounded-full" style={{ background: STAGE_COLORS[stage] }} />
-                <span className="text-[10px] text-[var(--color-secondary)]">{STAGE_LABELS[stage]}</span>
-              </div>
-              <div className="text-[12px] font-semibold" style={{ color: reached ? '#f5f5f5' : 'var(--color-muted)', fontFamily: 'var(--font-mono)' }}>
+              <div className="text-[10px] text-[var(--color-secondary)] mb-[3px]">{STAGE_LABELS[stage]}</div>
+              <div
+                className="text-[12px] font-semibold"
+                style={{ color: reached ? 'var(--color-primary)' : 'var(--color-muted)', fontFamily: 'var(--font-mono)' }}
+              >
                 {reached ? `D${dayOffset}` : '—'}
               </div>
               {reached ? (

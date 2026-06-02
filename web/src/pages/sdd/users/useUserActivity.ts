@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { SddUsageItem, WikiRecallRow, SddArtifactWrite } from '@sdd-telemetry/api';
+import type { SddUsageItem, WikiRecallRow } from '@sdd-telemetry/api';
 import { useUserSkillUsages } from './useUserSkillUsages';
 import { useWikiRecallList } from '@/pages/sdd/wiki-recalls/useWikiRecalls';
-import { useArtifactWrites } from '@/pages/sdd/work-items/useArtifactWrites';
+import { useUserArtifactWrites, type UserArtifactWrite } from './useUserArtifactWrites';
 
 export type ActivityNodeKind = 'skill' | 'wiki' | 'write' | 'discussion';
 
@@ -17,21 +17,16 @@ export interface ActivityNode {
   title: string;
   detail: string | null;
   wikiRelativePath?: string | null;
-  writeKind?: string | null;
-  contentPreview?: string | null;
+  artifactId?: string;
 }
 
 export function useUserActivity(
   userId: string | undefined,
   selectedWorkItemId: string | null,
-  selectedArtifactId: string | null,
 ) {
   const skillsQuery = useUserSkillUsages(userId);
-  const wikiQuery = useWikiRecallList('30d', selectedWorkItemId ? {} : { userId });
-  const writesQuery = useArtifactWrites(
-    selectedWorkItemId ?? null,
-    selectedArtifactId ?? null,
-  );
+  const wikiQuery = useWikiRecallList('30d', { userId });
+  const writesQuery = useUserArtifactWrites(selectedWorkItemId);
 
   return useMemo(() => {
     const skillNodes: ActivityNode[] = (skillsQuery.data ?? [])
@@ -61,8 +56,8 @@ export function useUserActivity(
         detail: w.wikiRelativePath ?? w.rawPath,
         wikiRelativePath: w.wikiRelativePath ?? w.rawPath,
       }));
-    const writeNodes: ActivityNode[] = (writesQuery.data?.items ?? []).map((w: SddArtifactWrite) => ({
-      id: `write-${w.id}`,
+    const writeNodes: ActivityNode[] = (writesQuery.data ?? []).map((w: UserArtifactWrite) => ({
+      id: `write-${w.artifactId}-${w.id}`,
       kind: w.nodeKind === 'discussion' ? 'discussion' : 'write',
       eventTime: w.eventTime,
       interactionId: w.interactionId,
@@ -71,8 +66,7 @@ export function useUserActivity(
       rawSkillName: w.rawSkillName,
       title: w.nodeKind === 'discussion' ? '讨论' : (w.writeKind ?? '写入'),
       detail: w.contentPreview ?? w.promptPreview,
-      writeKind: w.writeKind,
-      contentPreview: w.contentPreview,
+      artifactId: w.artifactId,
     }));
 
     const all = [...skillNodes, ...wikiNodes, ...writeNodes];
