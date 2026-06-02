@@ -134,5 +134,3 @@ function Sparkline({ points }: { points: Array<{ t: string; count: number }> }) 
     </div>
   );
 }
-
-export { REPO_LABEL };

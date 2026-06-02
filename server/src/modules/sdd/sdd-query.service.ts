@@ -1028,7 +1028,7 @@ export class SddQueryService {
     relativePath: string,
   ): Promise<WikiDocDetailResponse> {
     const [trendRows, readerRows, sourceRows] = await Promise.all([
-      this.sddQueryRepository.listWikiRecallDocDetailTrend(relativePath),
+      this.sddQueryRepository.listWikiRecallDocDetailTrend(relativePath, rangeToSinceDate('30d')),
       this.sddQueryRepository.listWikiRecallDocDetailReaders(relativePath),
       this.sddQueryRepository.listWikiRecallDocDetailSourceWorkItems(relativePath),
     ]);

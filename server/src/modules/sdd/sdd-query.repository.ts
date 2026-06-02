@@ -996,15 +996,23 @@ export class SddQueryRepository {
 
   async listWikiRecallDocDetailTrend(
     relativePath: string,
+    sinceDate: Date | null,
   ): Promise<Array<{ t: string; count: string | number }>> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['wiki_relative_path = ?', 'event_time IS NOT NULL'];
+    const params: unknown[] = [relativePath];
+    if (sinceDate) {
+      clauses.push('event_time >= ?');
+      params.push(sinceDate);
+    }
+    const where = clauses.join(' AND ');
     return (await dataSource.query(
       `SELECT DATE_FORMAT(event_time, '%Y-%m-%dT00:00:00.000Z') AS t, COUNT(*) AS count
        FROM sdd_wiki_recalls
-       WHERE wiki_relative_path = ? AND event_time IS NOT NULL
+       WHERE ${where}
        GROUP BY t
        ORDER BY t ASC`,
-      [relativePath],
+      params,
     )) as Array<{ t: string; count: string | number }>;
   }
 
