@@ -118,6 +118,8 @@ services:
     working_dir: /app/worker
     environment: *app-env
     command: ["node", "dist/ops-resource-agent.js"]
+    group_add:
+      - "${DOCKER_SOCKET_GID:-999}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

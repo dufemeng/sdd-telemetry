@@ -257,6 +257,13 @@ fi
 if [[ -n "${OPS_RESOURCE_MONITOR_ENABLED:-}" ]]; then
   set_env_value OPS_RESOURCE_MONITOR_ENABLED "$OPS_RESOURCE_MONITOR_ENABLED"
 fi
+if [[ -S /var/run/docker.sock ]]; then
+  docker_socket_gid="$(stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null || true)"
+  if [[ -n "$docker_socket_gid" ]]; then
+    set_env_value DOCKER_SOCKET_GID "$docker_socket_gid"
+    printf '已自动探测 Docker socket GID=%s 并写入 %s\n' "$docker_socket_gid" "$ENV_FILE"
+  fi
+fi
 if [[ -n "${OPS_RESOURCE_POLL_INTERVAL_SECONDS:-}" ]]; then
   set_env_value OPS_RESOURCE_POLL_INTERVAL_SECONDS "$OPS_RESOURCE_POLL_INTERVAL_SECONDS"
 fi
