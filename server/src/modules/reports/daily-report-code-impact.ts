@@ -105,6 +105,42 @@ export function summarizeCodeImpactByUser(
   return byUser;
 }
 
+export interface CodeImpactAggregatedInput {
+  userId: string | number;
+  toolName: string;
+  toolInputPreview: string | null;
+  requirementsRootPath: string | null;
+  wikiRootPath: string | null;
+  count: string | number;
+}
+
+export function summarizeCodeImpactByUserAggregated(
+  rows: CodeImpactAggregatedInput[],
+): Map<string, UserCodeImpactCount> {
+  const byUser = new Map<string, UserCodeImpactCount>();
+  const toNum = (v: string | number): number =>
+    typeof v === 'number' ? v : Number.parseInt(v, 10) || 0;
+  for (const row of rows) {
+    if (!WRITE_TOOLS.has(row.toolName) && !READ_TOOLS.has(row.toolName)) {
+      continue;
+    }
+    const toolPath = extractToolPath(row.toolInputPreview);
+    if (!toolPath || !isBusinessCodePath(toolPath.value, row)) {
+      continue;
+    }
+    const key = String(row.userId);
+    const cnt = toNum(row.count);
+    const stat = byUser.get(key) ?? { codeWriteCount: 0, codeReadCount: 0 };
+    if (WRITE_TOOLS.has(row.toolName)) {
+      stat.codeWriteCount += cnt;
+    } else {
+      stat.codeReadCount += cnt;
+    }
+    byUser.set(key, stat);
+  }
+  return byUser;
+}
+
 function extractToolPath(inputPreview: string | null): ToolPath | null {
   if (!inputPreview) return null;
   let input: unknown;

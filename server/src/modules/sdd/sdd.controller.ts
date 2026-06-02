@@ -331,8 +331,9 @@ export class SddController {
   async artifactWrites() {
     const workItemId = this.ctx.params.workItemId as string;
     const artifactId = this.ctx.params.artifactId as string;
+    const userId = firstQueryValue(this.ctx.query.userId);
     const data: SddArtifactWriteListResponse =
-      await this.sddQueryService.listArtifactWrites(workItemId, artifactId);
+      await this.sddQueryService.listArtifactWrites(workItemId, artifactId, userId ?? undefined);
     return ok(parseWithSchema(SddArtifactWriteListResponseSchema, data));
   }
 

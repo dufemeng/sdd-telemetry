@@ -37,6 +37,15 @@ export interface DailyReportCodeImpactRow {
   wikiRootPath: string | null;
 }
 
+export interface CodeImpactAggregatedRow {
+  userId: string | number;
+  toolName: string;
+  toolInputPreview: string | null;
+  requirementsRootPath: string | null;
+  wikiRootPath: string | null;
+  count: string | number;
+}
+
 @Provide('dailyReportRepository')
 export class DailyReportRepository {
   @Inject('mysqlDataSourceManager')
@@ -269,14 +278,15 @@ export class DailyReportRepository {
     )) as DailyReportCodeImpactRow[];
   }
 
-  async listCodeImpactRowsAll(): Promise<DailyReportCodeImpactRow[]> {
+  async listCodeImpactRowsAllAggregatedByUser(): Promise<CodeImpactAggregatedRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
-      `SELECT tc.tool_name AS toolName,
+      `SELECT i.user_id AS userId,
+              tc.tool_name AS toolName,
               tc.tool_input_preview AS toolInputPreview,
-              i.user_id AS userId,
               u.requirements_root_path AS requirementsRootPath,
-              u.wiki_root_path AS wikiRootPath
+              u.wiki_root_path AS wikiRootPath,
+              COUNT(*) AS count
        FROM sdd_interaction_tool_calls tc
        JOIN sdd_interactions i ON i.id = tc.interaction_id
        LEFT JOIN sdd_users u ON u.id = i.user_id
@@ -286,13 +296,13 @@ export class DailyReportRepository {
            tc.skill_usage_id IS NOT NULL
            OR EXISTS (
             SELECT 1 FROM sdd_skill_usages su
-              WHERE su.interaction_id = i.id
-              LIMIT 1
-            )
-          )
-        ORDER BY tc.id DESC
-        LIMIT 50000`,
-    )) as DailyReportCodeImpactRow[];
+             WHERE su.interaction_id = i.id
+             LIMIT 1
+           )
+         )
+       GROUP BY i.user_id, tc.tool_name, tc.tool_input_preview,
+                u.requirements_root_path, u.wiki_root_path`,
+    )) as CodeImpactAggregatedRow[];
   }
 
   async countStageCoverage(

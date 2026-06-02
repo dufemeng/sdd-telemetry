@@ -4,23 +4,27 @@ import { requestData } from '@/api/client';
 
 export type UserArtifactWrite = SddArtifactWrite & { artifactId: string };
 
-export function useUserArtifactWrites(workItemId: string | null) {
+export function useUserArtifactWrites(workItemId: string | null, userId: string | undefined) {
   return useQuery({
-    queryKey: ['user-artifact-writes', workItemId],
+    queryKey: ['user-artifact-writes', workItemId, userId],
     queryFn: async (): Promise<UserArtifactWrite[]> => {
       if (!workItemId) return [];
       const detail = await requestData<SddWorkItemDetail>(`/api/sdd/work-items/${workItemId}`);
-      const merged: UserArtifactWrite[] = [];
-      await Promise.all(
-        detail.artifacts.map(async (art) => {
-          const res = await requestData<SddArtifactWriteListResponse>(
-            `/api/sdd/work-items/${workItemId}/artifacts/${art.id}/writes`,
-          );
-          for (const w of res.items) {
-            merged.push({ ...w, artifactId: art.id });
-          }
-        }),
+      const results = await Promise.allSettled(
+        detail.artifacts.map((art) =>
+          requestData<SddArtifactWriteListResponse>(
+            `/api/sdd/work-items/${workItemId}/artifacts/${art.id}/writes${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`,
+          ).then((res) => ({ artifactId: art.id, items: res.items })),
+        ),
       );
+      const merged: UserArtifactWrite[] = [];
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          for (const w of result.value.items) {
+            merged.push({ ...w, artifactId: result.value.artifactId });
+          }
+        }
+      }
       merged.sort((a, b) => {
         if (!a.eventTime && !b.eventTime) return 0;
         if (!a.eventTime) return 1;

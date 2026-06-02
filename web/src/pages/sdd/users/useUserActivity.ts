@@ -26,7 +26,7 @@ export function useUserActivity(
 ) {
   const skillsQuery = useUserSkillUsages(userId);
   const wikiQuery = useWikiRecallList('30d', { userId });
-  const writesQuery = useUserArtifactWrites(selectedWorkItemId);
+  const writesQuery = useUserArtifactWrites(selectedWorkItemId, userId);
 
   return useMemo(() => {
     const skillNodes: ActivityNode[] = (skillsQuery.data ?? [])

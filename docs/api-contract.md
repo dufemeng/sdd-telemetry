@@ -693,21 +693,69 @@ schema_parse_failed
 
 ### 6.15 GET /api/sdd/users
 
-用户 / 机器维度。
+用户 / 机器维度。响应为 `SddUserItem[]`，每个 item 包含：
 
-Response item 包含用户标识、机器标识、`requirementsRootPath`、`wikiRootPath`、交互数、skill 调用数和最近活跃时间。
+- 用户 / 机器标识：`id` / `userKey` / `installId` / `userName` / `machineId` / `machineName`
+- 路径配置：`requirementsRootPath` / `wikiRootPath`
+- 时间：`firstSeenAt` / `lastSeenAt`
+- 活动量：`skillUsageCount` / `interactionCount` / `workItemCount`
+- 三态 / 新成员标识：`status: 'live' | 'cold' | 'churn'` / `isNew: boolean`（口径受 `USER_COLD_DAYS` / `USER_CHURN_DAYS` / `USER_NEW_DAYS` env 控制，默认 7 / 30 / 14 天）
+- 阶段渗透：`semanticStages: string[]`（命中过的 `sdd_skill_semantics.semantic_code` 列表）
+- 产出：`artifactCount` / `codeWriteCount` / `codeReadCount`（基于 `sdd_interaction_tool_calls` 的工具调用计数，业务代码路径判定同 daily-report，最近无窗口）
+- 上手进度：`rampDays: number | null`（从 `firstSeenAt` 到走通 4 个 canonical 阶段 `proposal/design/task/codereview` 的天数，未走通时为 `null`）
 
-### 6.16 GET /api/sdd/versions
+> 返回 `ORDER BY lastSeenAt DESC, id DESC`，受 `LIMIT 200` 限制。详情请用 `6.19 GET /api/sdd/users/:userId`（不受 200 限制）。
+
+### 6.16 GET /api/sdd/users/:userId
+
+单用户画像深下钻。响应为 `SddUserDetailResponse`：
+
+```json
+{
+  "user": { /* SddUserItem，字段同 6.15，但不受 LIMIT 200 限制 */ },
+  "summary": {
+    "workItemCount": 5,
+    "artifactCount": 3,
+    "turnCount": 66,
+    "sessionCount": 30,
+    "wikiRecallCount": 23,
+    "codeWriteCount": 12,
+    "codeReadCount": 45
+  },
+  "maturity": {
+    "stages": [
+      { "stage": "proposal",   "firstReachedAt": "2026-04-22T..." },
+      { "stage": "design",     "firstReachedAt": "2026-04-23T..." },
+      { "stage": "task",       "firstReachedAt": null },
+      { "stage": "codereview", "firstReachedAt": null }
+    ],
+    "completionRate": 0.5,
+    "rampDays": null
+  },
+  "workItems": [
+    {
+      "workItemId": "2762",
+      "title": "user-analysis-redesign",
+      "stageCodes": ["proposal", "design"],
+      "lastActivityAt": "2026-05-18T..."
+    }
+  ]
+}
+```
+
+服务端使用 60s TTL 缓存 ROI 聚合，避免重复扫描 `sdd_interaction_tool_calls`。
+
+### 6.17 GET /api/sdd/versions
 
 版本分析。
 
 今日 MVP 不展示版本分析 Tab；当前接口只提供全局版本分布，不承担完整版本质量分析。
 
-### 6.17 GET /api/sdd/work-items
+### 6.18 GET /api/sdd/work-items
 
 需求维度列表。
 
-### 6.18 GET /api/sdd/work-items/:workItemId
+### 6.19 GET /api/sdd/work-items/:workItemId
 
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
@@ -725,6 +773,8 @@ Response item 包含用户标识、机器标识、`requirementsRootPath`、`wiki
 - `nodeKind: 'discussion'` — 产出这篇文档过程中的一轮讨论交互（来自 `sdd_work_item_artifact_turns`），`writeKind` 为 `null`。
 
 两类节点都带 `interactionId`，可展开全文（复用 `GET /api/sdd/interactions/:interactionId`）；`wikiRecallCount` 为该轮读取 wiki 次数。按 `eventTime` 升序，同刻讨论排在写入之前。
+
+支持可选 query 参数 `?userId=<id>` 用于过滤「只看指定用户的写入/讨论」，多成员协作同一 work item 时用于个人画像页避免串入他人数据。
 
 **Response:** `SddArtifactWriteListResponse`
 
@@ -763,7 +813,7 @@ Response item 包含用户标识、机器标识、`requirementsRootPath`、`wiki
 }
 ```
 
-### 6.19 POST /api/sdd/user-settings
+### 6.20 POST /api/sdd/user-settings
 
 上报用户维度 `setting.json` 中的本地路径和配置。
 
@@ -781,7 +831,7 @@ export const ReportUserSettingsRequestSchema = z.object({
 });
 ```
 
-### 6.20 GET /api/sdd/wiki-recalls/content/:toolCallId
+### 6.21 GET /api/sdd/wiki-recalls/content/:toolCallId
 
 按 `tool_call_id` 取该 wiki 召回对应知识库文档内容。后端从 `sdd_wiki_recalls` 取「仓库名 + 仓库内相对路径」，重映射到服务器 `KNOWLEDGE_BASE_ROOT` 后只读读取（越权守卫 + 大小上限）。**采集机绝对路径不可直接用**，只取仓库名与相对路径重拼。弱依赖：读不到按 `reason` 分级降级，不报错。
 
@@ -810,7 +860,7 @@ export const SddWikiRecallContentSchema = z.object({
 });
 ```
 
-### 6.21 GET /api/sdd/wiki-recalls/coverage
+### 6.22 GET /api/sdd/wiki-recalls/coverage
 
 知识库资产覆盖率快照。服务端扫描 `KNOWLEDGE_BASE_ROOT` 下三个知识库目录，与 `sdd_wiki_recalls` 做交叉比对，返回按 repo / domain / 文档级别的覆盖统计。
 
@@ -872,7 +922,7 @@ export const WikiCoverageResponseSchema = z.object({
 4. `distinctUsers` 来自独立的 `COUNT(DISTINCT user_id)` SQL 查询，按 domain 和 repo 分别聚合，**不是**逐文档 distinctUsers 的算术和。
 5. 扫描结果缓存在进程内存，TTL 由 `scanCacheTtlMs`（默认 600s / 10 分钟）控制。
 
-### 6.22 GET /api/sdd/wiki-recalls/docs
+### 6.23 GET /api/sdd/wiki-recalls/docs
 
 单领域文档清单。返回指定 repo + domain 下所有文档的召回统计和状态标签。
 
@@ -906,7 +956,7 @@ export const WikiDomainDocsResponseSchema = z.object({
 1. `status` 按阈值分类：`hot`（≥10 次）、`cold`（1-9 次）、`dead`（0 次 + mtime 超宽限期，默认 >30 天）、`new`（0 次 + mtime 在宽限期内，默认 ≤30 天）。
 2. `distinctUsers` 是该文档级别的 `COUNT(DISTINCT user_id)`，不含跨文档累加。
 
-### 6.23 GET /api/sdd/wiki-recalls/content/by-path
+### 6.24 GET /api/sdd/wiki-recalls/content/by-path
 
 按 repo + relativePath 直接读取知识库文档当前版本。不依赖 `sdd_wiki_recalls` 记录，适用于无召回历史的新文档或沉睡文档查看。
 
@@ -921,7 +971,7 @@ Response：与 6.20 相同的 `SddWikiRecallContentSchema`。
 
 说明：与 6.20 的区别在于入口——6.20 以 `toolCallId` 从 DB 查路径再读文件，6.23 直接以路径读文件。6.23 返回的始终是「当前挂载版本」，前端显示版本提示。
 
-### 6.24 GET /api/sdd/wiki-recalls/doc-detail
+### 6.25 GET /api/sdd/wiki-recalls/doc-detail
 
 按 `(repo, relativePath)` 反查单篇文档的召回明细：趋势、读者榜、来源需求。全部现有表只读聚合，零迁移。
 
@@ -960,7 +1010,7 @@ export const WikiDocDetailResponseSchema = z.object({
 - `readers` 来自 `GROUP BY user_id` JOIN `sdd_users`；`sourceWorkItems` 来自 `GROUP BY COALESCE(wr.work_item_id, su.work_item_id)` JOIN `sdd_work_items`。
 - 无召回的文档返回空数组，不报错。
 
-### 6.25 timeline 扩展参数 wikiDomain
+### 6.26 timeline 扩展参数 wikiDomain
 
 `GET /api/sdd/wiki-recalls/timeline` 新增可选 query 参数：
 

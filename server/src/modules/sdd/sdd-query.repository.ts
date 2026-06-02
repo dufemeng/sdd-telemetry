@@ -690,6 +690,29 @@ export class SddQueryRepository {
     )) as UserRow[];
   }
 
+  async getUserById(id: string): Promise<UserRow | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
+              u.requirements_root_path, u.wiki_root_path,
+              u.first_seen_at, u.last_seen_at,
+              COUNT(DISTINCT su.id)                    AS skill_usage_count,
+              COUNT(DISTINCT i.id)                     AS interaction_count,
+              COUNT(DISTINCT su.work_item_id)          AS work_item_count,
+              GROUP_CONCAT(DISTINCT ss.semantic_code)  AS semantic_stages_csv
+       FROM sdd_users u
+       LEFT JOIN sdd_skill_usages su   ON su.user_id   = u.id
+       LEFT JOIN sdd_interactions i    ON i.user_id    = u.id
+       LEFT JOIN sdd_skill_semantics ss ON ss.id       = su.semantic_id
+       WHERE u.id = ?
+       GROUP BY u.id, u.user_key, u.install_id, u.user_name, u.machine_id, u.machine_name,
+                u.requirements_root_path, u.wiki_root_path, u.first_seen_at, u.last_seen_at
+       LIMIT 1`,
+      [id],
+    )) as UserRow[];
+    return rows[0] ?? null;
+  }
+
   async listVersions(): Promise<VersionRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
@@ -770,8 +793,14 @@ export class SddQueryRepository {
   async listArtifactWrites(
     workItemId: string,
     artifactId: string,
+    userId?: string,
   ): Promise<ArtifactWriteRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const userFilter = userId
+      ? ` AND EXISTS (SELECT 1 FROM sdd_interactions i WHERE i.id = {alias}.interaction_id AND i.user_id = ?)`
+      : '';
+    const writeUserParams = userId ? [userId] : [];
+    const turnUserParams = userId ? [userId] : [];
     return (await dataSource.query(
       `SELECT timeline.* FROM (
          SELECT w.id, 'write' AS node_kind, w.write_kind, w.event_time, w.event_sequence,
@@ -783,7 +812,7 @@ export class SddQueryRepository {
          LEFT JOIN sdd_skill_usages su ON su.id = w.skill_usage_id
          LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
          LEFT JOIN sdd_interaction_texts it ON it.interaction_id = w.interaction_id
-         WHERE w.work_item_id = ? AND w.artifact_id = ?
+         WHERE w.work_item_id = ? AND w.artifact_id = ?${userFilter.replace(/\{alias\}/g, 'w')}
          UNION ALL
          SELECT t.id, 'discussion' AS node_kind, NULL AS write_kind, t.event_time,
                 NULL AS event_sequence, t.interaction_id, NULL AS content_preview, su.raw_skill_name,
@@ -794,11 +823,11 @@ export class SddQueryRepository {
          LEFT JOIN sdd_skill_usages su ON su.id = t.skill_usage_id
          LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id
          LEFT JOIN sdd_interaction_texts it ON it.interaction_id = t.interaction_id
-         WHERE t.work_item_id = ? AND t.artifact_id = ?
+         WHERE t.work_item_id = ? AND t.artifact_id = ?${userFilter.replace(/\{alias\}/g, 't')}
        ) timeline
        ORDER BY timeline.event_time IS NULL, timeline.event_time ASC,
                 FIELD(timeline.node_kind, 'discussion', 'write'), timeline.id ASC`,
-      [workItemId, artifactId, workItemId, artifactId],
+      [workItemId, artifactId, ...writeUserParams, workItemId, artifactId, ...turnUserParams],
     )) as ArtifactWriteRow[];
   }
 

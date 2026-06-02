@@ -12,7 +12,7 @@ import { formatInteger } from '@/lib/format';
 const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
 const DAY_MS = 86_400_000;
 
-const AVATAR_COLORS = ['#1a2a1a', '#1a1a2a', '#2a1a1a', '#1a2a2a', '#2a2a1a', '#251a25'];
+const AVATAR_COLORS = ['#1a1a1a', '#2a1a1a', '#2a251a', '#251a1a', '#1a251a', '#251a15'];
 
 function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size?: number }) {
   const idx = (name?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length;

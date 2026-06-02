@@ -47,7 +47,7 @@ import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText } from '../query-utils';
 import { DailyReportRepository } from '../reports/daily-report.repository';
-import { summarizeCodeImpactByUser } from '../reports/daily-report-code-impact';
+import { summarizeCodeImpactByUserAggregated } from '../reports/daily-report-code-impact';
 import {
   SddQueryRepository,
   type ArtifactWriteRow,
@@ -55,6 +55,7 @@ import {
   type ResolvedTimeWindow,
   type UserArtifactCountRow,
   type UserMaturityRow,
+  type UserRow,
   type UserSummaryRow,
   type UserWorkItemRow,
   type WorkItemRow,
@@ -696,43 +697,59 @@ export class SddQueryService {
 
     return rows.map((row) => {
       const id = toStringId(row.id);
-      const semanticStages = row.semantic_stages_csv
-        ? row.semantic_stages_csv.split(',').filter(Boolean)
-        : [];
-      const maturity = this.computeUserMaturity(maturityMap.get(id) ?? new Map(), row.first_seen_at);
-      const roi = codeImpactByUser.get(id) ?? { codeWriteCount: 0, codeReadCount: 0 };
-
-      return {
-        id,
-        userKey: row.user_key,
-        installId: row.install_id,
-        userName: row.user_name,
-        machineId: row.machine_id,
-        machineName: row.machine_name,
-        requirementsRootPath: row.requirements_root_path,
-        wikiRootPath: row.wiki_root_path,
-        firstSeenAt: toIsoDate(row.first_seen_at),
-        lastSeenAt: toIsoDate(row.last_seen_at),
-        skillUsageCount: toNumber(row.skill_usage_count),
-        interactionCount: toNumber(row.interaction_count),
-        workItemCount: toNumber(row.work_item_count),
-        semanticStages,
-        status: this.computeUserStatus(row.last_seen_at, now),
-        isNew: this.computeIsNew(row.first_seen_at, now),
-        artifactCount: artifactMap.get(id) ?? 0,
-        codeWriteCount: roi.codeWriteCount,
-        codeReadCount: roi.codeReadCount,
-        rampDays: maturity.rampDays,
-      };
+      return this.buildUserItemFromRow(
+        row,
+        artifactMap,
+        maturityMap.get(id) ?? new Map(),
+        codeImpactByUser.get(id) ?? { codeWriteCount: 0, codeReadCount: 0 },
+        now,
+      );
     });
+  }
+
+  private buildUserItemFromRow(
+    row: UserRow,
+    artifactMap: Map<string, number>,
+    maturityInner: Map<string, string>,
+    roi: { codeWriteCount: number; codeReadCount: number },
+    now: number,
+  ): SddUserItem {
+    const id = toStringId(row.id);
+    const semanticStages = row.semantic_stages_csv
+      ? row.semantic_stages_csv.split(',').filter(Boolean)
+      : [];
+    const maturity = this.computeUserMaturity(maturityInner, row.first_seen_at);
+
+    return {
+      id,
+      userKey: row.user_key,
+      installId: row.install_id,
+      userName: row.user_name,
+      machineId: row.machine_id,
+      machineName: row.machine_name,
+      requirementsRootPath: row.requirements_root_path,
+      wikiRootPath: row.wiki_root_path,
+      firstSeenAt: toIsoDate(row.first_seen_at),
+      lastSeenAt: toIsoDate(row.last_seen_at),
+      skillUsageCount: toNumber(row.skill_usage_count),
+      interactionCount: toNumber(row.interaction_count),
+      workItemCount: toNumber(row.work_item_count),
+      semanticStages,
+      status: this.computeUserStatus(row.last_seen_at, now),
+      isNew: this.computeIsNew(row.first_seen_at, now),
+      artifactCount: artifactMap.get(id) ?? 0,
+      codeWriteCount: roi.codeWriteCount,
+      codeReadCount: roi.codeReadCount,
+      rampDays: maturity.rampDays,
+    };
   }
 
   private async getCodeImpactByUser(): Promise<Map<string, { codeWriteCount: number; codeReadCount: number }>> {
     if (this.codeImpactCache && Date.now() - this.codeImpactCache.at < SddQueryService.CODE_IMPACT_TTL_MS) {
       return this.codeImpactCache.byUser;
     }
-    const rows = await this.dailyReportRepository.listCodeImpactRowsAll();
-    const byUser = summarizeCodeImpactByUser(rows);
+    const rows = await this.dailyReportRepository.listCodeImpactRowsAllAggregatedByUser();
+    const byUser = summarizeCodeImpactByUserAggregated(rows);
     this.codeImpactCache = { at: Date.now(), byUser };
     return byUser;
   }
@@ -794,26 +811,38 @@ export class SddQueryService {
   }
 
   async getUserDetail(userId: string): Promise<SddUserDetail | null> {
-    const [listUsers, summaryRows, workItemRows, maturityRows] = await Promise.all([
-      this.listUsers(),
+    const [userRow, artifactRows, maturityRowsForUser, summaryRows, workItemRows] = await Promise.all([
+      this.sddQueryRepository.getUserById(userId),
+      this.sddQueryRepository.listUserArtifactCounts(),
+      this.sddQueryRepository.getUserMaturity(userId),
       this.sddQueryRepository.getUserSummary(userId),
       this.sddQueryRepository.listUserWorkItems(userId),
-      this.sddQueryRepository.getUserMaturity(userId),
     ]);
+    if (!userRow) return null;
 
-    const user = listUsers.find((u) => u.id === userId);
-    if (!user) return null;
-
-    const summary = summaryRows[0];
-    const maturityMap = new Map<string, string>();
-    for (const row of maturityRows) {
+    const codeImpactByUser = await this.getCodeImpactByUser();
+    const now = Date.now();
+    const artifactMap = new Map<string, number>(
+      artifactRows.map((r) => [toStringId(r.user_id), toNumber(r.artifact_count)]),
+    );
+    const maturityInner = new Map<string, string>();
+    for (const row of maturityRowsForUser) {
       const iso = toIsoDate(row.first_event_time);
-      if (iso && (!maturityMap.has(row.semantic_code) || maturityMap.get(row.semantic_code)! > iso)) {
-        maturityMap.set(row.semantic_code, iso);
+      if (iso && (!maturityInner.has(row.semantic_code) || maturityInner.get(row.semantic_code)! > iso)) {
+        maturityInner.set(row.semantic_code, iso);
       }
     }
-    const maturity = this.computeUserMaturity(maturityMap, user.firstSeenAt);
+    const user = this.buildUserItemFromRow(
+      userRow,
+      artifactMap,
+      maturityInner,
+      codeImpactByUser.get(userId) ?? { codeWriteCount: 0, codeReadCount: 0 },
+      now,
+    );
 
+    const maturity = this.computeUserMaturity(maturityInner, user.firstSeenAt);
+
+    const summary = summaryRows[0];
     return {
       user,
       summary: {
@@ -891,8 +920,9 @@ export class SddQueryService {
   async listArtifactWrites(
     workItemId: string,
     artifactId: string,
+    userId?: string,
   ): Promise<SddArtifactWriteListResponse> {
-    const rows = await this.sddQueryRepository.listArtifactWrites(workItemId, artifactId);
+    const rows = await this.sddQueryRepository.listArtifactWrites(workItemId, artifactId, userId);
     return {
       items: rows.map((row: ArtifactWriteRow) => ({
         id: toStringId(row.id),
