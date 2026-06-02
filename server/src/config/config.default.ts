@@ -58,6 +58,11 @@ export default {
     scanCacheTtlMs: Number(process.env.WIKI_SCAN_CACHE_TTL_MS ?? 600_000),
     deadKnowledgeGraceDays: Number(process.env.WIKI_DEAD_GRACE_DAYS ?? 30),
   },
+  userAnalysis: {
+    coldDays: Number(process.env.USER_COLD_DAYS ?? 7),
+    churnDays: Number(process.env.USER_CHURN_DAYS ?? 30),
+    newDays: Number(process.env.USER_NEW_DAYS ?? 14),
+  },
   dailyReport: {
     scheduleEnabled: process.env.DAILY_REPORT_SCHEDULE_ENABLED !== 'false',
     scheduleTime: process.env.DAILY_REPORT_SCHEDULE_TIME ?? '12:00',

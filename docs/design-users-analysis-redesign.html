@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>用户分析 redesign · 示意 · SDD 质量观测台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --base: #0a0a0a; --surface: #101010; --panel: #14140b; --hover: #171717; --active: #222222;
+    --icon-well: #202016; --nav-active: #2b2b20;
+    --primary: #faff69; --bar-fill: #c9ce3c;
+    --text: #e5e3d3; --secondary: #c9c8af; --muted: #93927c; --bright: #f5f5f5;
+    --border: rgba(255,255,255,0.08);
+    --good-text: #22c55e; --good-bg: rgba(34,197,94,0.10);
+    --warn-text: #f59e0b; --warn-bg: rgba(245,158,11,0.10);
+    --bad-text: #ffb4ab; --bad-bg: rgba(239,68,68,0.16);
+    --info: #60a5fa; --info-bg: rgba(96,165,250,0.10);
+    --purple: #c084fc; --purple-bg: rgba(192,132,252,0.12);
+    --body: Inter, 'PingFang SC', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --z-drawer-backdrop: 40; --z-drawer: 50;
+    /* SDD 4 阶段色阶（对齐真实页 SDD_STAGES）*/
+    --st-proposal: #60a5fa; --st-design: #faff69; --st-task: #c084fc; --st-codereview: #22c55e;
+    /* 活动类型色 */
+    --k-skill: #c084fc; --k-write: #22c55e; --k-wiki: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--base); color: var(--text); font-family: var(--body); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--mono); }
+  h1,h2,h3 { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+  a { text-decoration: none; }
+
+  .shell { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto auto 1fr; min-height: 100vh; }
+
+  /* sidebar */
+  aside { grid-row: 1 / -1; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 10px; min-height: 88px; padding: 18px; border-bottom: 1px solid var(--border); }
+  .brand-logo { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 6px; background: var(--primary); color: var(--base); }
+  .brand h1 { font-size: 18px; font-weight: 700; color: var(--bright); line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav { padding: 10px 0; overflow-y: auto; }
+  .nav-group { margin-top: 10px; }
+  .nav-group > .label { padding: 8px 18px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .nav-item { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: 0 8px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--secondary); position: relative; transition: all .15s; }
+  .nav-item:hover { color: var(--bright); background: var(--icon-well); }
+  .nav-item svg { width: 18px; height: 18px; flex: none; }
+  .nav-item.active { color: var(--primary); background: var(--nav-active); }
+  .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 9px; width: 4px; height: 16px; border-radius: 0 4px 4px 0; background: var(--primary); }
+  .nav-item.active::after { content: ''; position: absolute; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* topbar */
+  header.top { grid-column: 2; display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .crumb { font-size: 12px; color: var(--muted); }
+  .crumb b { color: var(--secondary); font-weight: 500; }
+  .crumb a { color: var(--muted); }
+  .crumb a:hover { color: var(--primary); }
+  .snapshot { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--secondary); background: var(--surface); }
+  .snapshot .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good-text); }
+
+  .demo-bar { grid-column: 2; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 20px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  .demo-bar b { color: var(--secondary); font-weight: 600; }
+
+  main { grid-column: 2; padding: 16px 20px 60px; }
+  .screen { display: grid; gap: 12px; align-content: start; }
+  .screen[hidden] { display: none; }
+  .screen-anim { animation: screenIn .28s cubic-bezier(0.22,1,0.36,1) both; }
+  @keyframes screenIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .page-head { display: flex; align-items: baseline; gap: 12px; }
+  .page-head h2 { font-size: 22px; font-weight: 600; color: var(--bright); font-family: var(--mono); letter-spacing: -0.01em; }
+  .page-head .desc { font-size: 12px; color: var(--muted); }
+
+  .card { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; }
+  .pad { padding: 14px; }
+  .sec-title { display: flex; align-items: center; gap: 8px; color: var(--primary); margin-bottom: 14px; }
+  .sec-title svg { width: 18px; height: 18px; }
+  .sec-title h3 { font-size: 14px; font-weight: 600; color: var(--bright); }
+  .sec-title .note { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* avatar */
+  .av { flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 600; color: var(--bright); border: 1px solid rgba(255,255,255,0.08); }
+
+  /* ① KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { display: flex; gap: 12px; min-height: 102px; }
+  .kpi .well { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--icon-well); color: var(--primary); }
+  .kpi .well svg { width: 18px; height: 18px; }
+  .kpi .body { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; flex: 1; }
+  .kpi .name { font-size: 12px; color: var(--secondary); }
+  .kpi .val { font-size: 24px; font-weight: 600; color: var(--bright); font-family: var(--mono); line-height: 1; }
+  .kpi .val small { font-size: 15px; color: var(--muted); }
+  .kpi .val.volt { color: var(--primary); }
+  .kpi .val.bad { color: var(--bad-text); }
+  .kpi .val.info { color: var(--info); }
+  .kpi .hint { font-size: 11px; color: var(--muted); }
+  .progress { height: 3px; width: 100%; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 6px 0 3px; }
+  .progress > span { display: block; height: 100%; border-radius: 999px; background: var(--good-text); width: 0; transition: width .9s cubic-bezier(0.22,1,0.36,1); }
+  .prog-cap { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  /* tri-state stacked bar (活/冷/流失) */
+  .tri { display: flex; height: 6px; border-radius: 999px; overflow: hidden; margin: 7px 0 4px; background: var(--icon-well); }
+  .tri > span { display: block; height: 100%; width: 0; transition: width .9s cubic-bezier(0.22,1,0.36,1); }
+  .tri-cap { display: flex; gap: 12px; font-size: 10px; color: var(--muted); }
+  .tri-cap i { display: inline-flex; align-items: center; gap: 4px; }
+  .tri-cap .d { width: 6px; height: 6px; border-radius: 50%; }
+  .depth-dots { display: flex; gap: 5px; margin-top: 4px; }
+  .depth-dots .dd { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+  .depth-dots .dd.on { background: var(--primary); }
+
+  /* ② funnel + radar */
+  .grid-2-1 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
+  .funnel { display: grid; gap: 9px; margin-top: 2px; }
+  .stage .lab { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .stage .lab .nm { font-size: 12px; color: var(--text); display: inline-flex; align-items: center; gap: 7px; }
+  .stage .lab .nm .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .stage .lab .nm .code { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .stage .lab .ct { font-family: var(--mono); font-size: 12px; color: var(--secondary); }
+  .stage .lab .ct b { color: var(--bright); font-weight: 600; }
+  .bar-track { height: 22px; border-radius: 4px; background: var(--icon-well); overflow: hidden; }
+  .bar-track > span { display: block; height: 100%; border-radius: 4px; opacity: 0.9; width: 0; transition: width .9s cubic-bezier(0.22,1,0.36,1); }
+  .drop { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); padding: 1px 0 1px 2px; }
+  .drop svg { width: 11px; height: 11px; }
+  .drop.cliff { color: var(--bad-text); font-weight: 600; }
+  .cliff-tag { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--bad-bg); color: var(--bad-text); }
+  .funnel-foot { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .out-link { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); border: 1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 4px 9px; transition: all .15s; }
+  .out-link:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .out-link svg { width: 12px; height: 12px; }
+
+  /* 掉队雷达 */
+  .radar { border-color: rgba(245,158,11,0.20); background: rgba(245,158,11,0.04); }
+  .radar .rh { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid rgba(245,158,11,0.12); }
+  .radar .rh svg { width: 16px; height: 16px; color: var(--warn-text); }
+  .radar .rh b { font-size: 13px; color: var(--warn-text); font-weight: 600; }
+  .radar .rh .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .radar .ri { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; transition: background .15s; }
+  .radar .ri:hover { background: rgba(245,158,11,0.06); }
+  .radar .ri + .ri { border-top: 1px solid rgba(245,158,11,0.06); }
+  .radar .ri .nm { font-size: 12px; color: var(--secondary); font-weight: 500; }
+  .radar .ri .since { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--bad-text); }
+  .radar .ri .go { color: var(--muted); display: inline-flex; }
+  .radar .ri:hover .go { color: var(--warn-text); }
+  .radar .ri .go svg { width: 13px; height: 13px; }
+
+  /* capability matrix / bus-factor */
+  .matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .mx { padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--hover); position: relative; }
+  .mx.risk { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.05); }
+  .mx .st { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--secondary); }
+  .mx .st .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .mx .pp { margin-top: 8px; font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--bright); }
+  .mx .pp small { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .mx .heat { margin-top: 7px; height: 5px; border-radius: 999px; background: var(--icon-well); overflow: hidden; }
+  .mx .heat > span { display: block; height: 100%; border-radius: 999px; width: 0; transition: width .9s; }
+  .mx .warn { position: absolute; top: 9px; right: 10px; font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--warn-bg); color: var(--warn-text); font-weight: 600; }
+
+  /* ③ top3 */
+  .top3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .rank { position: relative; padding: 12px 12px 12px 16px; border-radius: 6px; background: var(--hover); border: 1px solid var(--border); overflow: hidden; }
+  .rank .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .rank .top { display: flex; align-items: center; gap: 10px; }
+  .rank .badge-no { position: absolute; top: -1px; right: -1px; width: 16px; height: 16px; display: grid; place-items: center; font-size: 9px; font-weight: 700; border-radius: 50%; }
+  .rank .nm { font-size: 13px; font-weight: 600; color: var(--bright); }
+  .rank .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 11px; color: var(--secondary); font-family: var(--mono); }
+  .rank .meta svg { width: 11px; height: 11px; vertical-align: -1px; color: var(--muted); }
+  .rank .roi { margin-top: 9px; display: flex; gap: 7px; }
+  .rank .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--mono); padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--secondary); }
+  .rank .pill .g { color: var(--good-text); }
+  .rank .see { margin-top: 11px; }
+  .rank .see a { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--primary); }
+  .rank .see svg { width: 12px; height: 12px; }
+
+  /* ④ table */
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .search { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; width: 220px; border: 1px solid rgba(255,255,255,0.10); background: var(--base); border-radius: 4px; }
+  .search svg { width: 13px; height: 13px; color: var(--muted); flex: none; }
+  .search input { border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; width: 100%; }
+  .search input::placeholder { color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin-left: auto; }
+  .tabs button { height: 26px; padding: 0 12px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all .15s; }
+  .tabs button.on { background: rgba(250,255,105,0.08); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+  .tabs button .c { margin-left: 6px; font-size: 10px; opacity: .65; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #141414; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th.r { text-align: right; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+  tbody tr:hover td { background: var(--hover); }
+  tbody td { padding: 10px 12px; font-size: 13px; color: var(--text); vertical-align: middle; }
+  tbody td.r { text-align: right; font-family: var(--mono); }
+  .u-cell { display: flex; align-items: center; gap: 10px; position: relative; padding-left: 8px; }
+  .u-cell .strip { position: absolute; left: -12px; top: -10px; bottom: -10px; width: 3px; }
+  .u-name { font-size: 13px; color: var(--bright); font-weight: 500; }
+  .u-name small { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+  .mini-depth { display: inline-flex; align-items: center; gap: 7px; }
+  .mini-depth .dots { display: inline-flex; gap: 3px; }
+  .mini-depth .dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+  .mini-depth .dots i.on { background: var(--primary); }
+  .mini-depth .f { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .conv-cell { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; font-family: var(--mono); font-size: 12px; }
+  .conv-cell .art { color: var(--secondary); }
+  .conv-cell .land { color: var(--good-text); }
+  .conv-cell .land.zero { color: var(--muted); }
+  .row-go { color: var(--muted); display: inline-flex; }
+  tbody tr:hover .row-go { color: var(--primary); }
+  .row-go svg { width: 14px; height: 14px; }
+  .table-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+  /* badges */
+  .badge { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge .d { width: 6px; height: 6px; border-radius: 50%; }
+  .badge.live { background: var(--good-bg); color: var(--good-text); } .badge.live .d { background: var(--good-text); }
+  .badge.cold { background: rgba(255,255,255,0.06); color: var(--secondary); } .badge.cold .d { background: var(--muted); }
+  .badge.churn { background: var(--bad-bg); color: var(--bad-text); } .badge.churn .d { background: var(--bad-text); }
+  .badge.new { background: var(--info-bg); color: var(--info); } .badge.new .d { background: var(--info); }
+
+  /* ====== profile screen ====== */
+  .pf-head { padding: 16px; border-radius: 6px; }
+  .pf-top { display: flex; align-items: center; gap: 14px; }
+  .pf-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 6px 11px; background: var(--surface); transition: all .15s; }
+  .pf-back:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .pf-back svg { width: 14px; height: 14px; }
+  .pf-id { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .pf-id .nm { font-size: 19px; font-weight: 600; color: var(--bright); }
+  .pf-id .sub { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+  .pf-summary { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--secondary); font-family: var(--mono); }
+  .pf-summary b { color: var(--bright); }
+  .pf-summary .g { color: var(--good-text); }
+  /* ramp */
+  .ramp { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .ramp .h { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .ramp .h b { color: var(--secondary); }
+  .ramp .track { position: relative; height: 28px; margin: 0 6px; }
+  .ramp .line { position: absolute; left: 0; right: 0; top: 13px; height: 2px; background: var(--icon-well); }
+  .ramp .line .fill { height: 100%; background: linear-gradient(90deg,var(--st-proposal),var(--st-codereview)); width: 0; transition: width 1.1s cubic-bezier(0.22,1,0.36,1); }
+  .ramp .node { position: absolute; top: 4px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+  .ramp .node .pt { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--base); }
+  .ramp .node .lb { position: absolute; top: -18px; font-size: 9px; color: var(--secondary); white-space: nowrap; }
+  .ramp .node .day { position: absolute; top: 18px; font-family: var(--mono); font-size: 9px; color: var(--muted); }
+  .ramp .node.todo .pt { background: var(--icon-well); border-color: var(--border); }
+
+  .pf-grid { display: grid; grid-template-columns: 300px 1fr; gap: 12px; align-items: start; }
+  /* left: work items */
+  .wi-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--primary); }
+  .wi-head svg { width: 16px; height: 16px; }
+  .wi-head b { font-size: 13px; color: var(--bright); }
+  .wi-head .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .wi { padding: 11px 14px; cursor: pointer; border-left: 2px solid transparent; transition: background .15s; }
+  .wi + .wi { border-top: 1px solid var(--border); }
+  .wi:hover { background: var(--hover); }
+  .wi.on { background: var(--hover); border-left-color: var(--primary); }
+  .wi .repo { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+  .wi .ttl { font-size: 13px; color: var(--bright); font-weight: 500; margin-top: 2px; }
+  .wi .chips { display: flex; gap: 4px; margin-top: 8px; }
+  .wi .chips .c { font-size: 9px; padding: 1px 6px; border-radius: 3px; font-family: var(--mono); }
+  .wi .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--muted); }
+  .wi .foot .open { display: inline-flex; align-items: center; gap: 3px; color: transparent; }
+  .wi:hover .foot .open { color: var(--secondary); }
+  .wi .foot .open svg { width: 11px; height: 11px; }
+
+  /* right: timeline */
+  .tl-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .tl-head .ttl { font-size: 13px; color: var(--bright); font-weight: 600; }
+  .tl-head .ttl small { color: var(--muted); font-weight: 400; font-family: var(--mono); margin-left: 6px; }
+  .tl-head .complete { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; font-size: 11px; color: var(--muted); }
+  .tl-head .complete .c { font-size: 9px; padding: 1px 6px; border-radius: 3px; font-family: var(--mono); }
+  .tl-body { padding: 6px 0 12px; }
+  .node { position: relative; padding: 11px 16px 11px 44px; cursor: pointer; transition: background .15s; }
+  .node:hover { background: var(--hover); }
+  .node::before { content: ''; position: absolute; left: 21px; top: 0; bottom: 0; width: 2px; background: var(--icon-well); }
+  .node:first-child::before { top: 16px; }
+  .node:last-child::before { bottom: calc(100% - 16px); }
+  .node .pt { position: absolute; left: 15px; top: 15px; width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); z-index: 1; }
+  .node .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .node .meta .t { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .node .meta .kind { font-size: 11px; font-weight: 600; }
+  .node .meta .art { font-family: var(--mono); font-size: 11px; color: var(--secondary); }
+  .node .meta .sk { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--purple-bg); color: var(--purple); font-family: var(--mono); }
+  .node .meta .wiki { font-size: 10px; color: var(--info); font-family: var(--mono); display: inline-flex; align-items: center; gap: 3px; }
+  .node .meta .wiki svg { width: 11px; height: 11px; }
+  .node .prompt { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  .node .prompt .q { font-size: 12px; color: var(--secondary); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 460px; }
+  .node .prompt .exp { font-size: 11px; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; flex: none; }
+  .node:hover .prompt .exp { color: var(--primary); }
+  .node .prompt .exp svg { width: 12px; height: 12px; }
+  .out-row { display: flex; gap: 8px; padding: 12px 16px 4px; }
+
+  /* drawer (交互全文) */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: var(--z-drawer-backdrop); }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 540px; max-width: 94vw; background: var(--surface); border-left: 1px solid var(--border); z-index: var(--z-drawer); transform: translateX(100%); transition: transform .24s cubic-bezier(0.22,1,0.36,1); display: flex; flex-direction: column; }
+  .drawer.show { transform: translateX(0); }
+  .drawer-head { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .drawer-head .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .drawer-head h3 { font-size: 15px; color: var(--bright); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .drawer-head h3 svg { width: 17px; height: 17px; color: var(--primary); }
+  .drawer-head .code { margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .close-btn { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--hover); border: 1px solid var(--border); color: var(--secondary); }
+  .close-btn:hover { background: var(--active); color: var(--primary); }
+  .close-btn svg { width: 15px; height: 15px; }
+  .drawer-body { overflow-y: auto; padding: 4px 0 18px; }
+  .drawer-sec { padding: 14px 18px; }
+  .drawer-sec .sh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .drawer-sec .sh svg { width: 14px; height: 14px; color: var(--primary); }
+  .drawer-sec .sh b { font-size: 12px; color: var(--bright); font-weight: 600; }
+  .drawer-sec .sh .n { font-size: 11px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+  .bubble { border-radius: 8px; padding: 11px 13px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+  .bubble.user { background: var(--hover); border: 1px solid var(--border); color: var(--text); }
+  .bubble.asst { background: rgba(250,255,105,0.04); border: 1px solid rgba(250,255,105,0.12); color: var(--secondary); margin-top: 10px; }
+  .tool-line { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .tool-line:hover { background: var(--hover); }
+  .tool-line .tn { color: var(--secondary); }
+  .tool-line .tg { width: 6px; height: 6px; border-radius: 2px; flex: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div><h1>SDD 质量观测台</h1><div class="sub">Data Observation</div></div>
+    </div>
+    <nav>
+      <div class="nav-group"><div class="label">总览</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M2 12h4m12 0h4M5 19l2-2m10 0l2 2"/><circle cx="12" cy="13" r="4"/></svg>总览</div>
+      </div>
+      <div class="nav-group"><div class="label">看板</div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>用户分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>技能分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>产出分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>知识库分析</div>
+      </div>
+      <div class="nav-group"><div class="label">配置</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4 12H1m22 0h-3"/></svg>语义映射</div>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- topbar -->
+  <header class="top">
+    <div class="crumb" id="crumb">看板 / <b>用户分析</b></div>
+    <div class="snapshot"><span class="dot"></span>累计口径 · 42 名成员 · 6-02 10:30</div>
+  </header>
+
+  <div class="demo-bar">
+    <b>示意操作：</b>点任意成员行 → 进入<b>个人画像页</b>（基线 A）。画像页左栏选需求、右栏看活动时间线、点节点展开 <b>prompt 全文</b>。需求/技能/知识只<b>出链</b>，本页不展开它们的详情。
+  </div>
+
+  <!-- main -->
+  <main>
+
+    <!-- ════════ Screen 1: 列表页 ════════ -->
+    <div class="screen screen-anim" id="screen-list">
+      <div class="page-head">
+        <h2>用户分析</h2>
+        <span class="desc">谁活跃 · 谁掌动产出 · 谁掉队 · 新人多快上手</span>
+      </div>
+
+      <!-- ① KPI -->
+      <div class="kpi-row">
+        <section class="card pad kpi">
+          <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div class="body">
+            <span class="name">团队规模</span>
+            <strong class="val">42</strong>
+            <div>
+              <div class="tri"><span style="background:var(--good-text)" data-w="67%"></span><span style="background:var(--muted)" data-w="21%"></span><span style="background:var(--bad-text)" data-w="12%"></span></div>
+              <div class="tri-cap"><i><span class="d" style="background:var(--good-text)"></span>活 28</i><i><span class="d" style="background:var(--muted)"></span>冷 9</i><i><span class="d" style="background:var(--bad-text)"></span>流失 5</i></div>
+            </div>
+          </div>
+        </section>
+        <section class="card pad kpi">
+          <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="body">
+            <span class="name">近 7 天活跃</span>
+            <strong class="val">28 <small>/ 42</small></strong>
+            <div><div class="progress"><span data-w="67%"></span></div><div class="prog-cap"><em>按最近操作时间</em><em>67%</em></div></div>
+          </div>
+        </section>
+        <section class="card pad kpi">
+          <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
+          <div class="body">
+            <span class="name">平均采用成熟度</span>
+            <strong class="val volt">2.6 <small>/ 4 阶段</small></strong>
+            <div class="depth-dots"><i class="dd on"></i><i class="dd on"></i><i class="dd on" style="opacity:.5"></i><i class="dd"></i></div>
+          </div>
+        </section>
+        <section class="card pad kpi">
+          <div class="well" style="color:var(--bad-text)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.73 21a2 2 0 0 1-3.46 0M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="m2 2 20 20"/></svg></div>
+          <div class="body">
+            <span class="name">流失成员</span>
+            <strong class="val bad">5 ⚠</strong>
+            <em class="hint">曾活跃 · 近 30 天掉零</em>
+          </div>
+        </section>
+      </div>
+
+      <!-- ② 采用漏斗 + 掉队雷达 -->
+      <div class="grid-2-1">
+        <section class="card pad">
+          <div class="sec-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+            <h3>SDD 采用漏斗</h3>
+            <span class="note">走到各阶段的成员人数 · 只读</span>
+          </div>
+          <div class="funnel">
+            <div class="stage">
+              <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-proposal)"></span>需求撰写 <span class="code">proposal</span></span><span class="ct"><b>38</b> 人</span></div>
+              <div class="bar-track"><span style="background:var(--st-proposal)" data-w="100%"></span></div>
+            </div>
+            <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 82%</div>
+            <div class="stage">
+              <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-design)"></span>系统设计 <span class="code">design</span></span><span class="ct"><b>31</b> 人</span></div>
+              <div class="bar-track"><span style="background:var(--st-design)" data-w="82%"></span></div>
+            </div>
+            <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 77%</div>
+            <div class="stage">
+              <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-task)"></span>任务拆分 <span class="code">task</span></span><span class="ct"><b>24</b> 人</span></div>
+              <div class="bar-track"><span style="background:var(--st-task)" data-w="63%"></span></div>
+            </div>
+            <div class="drop cliff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 33% <span class="cliff-tag">断崖 ↓ task → 代码评审</span></div>
+            <div class="stage">
+              <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-codereview)"></span>代码评审 <span class="code">codereview</span></span><span class="ct"><b>8</b> 人</span></div>
+              <div class="bar-track"><span style="background:var(--st-codereview)" data-w="21%"></span></div>
+            </div>
+          </div>
+          <div class="funnel-foot">
+            <span>需求撰写 38 → 代码评审 8 · <b style="color:var(--bad-text)">最大流失在 task→评审（掉 2/3）</b></span>
+            <a class="out-link" onclick="return false" href="#">看走到 task 的需求 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a>
+          </div>
+        </section>
+
+        <section class="card radar">
+          <div class="rh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+            <b>掉队雷达</b><span class="n">曾活跃 · 近 30 天掉零</span>
+          </div>
+          <div class="ri" onclick="openProfile('liu.tao')"><div class="av" style="width:24px;height:24px;font-size:11px;background:#2a1a1a">L</div><span class="nm">liu.tao</span><span class="since">41 天前</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+          <div class="ri" onclick="openProfile('zhou.an')"><div class="av" style="width:24px;height:24px;font-size:11px;background:#1a1a2a">Z</div><span class="nm">zhou.an</span><span class="since">38 天前</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+          <div class="ri" onclick="openProfile('xu.bo')"><div class="av" style="width:24px;height:24px;font-size:11px;background:#1a2a2a">X</div><span class="nm">xu.bo</span><span class="since">36 天前</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+          <div class="ri" style="cursor:default;opacity:.7"><span class="nm" style="color:var(--muted)">…另有 2 人</span><span class="since" style="color:var(--muted)">&gt;30 天</span></div>
+        </section>
+      </div>
+
+      <!-- 能力矩阵 / bus-factor -->
+      <section class="card pad">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <h3>团队能力矩阵</h3>
+          <span class="note">能做该阶段的人数 · ≤2 人标单点风险（bus-factor）</span>
+        </div>
+        <div class="matrix">
+          <div class="mx"><div class="st"><span class="dot" style="background:var(--st-proposal)"></span>需求撰写</div><div class="pp">38 <small>人</small></div><div class="heat"><span style="background:var(--st-proposal)" data-w="100%"></span></div></div>
+          <div class="mx"><div class="st"><span class="dot" style="background:var(--st-design)"></span>系统设计</div><div class="pp">31 <small>人</small></div><div class="heat"><span style="background:var(--st-design)" data-w="82%"></span></div></div>
+          <div class="mx"><div class="st"><span class="dot" style="background:var(--st-task)"></span>任务拆分</div><div class="pp">24 <small>人</small></div><div class="heat"><span style="background:var(--st-task)" data-w="63%"></span></div></div>
+          <div class="mx risk"><span class="warn">单点风险</span><div class="st"><span class="dot" style="background:var(--st-codereview)"></span>代码评审</div><div class="pp">8 <small>人</small></div><div class="heat"><span style="background:var(--st-codereview)" data-w="21%"></span></div></div>
+        </div>
+      </section>
+
+      <!-- ③ 标杆成员 -->
+      <section class="card pad">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4a2 2 0 0 1-2-2V4h6m8 5h2a2 2 0 0 0 2-2V4h-6M6 4h12v6a6 6 0 0 1-12 0z"/><path d="M9 20h6M12 16v4"/></svg>
+          <h3>标杆成员</h3>
+          <span class="note">按产出贡献 TOP 3</span>
+        </div>
+        <div class="top3">
+          <div class="rank">
+            <div class="bar" style="background:var(--primary)"></div>
+            <div class="badge-no" style="background:var(--primary);color:#0a0a0a"># 1</div>
+            <div class="top"><div class="av" style="width:40px;height:40px;font-size:17px;background:#1a2a1a">W</div>
+              <div><div class="nm">wang.fei</div><span class="badge live" style="margin-top:3px"><span class="d"></span>活跃 · 4/4</span></div></div>
+            <div class="meta"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>12 需求</span><span>接入 120 天</span></div>
+            <div class="roi"><span class="pill">31 artifact</span><span class="pill"><span class="g">58</span> 落地</span></div>
+            <div class="see"><a onclick="openProfile('wang.fei')">看他怎么干的 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a></div>
+          </div>
+          <div class="rank">
+            <div class="bar" style="background:var(--bar-fill)"></div>
+            <div class="badge-no" style="background:var(--bar-fill);color:#0a0a0a"># 2</div>
+            <div class="top"><div class="av" style="width:40px;height:40px;font-size:17px;background:#251a25">L</div>
+              <div><div class="nm">li.meng</div><span class="badge live" style="margin-top:3px"><span class="d"></span>活跃 · 4/4</span></div></div>
+            <div class="meta"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>8 需求</span><span>接入 42 天</span></div>
+            <div class="roi"><span class="pill">23 artifact</span><span class="pill"><span class="g">31</span> 落地</span></div>
+            <div class="see"><a onclick="openProfile('li.meng')">看他怎么干的 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a></div>
+          </div>
+          <div class="rank">
+            <div class="bar" style="background:var(--muted)"></div>
+            <div class="badge-no" style="background:var(--muted);color:#101010"># 3</div>
+            <div class="top"><div class="av" style="width:40px;height:40px;font-size:17px;background:#1a1a2a">Z</div>
+              <div><div class="nm">zhao.lin</div><span class="badge live" style="margin-top:3px"><span class="d"></span>活跃 · 3/4</span></div></div>
+            <div class="meta"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>5 需求</span><span>接入 30 天</span></div>
+            <div class="roi"><span class="pill">9 artifact</span><span class="pill"><span class="g">12</span> 落地</span></div>
+            <div class="see"><a onclick="openProfile('zhao.lin')">看他怎么干的 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ④ 成员一览 -->
+      <section class="card">
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input placeholder="搜索成员 / 安装 ID / 机器" />
+          </div>
+          <div class="tabs">
+            <button class="on">全部<span class="c">42</span></button>
+            <button>活<span class="c">28</span></button>
+            <button>冷<span class="c">9</span></button>
+            <button>流失<span class="c">5</span></button>
+            <button>新成员<span class="c">3</span></button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>成员</th><th>状态</th><th>SDD 成熟度</th><th class="r">工作项</th>
+              <th class="r">产出转化（artifact / 落地）</th><th class="r">接入时长</th><th class="r">最近活跃</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="table-foot"><span>共 42 位成员 · 活 28 / 冷 9 / 流失 5 · 5 人未配置 requirements</span><span>1 / 3 页</span></div>
+      </section>
+    </div>
+
+    <!-- ════════ Screen 2: 个人画像页 /sdd/users/:id ════════ -->
+    <div class="screen" id="screen-profile" hidden>
+      <section class="card pf-head">
+        <div class="pf-top">
+          <a class="pf-back" onclick="backToList()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5m0 0 6 6m-6-6 6-6"/></svg>用户分析</a>
+          <div class="pf-id">
+            <div class="av" id="pfAv" style="width:46px;height:46px;font-size:20px;background:#251a25">L</div>
+            <div><div class="nm" id="pfName">li.meng</div><div class="sub" id="pfSub">install · a3f9…7c2 · MacBook-Pro-16</div></div>
+          </div>
+          <span class="badge live" id="pfBadge"><span class="d"></span>活跃</span>
+        </div>
+        <div class="pf-summary" id="pfSummary">
+          <span><b>8</b> 需求</span><span><b>23</b> 文档</span><span><b>124</b> turns</span><span>跨 <b>9</b> session</span><span>wiki 召回 <b>96</b></span><span>落地代码 <b class="g">31</b></span><span>接入 <b>42</b> 天</span>
+        </div>
+        <div class="ramp">
+          <div class="h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><b>采用爬坡</b> · 首次接入 → 走通 4 阶段用了 <b style="color:var(--primary)">12 天</b>（团队新人中位 21 天）</div>
+          <div class="track" id="pfRamp"></div>
+        </div>
+      </section>
+
+      <div class="pf-grid">
+        <!-- 左：他的需求 -->
+        <section class="card">
+          <div class="wi-head">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>
+            <b>他的需求</b><span class="n" id="wiCount">8 个</span>
+          </div>
+          <div id="wiList"></div>
+        </section>
+
+        <!-- 右：方法论完整度 + 活动时间线 -->
+        <section class="card">
+          <div class="tl-head">
+            <div class="ttl" id="tlTitle">cashier / unfreeze-component<small>design.md 生成链路</small></div>
+            <div class="complete" id="tlComplete"></div>
+          </div>
+          <div class="out-row">
+            <a class="out-link" onclick="return false" href="#">看完整需求详情 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a>
+            <span style="font-size:11px;color:var(--muted);align-self:center">→ 跳产出分析（需求只出链，本页不展开）</span>
+          </div>
+          <div class="tl-body" id="tlBody"></div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Drawer: 交互全文（复用交互明细详情）── -->
+<div class="backdrop" id="bk" onclick="closeDrawer()"></div>
+<div class="drawer" id="dw">
+  <div class="drawer-head">
+    <div class="row">
+      <div>
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="dwTitle">交互全文</span></h3>
+        <div class="code" id="dwCode">prompt_id 8f1e…22 · 2026-05-10 14:22</div>
+      </div>
+      <button class="close-btn" onclick="closeDrawer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg><b>用户 prompt</b><span class="n" id="dwSkill">bk-fe-design</span></div>
+      <div class="bubble user" id="dwPrompt"></div>
+      <div class="bubble asst" id="dwResp"></div>
+    </div>
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg><b>工具时间线</b><span class="n" id="dwToolN">本次 turn · 5 个工具调用</span></div>
+      <div id="dwTools"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ───────── helpers ─────────
+  const $ = (id) => document.getElementById(id);
+  const STMAP = { live:['live','活跃'], cold:['cold','转冷'], churn:['churn','流失'], new:['new','新成员'] };
+  const stripColor = { live:'var(--good-text)', cold:'var(--muted)', churn:'var(--bad-text)', new:'var(--info)' };
+  const STAGE = { proposal:['需求撰写','var(--st-proposal)'], design:['系统设计','var(--st-design)'], task:['任务拆分','var(--st-task)'], codereview:['代码评审','var(--st-codereview)'] };
+  const STAGE_ORDER = ['proposal','design','task','codereview'];
+  const fmt = (v) => (v===0||v) ? v.toLocaleString() : '—';
+
+  // 动画：进度条/三态条/热力条在首帧后填充
+  function animateBars(scope){
+    scope.querySelectorAll('[data-w]').forEach(el=>{ requestAnimationFrame(()=>{ el.style.width = el.dataset.w; }); });
+  }
+
+  // ───────── mock 成员 ─────────
+  const MEMBERS = [
+    { id:'wang.fei', ini:'W', av:'#1a2a1a', st:'live', stages:['proposal','design','task','codereview'], days:120, wi:12, art:31, land:58, last:'1h 前' },
+    { id:'li.meng',  ini:'L', av:'#251a25', st:'live', stages:['proposal','design','task','codereview'], days:42,  wi:8,  art:23, land:31, last:'2h 前' },
+    { id:'zhao.lin', ini:'Z', av:'#1a1a2a', st:'live', stages:['proposal','design','task'], days:30, wi:5, art:9, land:12, last:'5h 前' },
+    { id:'sun.qi',   ini:'S', av:'#2a2a1a', st:'new',  stages:['proposal'], days:9, wi:1, art:1, land:0, last:'1天前' },
+    { id:'chen.yu',  ini:'C', av:'#1a2a2a', st:'cold', stages:['proposal','design'], days:88, wi:3, art:4, land:4, last:'12天前' },
+    { id:'wu.han',   ini:'W', av:'#2a1a1a', st:'live', stages:['proposal','design','task'], days:65, wi:6, art:14, land:22, last:'3h 前' },
+    { id:'liu.tao',  ini:'L', av:'#2a1a1a', st:'churn',stages:['proposal','design'], days:65, wi:4, art:6, land:9, last:'41天前' },
+    { id:'zhou.an',  ini:'Z', av:'#1a1a2a', st:'churn',stages:['proposal'], days:50, wi:0, art:0, land:0, last:'38天前' },
+    { id:'sun.li',   ini:'S', av:'#1a2a1a', st:'live', stages:['proposal','design','task','codereview'], days:140, wi:9, art:20, land:40, last:'30m 前' },
+    { id:'deng.fang',ini:'D', av:'#251a25', st:'cold', stages:['proposal'], days:72, wi:2, art:2, land:0, last:'9天前' },
+  ];
+
+  // ───────── ④ 渲染成员表 ─────────
+  function depthMini(stages){
+    const dots = STAGE_ORDER.map(s=>`<i class="${stages.includes(s)?'on':''}"></i>`).join('');
+    return `<span class="mini-depth"><span class="dots">${dots}</span><span class="f">${stages.length}/4</span></span>`;
+  }
+  $('rows').innerHTML = MEMBERS.map(m=>{
+    const [bc,bl]=STMAP[m.st];
+    const nameColor = m.st==='churn' ? 'color:var(--bad-text)' : '';
+    const land = m.land===0?'<span class="land zero">0</span>':`<span class="land">${fmt(m.land)}</span>`;
+    return `<tr onclick="openProfile('${m.id}')">
+      <td><div class="u-cell"><span class="strip" style="background:${stripColor[m.st]}"></span>
+        <div class="av" style="width:26px;height:26px;font-size:11px;background:${m.av}">${m.ini}</div>
+        <span class="u-name" style="${nameColor}">${m.id}<small>接入 ${m.days} 天</small></span></div></td>
+      <td><span class="badge ${bc}"><span class="d"></span>${bl}</span></td>
+      <td>${depthMini(m.stages)}</td>
+      <td class="r">${m.wi||'—'}</td>
+      <td class="r"><span class="conv-cell"><span class="art">${fmt(m.art)}</span><span style="color:var(--muted)">/</span>${land}</span></td>
+      <td class="r" style="color:var(--secondary)">${m.days} 天</td>
+      <td class="r" style="color:var(--secondary)">${m.last}</td>
+      <td class="r"><span class="row-go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></td>
+    </tr>`;
+  }).join('');
+
+  // ───────── 个人画像数据 ─────────
+  // 每个用户：基本信息 + 需求列表（每需求一条文档生成时间线）
+  const PROFILES = {
+    'li.meng': {
+      ini:'L', av:'#251a25', st:'live', sub:'install · a3f9…7c2 · MacBook-Pro-16',
+      summary:[['8','需求'],['23','文档'],['124','turns'],['9','session',true],['96','wiki 召回'],['31','落地代码','g'],['42','接入天']],
+      ramp:[['proposal','D0',0],['design','D3',25],['task','D5',42],['codereview','D12',100]],
+      rampText:'首次接入 → 走通 4 阶段用了 <b style="color:var(--primary)">12 天</b>（团队新人中位 21 天）',
+      workItems:[
+        { repo:'cashier', title:'unfreeze-component', stages:['proposal','design','task','codereview'], doc:'design.md',
+          timeline:[
+            { t:'05-10 14:22', kind:'Write', kc:'var(--k-write)', art:'design.md', sk:'bk-fe-design', wiki:3, q:'帮我设计冻结组件的状态机，要覆盖解冻中、已解冻、解冻失败三个态，错误处理也要全' },
+            { t:'05-10 15:01', kind:'Edit', kc:'var(--k-write)', art:'design.md', sk:'bk-fe-design', wiki:0, q:'把错误处理那段补上，超时和并发冲突两种都要写' },
+            { t:'05-11 09:30', kind:'skill', kc:'var(--k-skill)', art:'任务拆分', sk:'bk-fe-task', wiki:1, q:'按这份设计拆成可执行任务，标注验收标准和提交顺序' },
+            { t:'05-11 10:12', kind:'Write', kc:'var(--k-write)', art:'tasks.md', sk:'bk-fe-task', wiki:0, q:'把任务清单写进 tasks.md' },
+            { t:'05-12 16:40', kind:'wiki', kc:'var(--k-wiki)', art:'读 cashier/解冻流程.md', sk:'—', wiki:1, q:'（知识库召回）解冻业务域既有约定' },
+          ] },
+        { repo:'loan', title:'credit-limit-adjust', stages:['proposal','design'], doc:'proposal.md',
+          timeline:[
+            { t:'05-18 11:05', kind:'skill', kc:'var(--k-skill)', art:'技术提案', sk:'bk-fe-proposal', wiki:2, q:'授信额度调整这个需求，先帮我把提案写出来，列清楚方案对比' },
+            { t:'05-18 11:48', kind:'Write', kc:'var(--k-write)', art:'proposal.md', sk:'bk-fe-proposal', wiki:0, q:'把方案二定下来，写进 proposal' },
+          ] },
+        { repo:'wealth', title:'fund-nav-cache', stages:['proposal','design','task'], doc:'design.md',
+          timeline:[
+            { t:'05-22 09:14', kind:'skill', kc:'var(--k-skill)', art:'系统设计', sk:'bk-fe-design', wiki:4, q:'基金净值缓存，设计一下缓存层和失效策略' },
+            { t:'05-22 14:30', kind:'Write', kc:'var(--k-write)', art:'design.md', sk:'bk-fe-design', wiki:1, q:'把 TTL 和主动失效两条路都写清楚' },
+          ] },
+      ],
+    },
+    'wang.fei': {
+      ini:'W', av:'#1a2a1a', st:'live', sub:'install · b1c7…9e4 · MacBook-Pro-14',
+      summary:[['12','需求'],['41','文档'],['208','turns'],['14','session',true],['173','wiki 召回'],['58','落地代码','g'],['120','接入天']],
+      ramp:[['proposal','D0',0],['design','D2',18],['task','D4',38],['codereview','D9',100]],
+      rampText:'首次接入 → 走通 4 阶段用了 <b style="color:var(--primary)">9 天</b>（全团队最快）',
+      workItems:[
+        { repo:'trade', title:'order-router-refactor', stages:['proposal','design','task','codereview'], doc:'design.md',
+          timeline:[
+            { t:'02-14 10:00', kind:'skill', kc:'var(--k-skill)', art:'系统设计', sk:'bk-fe-design', wiki:5, q:'订单路由重构，先给我一版完整架构设计，要画依赖图' },
+            { t:'02-14 11:20', kind:'Write', kc:'var(--k-write)', art:'design.md', sk:'bk-fe-design', wiki:2, q:'把降级和回滚那块补全' },
+            { t:'02-15 09:40', kind:'skill', kc:'var(--k-skill)', art:'代码评审', sk:'bk-fe-codereview', wiki:1, q:'帮我评审这次路由改动的风险点' },
+          ] },
+        { repo:'cashier', title:'settle-batch-v2', stages:['proposal','design','task','codereview'], doc:'tasks.md',
+          timeline:[
+            { t:'03-02 14:00', kind:'skill', kc:'var(--k-skill)', art:'任务拆分', sk:'bk-fe-task', wiki:3, q:'结算批处理 v2，拆任务，按可独立提交切分' },
+            { t:'03-02 15:10', kind:'Write', kc:'var(--k-write)', art:'tasks.md', sk:'bk-fe-task', wiki:0, q:'写进 tasks.md，标好依赖' },
+          ] },
+      ],
+    },
+    'zhao.lin': {
+      ini:'Z', av:'#1a1a2a', st:'live', sub:'install · c8d2…4a1 · ThinkPad-X1',
+      summary:[['5','需求'],['11','文档'],['62','turns'],['6','session',true],['38','wiki 召回'],['12','落地代码','g'],['30','接入天']],
+      ramp:[['proposal','D0',0],['design','D5',40],['task','D8',75],['codereview','—',100,true]],
+      rampText:'走到 <b style="color:var(--primary)">3/4 阶段</b>（task 后未走到代码评审，可重点帮带）',
+      workItems:[
+        { repo:'loan', title:'risk-score-tune', stages:['proposal','design','task'], doc:'design.md',
+          timeline:[
+            { t:'05-04 10:30', kind:'skill', kc:'var(--k-skill)', art:'系统设计', sk:'bk-fe-design', wiki:2, q:'风险评分调参，设计一下灰度和回滚方案' },
+            { t:'05-04 13:15', kind:'Write', kc:'var(--k-write)', art:'design.md', sk:'bk-fe-design', wiki:1, q:'把灰度比例和观测指标写进去' },
+          ] },
+        { repo:'wealth', title:'portfolio-rebalance', stages:['proposal','design'], doc:'proposal.md',
+          timeline:[
+            { t:'05-20 16:00', kind:'skill', kc:'var(--k-skill)', art:'技术提案', sk:'bk-fe-proposal', wiki:1, q:'组合再平衡，先出提案对比同步/异步两种实现' },
+          ] },
+      ],
+    },
+    // 掉队成员（时间线偏空，演示降级）
+    'liu.tao': { ini:'L', av:'#2a1a1a', st:'churn', sub:'install · d4e1…8b9 · MacBook-Air',
+      summary:[['4','需求'],['8','文档'],['—','turns(已过期)'],['3','session',true],['12','wiki 召回'],['9','落地代码','g'],['65','接入天']],
+      ramp:[['proposal','D0',0],['design','D7',60],['task','—',75,true],['codereview','—',100,true]],
+      rampText:'近 <b style="color:var(--bad-text)">41 天</b>无任何活动 · 走到 2/4 后掉队',
+      workItems:[
+        { repo:'trade', title:'quote-throttle', stages:['proposal','design'], doc:'design.md',
+          timeline:[ { t:'04-19 10:00', kind:'skill', kc:'var(--k-skill)', art:'系统设计', sk:'bk-fe-design', wiki:1, q:'行情限流，设计令牌桶方案' } ] },
+        { repo:'loan', title:'(更早需求 · 事件层已过期)', stages:['proposal'], doc:'—',
+          timeline:[] },
+      ],
+    },
+    'zhou.an': { ini:'Z', av:'#1a1a2a', st:'churn', sub:'install · 未配置 · —',
+      summary:[['0','需求'],['0','文档'],['—','turns'],['1','session',true],['0','wiki 召回'],['0','落地代码','g'],['50','接入天']],
+      ramp:[['proposal','D0',0],['design','—',40,true],['task','—',75,true],['codereview','—',100,true]],
+      rampText:'仅触发 proposal 一次后 <b style="color:var(--bad-text)">流失</b> · requirements 根目录未配置，工作项识别失效',
+      workItems:[],
+    },
+    'xu.bo': { ini:'X', av:'#1a2a2a', st:'churn', sub:'install · e9f3…1c0 · —',
+      summary:[['2','需求'],['3','文档'],['—','turns'],['2','session',true],['5','wiki 召回'],['0','落地代码','g'],['58','接入天']],
+      ramp:[['proposal','D0',0],['design','D11',55],['task','—',75,true],['codereview','—',100,true]],
+      rampText:'近 <b style="color:var(--bad-text)">36 天</b>无活动 · 走到 2/4 后掉队',
+      workItems:[
+        { repo:'wealth', title:'nav-alert', stages:['proposal','design'], doc:'design.md',
+          timeline:[ { t:'04-24 09:00', kind:'skill', kc:'var(--k-skill)', art:'系统设计', sk:'bk-fe-design', wiki:1, q:'净值预警，设计推送通道' } ] },
+      ],
+    },
+  };
+
+  // ───────── 渲染个人画像 ─────────
+  let curProfile = null;
+  let curWI = null;
+  function openProfile(id){
+    const p = PROFILES[id] || PROFILES['li.meng'];
+    curProfile = p;
+    const [bc,bl] = STMAP[p.st];
+
+    $('pfAv').textContent = p.ini; $('pfAv').style.background = p.av;
+    $('pfName').textContent = id;
+    $('pfSub').textContent = p.sub;
+    const badge = $('pfBadge'); badge.className = 'badge '+bc; badge.innerHTML = '<span class="d"></span>'+bl;
+    $('pfSummary').innerHTML = p.summary.map(s=>{
+      const cls = s[2]==='g' ? 'g' : '';
+      const sess = s[2]===true ? '跨 ' : '';
+      return `<span>${sess}<b class="${cls}">${s[0]}</b> ${s[1]}</span>`;
+    }).join('');
+    document.querySelector('.ramp .h').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><b>采用爬坡</b> · '+p.rampText;
+
+    // ramp 轨道
+    const ramp = $('pfRamp');
+    const fillTo = (() => { const done = p.ramp.filter(r=>!r[3]); return done.length? done[done.length-1][2] : 0; })();
+    ramp.innerHTML = `<div class="line"><span class="fill" data-w="${fillTo}%"></span></div>` + p.ramp.map(r=>{
+      const [stage,day,pos,todo] = r;
+      const [nm,color] = STAGE[stage];
+      return `<div class="node ${todo?'todo':''}" style="left:${pos}%">
+        <span class="lb">${nm}</span>
+        <span class="pt" style="${todo?'':'background:'+color}"></span>
+        <span class="day">${day}</span></div>`;
+    }).join('');
+
+    // 需求列表
+    renderWorkItems(p);
+    // 默认选中第一条非空时间线
+    const firstIdx = Math.max(0, p.workItems.findIndex(w=>w.timeline.length>0));
+    selectWorkItem(firstIdx>=0?firstIdx:0);
+
+    // 切屏（带入场动画）
+    const list = $('screen-list'), prof = $('screen-profile');
+    list.hidden = true; prof.hidden = false;
+    prof.classList.remove('screen-anim'); void prof.offsetWidth; prof.classList.add('screen-anim');
+    $('crumb').innerHTML = '看板 / <a onclick="backToList()" style="cursor:pointer">用户分析</a> / <b>'+id+'</b>';
+    window.scrollTo(0,0);
+    animateBars(prof);
+  }
+
+  function renderWorkItems(p){
+    $('wiCount').textContent = p.workItems.length + ' 个';
+    $('wiList').innerHTML = p.workItems.length ? p.workItems.map((w,i)=>{
+      const chips = STAGE_ORDER.map(s=>{
+        const on = w.stages.includes(s);
+        const [nm,color] = STAGE[s];
+        return `<span class="c" style="${on?`background:${color}22;color:${color}`:'background:rgba(255,255,255,0.05);color:var(--muted)'}">${nm.slice(0,2)}</span>`;
+      }).join('');
+      return `<div class="wi" id="wi-${i}" onclick="selectWorkItem(${i})">
+        <div class="repo">${w.repo}</div>
+        <div class="ttl">${w.title}</div>
+        <div class="chips">${chips}</div>
+        <div class="foot"><span>${w.timeline.length||'—'} 次写入/调用</span><span class="open">产出分析详情 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+      </div>`;
+    }).join('') : `<div style="padding:24px 14px;text-align:center;font-size:12px;color:var(--muted)">该成员暂无可下钻需求<br/><span style="font-size:11px">（requirements 未配置或事件层已过期）</span></div>`;
+  }
+
+  function selectWorkItem(i){
+    if(!curProfile) return;
+    const w = curProfile.workItems[i];
+    curWI = w;
+    document.querySelectorAll('.wi').forEach(el=>el.classList.remove('on'));
+    const el = $('wi-'+i); if(el) el.classList.add('on');
+    if(!w){ $('tlBody').innerHTML=''; return; }
+
+    $('tlTitle').innerHTML = `${w.repo} / ${w.title}<small>${w.doc==='—'?'无文档':w.doc+' 生成链路'}</small>`;
+    // 完整度徽标
+    $('tlComplete').innerHTML = STAGE_ORDER.map(s=>{
+      const on = w.stages.includes(s); const [nm,color]=STAGE[s];
+      return `<span class="c" style="${on?`background:${color}22;color:${color}`:'background:rgba(255,255,255,0.05);color:var(--muted)'}">${on?'✓':'—'} ${nm}</span>`;
+    }).join('');
+
+    $('tlBody').innerHTML = w.timeline.length ? w.timeline.map((n,ni)=>{
+      const kindLabel = {Write:'写入',Edit:'编辑',skill:'技能调用',wiki:'知识召回'}[n.kind]||n.kind;
+      const wikiTag = n.wiki>0 ? `<span class="wiki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>wiki×${n.wiki}</span>` : '';
+      const skTag = n.sk!=='—' ? `<span class="sk">${n.sk}</span>` : '';
+      return `<div class="node" onclick="openTurn('${n.t}','${n.sk}',${ni})">
+        <span class="pt" style="background:${n.kc}"></span>
+        <div class="meta"><span class="t">${n.t}</span><span class="kind" style="color:${n.kc}">${kindLabel}</span><span class="art">${n.art}</span>${skTag}${wikiTag}</div>
+        <div class="prompt"><span class="q">"${n.q}"</span><span class="exp">展开全文 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span></div>
+      </div>`;
+    }).join('') : `<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--muted)">该需求事件层已过期，时间线偏空<br/><span style="font-size:11px">只剩需求列表 + 汇总（新表上线后新增数据完整）</span></div>`;
+  }
+
+  function backToList(){
+    const list = $('screen-list'), prof = $('screen-profile');
+    prof.hidden = true; list.hidden = false;
+    list.classList.remove('screen-anim'); void list.offsetWidth; list.classList.add('screen-anim');
+    $('crumb').innerHTML = '看板 / <b>用户分析</b>';
+    window.scrollTo(0,0);
+    animateBars(list);
+  }
+
+  // ───────── drawer: 交互全文 ─────────
+  const RESP = '已按三态状态机给出 design.md：解冻中 / 已解冻 / 解冻失败，含超时与并发冲突的错误处理路径，并标注了不可达的非法转移。建议在 worker 落地时复用既有 outbox 幂等键……';
+  function openTurn(t, sk, ni){
+    const node = curWI ? curWI.timeline[ni] : null;
+    $('dwTitle').textContent = '交互全文';
+    $('dwCode').textContent = 'prompt_id 8f1e…22 · 2026-'+t;
+    $('dwSkill').textContent = sk==='—' ? '无归因技能' : sk;
+    $('dwPrompt').textContent = node ? node.q : '（prompt 全文）';
+    $('dwResp').textContent = RESP;
+    // 工具时间线 mock
+    const tools = [
+      ['Read','var(--k-wiki)','读 cashier/解冻流程.md'],
+      ['Grep','var(--k-wiki)','搜 freeze 状态定义'],
+      ['Write','var(--k-write)','design.md'],
+      ['Edit','var(--k-write)','design.md（补错误处理）'],
+      ['TodoWrite','var(--muted)','更新任务清单'],
+    ];
+    $('dwTools').innerHTML = tools.map(t=>`<div class="tool-line"><span class="tg" style="background:${t[1]}"></span><span class="tn">${t[0]}</span><span>${t[2]}</span></div>`).join('');
+    $('bk').classList.add('show'); $('dw').classList.add('show');
+  }
+  function closeDrawer(){ $('bk').classList.remove('show'); $('dw').classList.remove('show'); }
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
+
+  // 首屏动画
+  animateBars($('screen-list'));
+</script>
+</body>
+</html>

@@ -189,6 +189,31 @@ export interface UserRow {
   semantic_stages_csv: string | null;
 }
 
+export interface UserArtifactCountRow {
+  user_id: string | number;
+  artifact_count: string | number;
+}
+
+export interface UserMaturityRow {
+  user_id: string | number;
+  semantic_code: string;
+  first_event_time: Date | string | null;
+}
+
+export interface UserSummaryRow {
+  turn_count: string | number;
+  session_count: string | number;
+  wiki_recall_count: string | number;
+  artifact_count: string | number;
+}
+
+export interface UserWorkItemRow {
+  work_item_id: string | number;
+  work_item_title: string | null;
+  stage_codes_csv: string | null;
+  last_activity_at: Date | string | null;
+}
+
 export interface VersionRow {
   version: string | null;
   usage_count: string | number;
@@ -937,6 +962,7 @@ export class SddQueryRepository {
     rangeSinceDate: Date | null,
     granularity: 'day' | 'hour',
     groupBy: 'domain' | 'axis',
+    wikiDomain?: string | null,
   ): Promise<WikiRecallTimelinePointRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const dateFormat =
@@ -944,17 +970,100 @@ export class SddQueryRepository {
         ? "DATE_FORMAT(event_time, '%Y-%m-%dT00:00:00.000Z')"
         : "DATE_FORMAT(event_time, '%Y-%m-%dT%H:00:00.000Z')";
     const columnName = groupBy === 'domain' ? 'wiki_domain' : 'wiki_axis';
-    const whereTime = rangeSinceDate ? 'AND event_time >= ?' : '';
-    const params = rangeSinceDate ? [rangeSinceDate] : [];
+    const clauses: string[] = ['event_time IS NOT NULL'];
+    const params: unknown[] = [];
+    if (rangeSinceDate) {
+      clauses.push('event_time >= ?');
+      params.push(rangeSinceDate);
+    }
+    if (wikiDomain === ROOT_DOMAIN_LABEL) {
+      clauses.push('wiki_domain IS NULL');
+    } else if (wikiDomain) {
+      clauses.push('wiki_domain = ?');
+      params.push(wikiDomain);
+    }
+    const where = clauses.join(' AND ');
 
     return (await dataSource.query(
       `SELECT ${dateFormat} AS t, ${columnName} AS \`group\`, COUNT(*) AS count
        FROM sdd_wiki_recalls
-       WHERE event_time IS NOT NULL ${whereTime}
+       WHERE ${where}
        GROUP BY t, \`group\`
        ORDER BY t ASC`,
       params,
     )) as WikiRecallTimelinePointRow[];
+  }
+
+  async listWikiRecallDocDetailTrend(
+    relativePath: string,
+  ): Promise<Array<{ t: string; count: string | number }>> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT DATE_FORMAT(event_time, '%Y-%m-%dT00:00:00.000Z') AS t, COUNT(*) AS count
+       FROM sdd_wiki_recalls
+       WHERE wiki_relative_path = ? AND event_time IS NOT NULL
+       GROUP BY t
+       ORDER BY t ASC`,
+      [relativePath],
+    )) as Array<{ t: string; count: string | number }>;
+  }
+
+  async listWikiRecallDocDetailReaders(
+    relativePath: string,
+  ): Promise<
+    Array<{
+      userId: string | number;
+      userName: string | null;
+      recallCount: string | number;
+      lastRecallAt: Date | string | null;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT wr.user_id AS userId, u.user_name AS userName,
+              COUNT(*) AS recallCount, MAX(wr.event_time) AS lastRecallAt
+       FROM sdd_wiki_recalls wr
+       LEFT JOIN sdd_users u ON u.id = wr.user_id
+       WHERE wr.wiki_relative_path = ? AND wr.user_id IS NOT NULL
+       GROUP BY wr.user_id
+       ORDER BY recallCount DESC`,
+      [relativePath],
+    )) as Array<{
+      userId: string | number;
+      userName: string | null;
+      recallCount: string | number;
+      lastRecallAt: Date | string | null;
+    }>;
+  }
+
+  async listWikiRecallDocDetailSourceWorkItems(
+    relativePath: string,
+  ): Promise<
+    Array<{
+      workItemId: string | number;
+      workItemSlug: string;
+      businessDomain: string | null;
+      recallCount: string | number;
+    }>
+  > {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT wi.id AS workItemId, wi.work_item_slug AS workItemSlug,
+              wi.business_domain AS businessDomain,
+              COUNT(*) AS recallCount
+       FROM sdd_wiki_recalls wr
+       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
+       JOIN sdd_work_items wi ON wi.id = COALESCE(wr.work_item_id, su.work_item_id)
+       WHERE wr.wiki_relative_path = ?
+       GROUP BY wi.id
+       ORDER BY recallCount DESC`,
+      [relativePath],
+    )) as Array<{
+      workItemId: string | number;
+      workItemSlug: string;
+      businessDomain: string | null;
+      recallCount: string | number;
+    }>;
   }
 
   async listWikiRecalls(
@@ -1204,5 +1313,73 @@ export class SddQueryRepository {
        GROUP BY r.wiki_relative_path`,
       [domain],
     );
+  }
+
+  async listUserArtifactCounts(): Promise<UserArtifactCountRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT su.user_id, COUNT(DISTINCT a.id) AS artifact_count
+       FROM sdd_skill_usages su
+       JOIN sdd_work_item_artifacts a ON a.work_item_id = su.work_item_id
+       WHERE su.user_id IS NOT NULL
+       GROUP BY su.user_id`,
+    )) as UserArtifactCountRow[];
+  }
+
+  async listUserMaturityAll(): Promise<UserMaturityRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT su.user_id, ss.semantic_code, MIN(su.event_time) AS first_event_time
+       FROM sdd_skill_usages su
+       JOIN sdd_skill_semantics ss ON ss.id = su.semantic_id
+       WHERE su.user_id IS NOT NULL AND su.event_time IS NOT NULL
+       GROUP BY su.user_id, ss.semantic_code`,
+    )) as UserMaturityRow[];
+  }
+
+  async getUserMaturity(userId: string): Promise<UserMaturityRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT su.user_id, ss.semantic_code, MIN(su.event_time) AS first_event_time
+       FROM sdd_skill_usages su
+       JOIN sdd_skill_semantics ss ON ss.id = su.semantic_id
+       WHERE su.user_id = ? AND su.event_time IS NOT NULL
+       GROUP BY su.user_id, ss.semantic_code`,
+      [userId],
+    )) as UserMaturityRow[];
+  }
+
+  async getUserSummary(userId: string): Promise<UserSummaryRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT
+         (SELECT COUNT(DISTINCT interaction_id) FROM sdd_skill_usages
+            WHERE user_id = ? AND interaction_id IS NOT NULL) AS turn_count,
+         (SELECT COUNT(DISTINCT session_id) FROM sdd_skill_usages
+            WHERE user_id = ? AND session_id IS NOT NULL) AS session_count,
+         (SELECT COUNT(*) FROM sdd_wiki_recalls WHERE user_id = ?) AS wiki_recall_count,
+         (SELECT COUNT(DISTINCT a.id) FROM sdd_skill_usages su
+            JOIN sdd_work_item_artifacts a ON a.work_item_id = su.work_item_id
+            WHERE su.user_id = ?) AS artifact_count`,
+      [userId, userId, userId, userId],
+    )) as UserSummaryRow[];
+  }
+
+  async listUserWorkItems(userId: string): Promise<UserWorkItemRow[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT wi.id AS work_item_id,
+              wi.work_item_title,
+              GROUP_CONCAT(DISTINCT ss.semantic_code) AS stage_codes_csv,
+              MAX(su.event_time) AS last_activity_at
+       FROM sdd_skill_usages su
+       JOIN sdd_work_items wi ON wi.id = su.work_item_id
+       LEFT JOIN sdd_skill_semantics ss ON ss.id = su.semantic_id
+       WHERE su.user_id = ? AND su.work_item_id IS NOT NULL
+       GROUP BY wi.id, wi.work_item_title
+       ORDER BY MAX(su.event_time) DESC, wi.id DESC
+       LIMIT 100`,
+      [userId],
+    )) as UserWorkItemRow[];
   }
 }

@@ -73,6 +73,38 @@ export function summarizeCodeImpactRows(rows: CodeImpactToolRow[]): DailyReportC
   };
 }
 
+export interface UserCodeImpactCount {
+  codeWriteCount: number;
+  codeReadCount: number;
+}
+
+export function summarizeCodeImpactByUser(
+  rows: CodeImpactToolRow[],
+): Map<string, UserCodeImpactCount> {
+  const byUser = new Map<string, UserCodeImpactCount>();
+  for (const row of rows) {
+    if (!WRITE_TOOLS.has(row.toolName) && !READ_TOOLS.has(row.toolName)) {
+      continue;
+    }
+    if (row.userId === null || row.userId === undefined) {
+      continue;
+    }
+    const toolPath = extractToolPath(row.toolInputPreview);
+    if (!toolPath || !isBusinessCodePath(toolPath.value, row)) {
+      continue;
+    }
+    const key = String(row.userId);
+    const stat = byUser.get(key) ?? { codeWriteCount: 0, codeReadCount: 0 };
+    if (WRITE_TOOLS.has(row.toolName)) {
+      stat.codeWriteCount += 1;
+    } else {
+      stat.codeReadCount += 1;
+    }
+    byUser.set(key, stat);
+  }
+  return byUser;
+}
+
 function extractToolPath(inputPreview: string | null): ToolPath | null {
   if (!inputPreview) return null;
   let input: unknown;

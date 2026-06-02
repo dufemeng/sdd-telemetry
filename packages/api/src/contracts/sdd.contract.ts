@@ -299,6 +299,47 @@ export const SddUserItemSchema = z.object({
   interactionCount: z.number(),
   workItemCount: z.number(),
   semanticStages: z.array(z.string()),
+  status: z.enum(['live', 'cold', 'churn']),
+  isNew: z.boolean(),
+  artifactCount: z.number(),
+  codeWriteCount: z.number(),
+  codeReadCount: z.number(),
+  rampDays: z.number().nullable(),
+});
+
+export const SddUserMaturityStageSchema = z.object({
+  stage: z.string(),
+  firstReachedAt: ISODateTimeSchema.nullable(),
+});
+
+export const SddUserMaturitySchema = z.object({
+  stages: z.array(SddUserMaturityStageSchema),
+  completionRate: z.number(),
+  rampDays: z.number().nullable(),
+});
+
+export const SddUserWorkItemSchema = z.object({
+  workItemId: IdSchema,
+  title: z.string(),
+  stageCodes: z.array(z.string()),
+  lastActivityAt: ISODateTimeSchema.nullable(),
+});
+
+export const SddUserSummarySchema = z.object({
+  workItemCount: z.number(),
+  artifactCount: z.number(),
+  turnCount: z.number(),
+  sessionCount: z.number(),
+  wikiRecallCount: z.number(),
+  codeWriteCount: z.number(),
+  codeReadCount: z.number(),
+});
+
+export const SddUserDetailSchema = z.object({
+  user: SddUserItemSchema,
+  summary: SddUserSummarySchema,
+  maturity: SddUserMaturitySchema,
+  workItems: z.array(SddUserWorkItemSchema),
 });
 
 export const SddVersionItemSchema = z.object({
@@ -513,6 +554,28 @@ export const WikiDomainDocsResponseSchema = z.object({
   items: z.array(WikiDomainDocSchema),
 });
 
+export const WikiDocDetailResponseSchema = z.object({
+  repo: z.string(),
+  relativePath: z.string(),
+  trend: z.array(z.object({ t: ISODateTimeSchema, count: z.number() })),
+  readers: z.array(
+    z.object({
+      userId: IdSchema,
+      userName: z.string().nullable(),
+      recallCount: z.number(),
+      lastRecallAt: ISODateTimeSchema.nullable(),
+    }),
+  ),
+  sourceWorkItems: z.array(
+    z.object({
+      workItemId: IdSchema,
+      workItemSlug: z.string(),
+      businessDomain: z.string().nullable(),
+      recallCount: z.number(),
+    }),
+  ),
+});
+
 export type SddSemantic = z.infer<typeof SddSemanticSchema>;
 export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSchema>;
 export type UpdateSddSemanticRequest = z.infer<typeof UpdateSddSemanticRequestSchema>;
@@ -539,6 +602,11 @@ export type SddInteractionToolCallListResponse = z.infer<
 export type SddWikiRecallContent = z.infer<typeof SddWikiRecallContentSchema>;
 export type SddErrorItem = z.infer<typeof SddErrorItemSchema>;
 export type SddUserItem = z.infer<typeof SddUserItemSchema>;
+export type SddUserMaturityStage = z.infer<typeof SddUserMaturityStageSchema>;
+export type SddUserMaturity = z.infer<typeof SddUserMaturitySchema>;
+export type SddUserWorkItem = z.infer<typeof SddUserWorkItemSchema>;
+export type SddUserSummary = z.infer<typeof SddUserSummarySchema>;
+export type SddUserDetail = z.infer<typeof SddUserDetailSchema>;
 export type SddVersionItem = z.infer<typeof SddVersionItemSchema>;
 export type SddWorkItem = z.infer<typeof SddWorkItemSchema>;
 export type SddWorkItemDetail = z.infer<typeof SddWorkItemDetailSchema>;
@@ -565,3 +633,4 @@ export type WikiCoverageRepo = z.infer<typeof WikiCoverageRepoSchema>;
 export type WikiCoverageDomain = z.infer<typeof WikiCoverageDomainSchema>;
 export type WikiDomainDoc = z.infer<typeof WikiDomainDocSchema>;
 export type WikiDomainDocsResponse = z.infer<typeof WikiDomainDocsResponseSchema>;
+export type WikiDocDetailResponse = z.infer<typeof WikiDocDetailResponseSchema>;

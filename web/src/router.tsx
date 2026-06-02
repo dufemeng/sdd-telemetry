@@ -25,6 +25,7 @@ const QualityPage       = lazy(() => import('./pages/quality/QualityPage'));
 const SkillsPage        = lazy(() => import('./pages/sdd/skills/SkillsPage'));
 const InteractionsPage  = lazy(() => import('./pages/sdd/interactions/InteractionsPage'));
 const UsersPage         = lazy(() => import('./pages/sdd/users/UsersPage'));
+const UserProfilePage   = lazy(() => import('./pages/sdd/users/UserProfilePage'));
 const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPage'));
 const WorkItemDetailPage = lazy(() => import('./pages/sdd/work-items/WorkItemDetailPage'));
 const WikiRecallsPage   = lazy(() => import('./pages/sdd/wiki-recalls/WikiRecallsPage'));
@@ -57,6 +58,7 @@ export const router = createBrowserRouter([
           { path: 'sdd/skills',           element: wrap(SkillsPage),       errorElement: <RouteError /> },
           { path: 'sdd/interactions',     element: wrap(InteractionsPage), errorElement: <RouteError /> },
           { path: 'sdd/users',            element: wrap(UsersPage),        errorElement: <RouteError /> },
+          { path: 'sdd/users/:id',        element: wrap(UserProfilePage),  errorElement: <RouteError /> },
           { path: 'sdd/work-items',       element: wrap(WorkItemsPage),       errorElement: <RouteError /> },
           { path: 'sdd/work-items/:id',   element: wrap(WorkItemDetailPage),  errorElement: <RouteError /> },
           { path: 'sdd/wiki-recalls',     element: wrap(WikiRecallsPage),  errorElement: <RouteError /> },

@@ -25,10 +25,12 @@ import {
   SddUsageSummaryResponseSchema,
   SddUsageItemSchema,
   SddUserItemSchema,
+  SddUserDetailSchema,
   SddVersionItemSchema,
   SddWorkItemDetailSchema,
   SddWorkItemSchema,
   WikiCoverageResponseSchema,
+  WikiDocDetailResponseSchema,
   WikiDomainDocsResponseSchema,
   WikiRecallHeatmapResponseSchema,
   WikiRecallListResponseSchema,
@@ -50,10 +52,12 @@ import {
   type SddUsageSummaryResponse,
   type SddUsageItem,
   type SddUserItem,
+  type SddUserDetail,
   type SddVersionItem,
   type SddWorkItem,
   type SddWorkItemDetail,
   type WikiCoverageResponse,
+  type WikiDocDetailResponse,
   type WikiDomainDocsResponse,
   type WikiRecallHeatmapResponse,
   type WikiRecallListResponse,
@@ -184,6 +188,16 @@ export class SddController {
     return ok(parseWithSchema(SddUserItemSchema.array(), data));
   }
 
+  @Get('/users/:userId')
+  async userDetail() {
+    const userId = this.ctx.params.userId as string;
+    const data: SddUserDetail | null = await this.sddQueryService.getUserDetail(userId);
+    if (!data) {
+      throw new Error(`user not found: ${userId}`);
+    }
+    return ok(parseWithSchema(SddUserDetailSchema, data));
+  }
+
   @Get('/versions')
   async versions() {
     const data: SddVersionItem[] = await this.sddQueryService.listVersions();
@@ -232,6 +246,7 @@ export class SddController {
       this.parseWikiRecallRange(),
       firstQueryValue(this.ctx.query.granularity) === 'hour' ? 'hour' : 'day',
       firstQueryValue(this.ctx.query.groupBy) === 'axis' ? 'axis' : 'domain',
+      firstQueryValue(this.ctx.query.wikiDomain) ?? null,
     );
     return ok(parseWithSchema(WikiRecallTimelineResponseSchema, data));
   }
@@ -267,6 +282,15 @@ export class SddController {
     const domain = firstQueryValue(this.ctx.query.domain) ?? '';
     const data: WikiDomainDocsResponse = await this.sddQueryService.getWikiRecallDomainDocs(repo, domain);
     return ok(parseWithSchema(WikiDomainDocsResponseSchema, data));
+  }
+
+  @Get('/wiki-recalls/doc-detail')
+  async wikiRecallDocDetail() {
+    const repo = firstQueryValue(this.ctx.query.repo) ?? '';
+    const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
+    const data: WikiDocDetailResponse =
+      await this.sddQueryService.getWikiRecallDocDetail(repo, relativePath);
+    return ok(parseWithSchema(WikiDocDetailResponseSchema, data));
   }
 
   @Get('/wiki-recalls/content/by-path')

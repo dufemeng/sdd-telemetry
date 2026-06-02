@@ -27,11 +27,14 @@ import type {
   SddUsageSummaryResponse,
   SddUsageItem,
   SddUserItem,
+  SddUserDetail,
+  SddUserMaturityStage,
   SddVersionItem,
   SddWorkItem,
   SddWorkItemDetail,
   SddWikiRecallContent,
   WikiCoverageResponse,
+  WikiDocDetailResponse,
   WikiDomainDocsResponse,
   WikiRecallHeatmapResponse,
   WikiRecallListResponse,
@@ -43,11 +46,17 @@ import type {
 import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText } from '../query-utils';
+import { DailyReportRepository } from '../reports/daily-report.repository';
+import { summarizeCodeImpactByUser } from '../reports/daily-report-code-impact';
 import {
   SddQueryRepository,
   type ArtifactWriteRow,
   type InteractionRow,
   type ResolvedTimeWindow,
+  type UserArtifactCountRow,
+  type UserMaturityRow,
+  type UserSummaryRow,
+  type UserWorkItemRow,
   type WorkItemRow,
   type WorkItemSummaryRow,
 } from './sdd-query.repository';
@@ -57,6 +66,9 @@ import { buildCoverage, classifyDoc, ROOT_DOMAIN_LABEL, type RecallAgg } from '.
 import { scanKnowledgeBase, type ScanResult } from './wiki-scan';
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
+
+const SDD_MATURITY_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
+const DAY_MS = 86_400_000;
 
 @Provide('sddQueryService')
 export class SddQueryService {
@@ -69,8 +81,17 @@ export class SddQueryService {
   @Inject('sddQueryRepository')
   sddQueryRepository!: SddQueryRepository;
 
+  @Inject('dailyReportRepository')
+  dailyReportRepository!: DailyReportRepository;
+
   @Config('knowledgeBase')
   knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number; scanCacheTtlMs: number; deadKnowledgeGraceDays: number };
+
+  @Config('userAnalysis')
+  userAnalysisConfig!: { coldDays: number; churnDays: number; newDays: number };
+
+  private codeImpactCache: { at: number; byUser: Map<string, { codeWriteCount: number; codeReadCount: number }> } | null = null;
+  private static CODE_IMPACT_TTL_MS = 60_000;
 
   private scanCache: { at: number; result: ScanResult } | null = null;
 
@@ -660,26 +681,162 @@ export class SddQueryService {
   }
 
   async listUsers(): Promise<SddUserItem[]> {
-    const rows = await this.sddQueryRepository.listUsers();
+    const [rows, artifactRows, maturityRows] = await Promise.all([
+      this.sddQueryRepository.listUsers(),
+      this.sddQueryRepository.listUserArtifactCounts(),
+      this.sddQueryRepository.listUserMaturityAll(),
+    ]);
+    const codeImpactByUser = await this.getCodeImpactByUser();
+    const now = Date.now();
 
-    return rows.map((row) => ({
-      id: toStringId(row.id),
-      userKey: row.user_key,
-      installId: row.install_id,
-      userName: row.user_name,
-      machineId: row.machine_id,
-      machineName: row.machine_name,
-      requirementsRootPath: row.requirements_root_path,
-      wikiRootPath: row.wiki_root_path,
-      firstSeenAt: toIsoDate(row.first_seen_at),
-      lastSeenAt: toIsoDate(row.last_seen_at),
-      skillUsageCount: toNumber(row.skill_usage_count),
-      interactionCount: toNumber(row.interaction_count),
-      workItemCount: toNumber(row.work_item_count),
-      semanticStages: row.semantic_stages_csv
+    const artifactMap = new Map<string, number>(
+      artifactRows.map((r) => [toStringId(r.user_id), toNumber(r.artifact_count)]),
+    );
+    const maturityMap = this.buildUserMaturityMap(maturityRows);
+
+    return rows.map((row) => {
+      const id = toStringId(row.id);
+      const semanticStages = row.semantic_stages_csv
         ? row.semantic_stages_csv.split(',').filter(Boolean)
-        : [],
+        : [];
+      const maturity = this.computeUserMaturity(maturityMap.get(id) ?? new Map(), row.first_seen_at);
+      const roi = codeImpactByUser.get(id) ?? { codeWriteCount: 0, codeReadCount: 0 };
+
+      return {
+        id,
+        userKey: row.user_key,
+        installId: row.install_id,
+        userName: row.user_name,
+        machineId: row.machine_id,
+        machineName: row.machine_name,
+        requirementsRootPath: row.requirements_root_path,
+        wikiRootPath: row.wiki_root_path,
+        firstSeenAt: toIsoDate(row.first_seen_at),
+        lastSeenAt: toIsoDate(row.last_seen_at),
+        skillUsageCount: toNumber(row.skill_usage_count),
+        interactionCount: toNumber(row.interaction_count),
+        workItemCount: toNumber(row.work_item_count),
+        semanticStages,
+        status: this.computeUserStatus(row.last_seen_at, now),
+        isNew: this.computeIsNew(row.first_seen_at, now),
+        artifactCount: artifactMap.get(id) ?? 0,
+        codeWriteCount: roi.codeWriteCount,
+        codeReadCount: roi.codeReadCount,
+        rampDays: maturity.rampDays,
+      };
+    });
+  }
+
+  private async getCodeImpactByUser(): Promise<Map<string, { codeWriteCount: number; codeReadCount: number }>> {
+    if (this.codeImpactCache && Date.now() - this.codeImpactCache.at < SddQueryService.CODE_IMPACT_TTL_MS) {
+      return this.codeImpactCache.byUser;
+    }
+    const rows = await this.dailyReportRepository.listCodeImpactRowsAll();
+    const byUser = summarizeCodeImpactByUser(rows);
+    this.codeImpactCache = { at: Date.now(), byUser };
+    return byUser;
+  }
+
+  private buildUserMaturityMap(
+    rows: UserMaturityRow[],
+  ): Map<string, Map<string, string>> {
+    const byUser = new Map<string, Map<string, string>>();
+    for (const row of rows) {
+      const uid = toStringId(row.user_id);
+      let inner = byUser.get(uid);
+      if (!inner) {
+        inner = new Map();
+        byUser.set(uid, inner);
+      }
+      const iso = toIsoDate(row.first_event_time);
+      if (iso && (!inner.has(row.semantic_code) || inner.get(row.semantic_code)! > iso)) {
+        inner.set(row.semantic_code, iso);
+      }
+    }
+    return byUser;
+  }
+
+  private computeUserMaturity(
+    firstByStage: Map<string, string>,
+    firstSeenAt: Date | string | null,
+  ): { stages: SddUserMaturityStage[]; completionRate: number; rampDays: number | null } {
+    const stages: SddUserMaturityStage[] = SDD_MATURITY_STAGES.map((stage) => ({
+      stage,
+      firstReachedAt: firstByStage.get(stage) ?? null,
     }));
+    const reachedCount = stages.filter((s) => s.firstReachedAt !== null).length;
+    const completionRate = reachedCount / SDD_MATURITY_STAGES.length;
+
+    let rampDays: number | null = null;
+    if (reachedCount === SDD_MATURITY_STAGES.length && firstSeenAt) {
+      const firstSeenMs = new Date(firstSeenAt).getTime();
+      const reachedTimes = stages
+        .map((s) => (s.firstReachedAt ? new Date(s.firstReachedAt).getTime() : null))
+        .filter((v): v is number => v !== null);
+      const lastReachedMs = Math.max(...reachedTimes);
+      const diff = Math.floor((lastReachedMs - firstSeenMs) / DAY_MS);
+      rampDays = diff >= 0 ? diff : null;
+    }
+    return { stages, completionRate, rampDays };
+  }
+
+  private computeUserStatus(lastSeenAt: Date | string | null, now: number): 'live' | 'cold' | 'churn' {
+    if (!lastSeenAt) return 'churn';
+    const diffDays = (now - new Date(lastSeenAt).getTime()) / DAY_MS;
+    if (diffDays <= this.userAnalysisConfig.coldDays) return 'live';
+    if (diffDays <= this.userAnalysisConfig.churnDays) return 'cold';
+    return 'churn';
+  }
+
+  private computeIsNew(firstSeenAt: Date | string | null, now: number): boolean {
+    if (!firstSeenAt) return false;
+    return (now - new Date(firstSeenAt).getTime()) / DAY_MS <= this.userAnalysisConfig.newDays;
+  }
+
+  async getUserDetail(userId: string): Promise<SddUserDetail | null> {
+    const [listUsers, summaryRows, workItemRows, maturityRows] = await Promise.all([
+      this.listUsers(),
+      this.sddQueryRepository.getUserSummary(userId),
+      this.sddQueryRepository.listUserWorkItems(userId),
+      this.sddQueryRepository.getUserMaturity(userId),
+    ]);
+
+    const user = listUsers.find((u) => u.id === userId);
+    if (!user) return null;
+
+    const summary = summaryRows[0];
+    const maturityMap = new Map<string, string>();
+    for (const row of maturityRows) {
+      const iso = toIsoDate(row.first_event_time);
+      if (iso && (!maturityMap.has(row.semantic_code) || maturityMap.get(row.semantic_code)! > iso)) {
+        maturityMap.set(row.semantic_code, iso);
+      }
+    }
+    const maturity = this.computeUserMaturity(maturityMap, user.firstSeenAt);
+
+    return {
+      user,
+      summary: {
+        workItemCount: user.workItemCount,
+        artifactCount: summary ? toNumber(summary.artifact_count) : user.artifactCount,
+        turnCount: summary ? toNumber(summary.turn_count) : 0,
+        sessionCount: summary ? toNumber(summary.session_count) : 0,
+        wikiRecallCount: summary ? toNumber(summary.wiki_recall_count) : 0,
+        codeWriteCount: user.codeWriteCount,
+        codeReadCount: user.codeReadCount,
+      },
+      maturity: {
+        stages: maturity.stages,
+        completionRate: maturity.completionRate,
+        rampDays: maturity.rampDays,
+      },
+      workItems: workItemRows.map((row) => ({
+        workItemId: toStringId(row.work_item_id),
+        title: row.work_item_title ?? toStringId(row.work_item_id),
+        stageCodes: row.stage_codes_csv ? row.stage_codes_csv.split(',').filter(Boolean) : [],
+        lastActivityAt: toIsoDate(row.last_activity_at),
+      })),
+    };
   }
 
   async listVersions(): Promise<SddVersionItem[]> {
@@ -848,11 +1005,13 @@ export class SddQueryService {
     range: WikiRecallRange,
     granularity: 'day' | 'hour',
     groupBy: 'domain' | 'axis',
+    wikiDomain?: string | null,
   ): Promise<WikiRecallTimelineResponse> {
     const points = await this.sddQueryRepository.wikiRecallTimeline(
       rangeToSinceDate(range),
       granularity,
       groupBy,
+      wikiDomain,
     );
 
     return {
@@ -860,6 +1019,38 @@ export class SddQueryService {
         t: point.t,
         group: point.group,
         count: toNumber(point.count),
+      })),
+    };
+  }
+
+  async getWikiRecallDocDetail(
+    repo: string,
+    relativePath: string,
+  ): Promise<WikiDocDetailResponse> {
+    const [trendRows, readerRows, sourceRows] = await Promise.all([
+      this.sddQueryRepository.listWikiRecallDocDetailTrend(relativePath),
+      this.sddQueryRepository.listWikiRecallDocDetailReaders(relativePath),
+      this.sddQueryRepository.listWikiRecallDocDetailSourceWorkItems(relativePath),
+    ]);
+
+    return {
+      repo,
+      relativePath,
+      trend: trendRows.map((r) => ({
+        t: r.t,
+        count: toNumber(r.count),
+      })),
+      readers: readerRows.map((r) => ({
+        userId: toStringId(r.userId),
+        userName: r.userName,
+        recallCount: toNumber(r.recallCount),
+        lastRecallAt: toIsoDate(r.lastRecallAt),
+      })),
+      sourceWorkItems: sourceRows.map((r) => ({
+        workItemId: toStringId(r.workItemId),
+        workItemSlug: r.workItemSlug,
+        businessDomain: r.businessDomain,
+        recallCount: toNumber(r.recallCount),
       })),
     };
   }

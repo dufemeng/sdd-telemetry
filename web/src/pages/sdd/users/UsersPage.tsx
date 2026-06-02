@@ -2,30 +2,25 @@ import { useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  BookOpen,
   GitBranch,
   Layers,
+  Radar,
   Search,
   TrendingDown,
   Trophy,
-  UserPlus,
   UserRound,
-  Zap,
+  Users,
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useSddUsers } from './useSddUsers';
 import { Pagination } from '@/components/ui/Pagination';
-import { RowInspectorDrawer, type RowInspectorField } from '@/components/ui/RowInspectorDrawer';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import { useWikiRecallList } from '@/pages/sdd/wiki-recalls/useWikiRecalls';
 import type { SddUserItem } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;
-const SEVEN_DAYS_MS = 7 * 86_400_000;
-const FOURTEEN_DAYS_MS = 14 * 86_400_000;
-const THIRTY_DAYS_MS = 30 * 86_400_000;
+const DAY_MS = 86_400_000;
 
 const SDD_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
 type SddStage = (typeof SDD_STAGES)[number];
@@ -37,17 +32,24 @@ const STAGE_LABELS: Record<SddStage, string> = {
   codereview: '代码评审',
 };
 
-type UserStatus = 'active' | 'new' | 'silent';
-type StatusFilter = 'all' | UserStatus;
+const STAGE_COLORS: Record<SddStage, string> = {
+  proposal: 'var(--color-primary)',
+  design: '#a78bfa',
+  task: '#60a5fa',
+  codereview: '#34d399',
+};
+
+type UserStatus = 'live' | 'cold' | 'churn';
+type StatusFilter = 'all' | UserStatus | 'new';
+
+const BUS_FACTOR_THRESHOLD = 2;
 
 function getSddDepth(stages: string[]): number {
   return SDD_STAGES.filter((s) => stages.includes(s)).length;
 }
 
-function getUserStatus(u: SddUserItem, now: number): UserStatus {
-  if (u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS) return 'new';
-  if (u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS) return 'active';
-  return 'silent';
+function maturityReached(u: SddUserItem): number {
+  return SDD_STAGES.filter((s) => u.semanticStages.includes(s)).length;
 }
 
 // ---- Avatar ----
@@ -73,19 +75,26 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
   );
 }
 
-// ---- StatusBadge ----
-function StatusBadge({ status }: { status: UserStatus }) {
+// ---- StatusBadge (live/cold/churn + optional new overlay) ----
+function StatusBadge({ status, isNew }: { status: UserStatus; isNew?: boolean }) {
   const map: Record<UserStatus, { cls: string; label: string }> = {
-    active: { cls: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]', label: '活跃' },
-    new: { cls: 'text-[#60a5fa] bg-[rgba(96,165,250,0.10)]', label: '新成员' },
-    silent: { cls: 'text-[var(--color-muted)] bg-[rgba(255,255,255,0.06)]', label: '沉默' },
+    live: { cls: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]', label: '活跃' },
+    cold: { cls: 'text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]', label: '转冷' },
+    churn: { cls: 'text-[#f87171] bg-[rgba(248,113,113,0.10)]', label: '流失' },
   };
   const { cls, label } = map[status];
   return (
-    <span
-      className={`inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap ${cls}`}
-    >
-      {label}
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={`inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap ${cls}`}
+      >
+        {label}
+      </span>
+      {isNew ? (
+        <span className="inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap text-[#60a5fa] bg-[rgba(96,165,250,0.10)]">
+          新成员
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -107,7 +116,7 @@ function DepthDots({ stages }: { stages: string[] }) {
             style={{
               width: 6,
               height: 6,
-              background: stages.includes(s) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
+              background: stages.includes(s) ? STAGE_COLORS[s] : 'rgba(255,255,255,0.12)',
             }}
           />
         ))}
@@ -128,9 +137,10 @@ function FilterTabs({
 }) {
   const tabs: Array<{ key: StatusFilter; label: string }> = [
     { key: 'all', label: '全部' },
-    { key: 'active', label: '活跃' },
+    { key: 'live', label: '活' },
+    { key: 'cold', label: '冷' },
+    { key: 'churn', label: '流失' },
     { key: 'new', label: '新成员' },
-    { key: 'silent', label: '沉默' },
   ];
   return (
     <div className="flex gap-[6px]">
@@ -166,12 +176,6 @@ function FilterTabs({
   );
 }
 
-const STATUS_BORDER: Record<UserStatus, string> = {
-  active: 'var(--color-good-text)',
-  new: '#60a5fa',
-  silent: 'rgba(255,255,255,0.10)',
-};
-
 const CARD_STYLE = {
   border: '1px solid var(--color-border)',
   background: 'var(--color-surface)',
@@ -182,30 +186,35 @@ const ICON_BOX_STYLE = {
   color: 'var(--color-primary)',
 };
 
+const STAGE_DROP_THRESHOLD = 0.5;
+
+function daysSince(ts: string | null, now: number): number | null {
+  if (!ts) return null;
+  return Math.floor((now - new Date(ts).getTime()) / DAY_MS);
+}
+
 export default function UsersPage() {
   const { data: rawData = [], isLoading } = useSddUsers();
-  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const debouncedSearch = useDebouncedValue(search, 300);
-  const selectedUserId = params.get('userId');
+  const navigate = useNavigate();
 
   const now = Date.now();
 
-  // KPI
-  const total = rawData.length;
-  const active7d = rawData.filter(
-    (u) => u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS,
-  ).length;
-  const totalWorkItems = rawData.reduce((s, u) => s + u.workItemCount, 0);
-  const avgDepth = total > 0
-    ? rawData.reduce((s, u) => s + getSddDepth(u.semanticStages), 0) / total
-    : 0;
-  const newThisMonth = rawData.filter(
-    (u) => u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < THIRTY_DAYS_MS,
-  );
+  // 三态分桶
+  const liveCount = rawData.filter((u) => u.status === 'live').length;
+  const coldCount = rawData.filter((u) => u.status === 'cold').length;
+  const churnCount = rawData.filter((u) => u.status === 'churn').length;
+  const newCount = rawData.filter((u) => u.isNew).length;
 
-  // 漏斗
+  const total = rawData.length;
+  const active7d = liveCount;
+  const avgMaturity = total > 0
+    ? rawData.reduce((s, u) => s + maturityReached(u), 0) / total
+    : 0;
+
+  // 漏斗（每阶段命中人数）
   const funnelData = SDD_STAGES.map((stage) => ({
     stage,
     label: STAGE_LABELS[stage],
@@ -213,34 +222,58 @@ export default function UsersPage() {
   }));
   const funnelMax = Math.max(funnelData[0]?.count ?? 0, 1);
 
-  // 标杆成员
-  const topContributors = [...rawData]
-    .sort((a, b) => {
-      if (b.workItemCount !== a.workItemCount) return b.workItemCount - a.workItemCount;
-      return getSddDepth(b.semanticStages) - getSddDepth(a.semanticStages);
-    })
-    .slice(0, 3);
+  // 断崖检测：相邻阶段接续率，最小值即断崖点
+  const funnelTransitions = funnelData.map((item, i) => {
+    if (i === 0) return null;
+    const prev = funnelData[i - 1]!.count;
+    const rate = prev > 0 ? item.count / prev : 0;
+    return { from: funnelData[i - 1]!.stage, to: item.stage, rate };
+  }).filter((x): x is { from: SddStage; to: SddStage; rate: number } => x !== null);
+  const cliff = funnelTransitions.length > 0
+    ? funnelTransitions.reduce((min, t) => (t.rate < min.rate ? t : min), funnelTransitions[0]!)
+    : null;
 
-  // 诊断
-  const notFullyConfigured = rawData.filter((u) => !u.requirementsRootPath || !u.installId);
-  const inactive14d = rawData.filter(
-    (u) => !u.lastSeenAt || now - new Date(u.lastSeenAt).getTime() > FOURTEEN_DAYS_MS,
-  );
-  const hasDiagnostics = notFullyConfigured.length > 0 || inactive14d.length > 0;
+  // 能力矩阵：每阶段 distinct 人数 + bus-factor
+  const capability = SDD_STAGES.map((stage) => ({
+    stage,
+    label: STAGE_LABELS[stage],
+    count: rawData.filter((u) => u.semanticStages.includes(stage)).length,
+  }));
+  const capabilityMax = Math.max(capability[0]?.count ?? 0, 1);
+
+  // 掉队雷达：churn 且曾有活动
+  const dropoffs = rawData
+    .filter((u) => u.status === 'churn' && (u.skillUsageCount > 0 || u.interactionCount > 0))
+    .sort((a, b) => {
+      const aDays = daysSince(a.lastSeenAt, now) ?? -1;
+      const bDays = daysSince(b.lastSeenAt, now) ?? -1;
+      return bDays - aDays;
+    });
+
+  // 标杆：按 (artifactCount + workItemCount) 排序
+  const topContributors = useMemo(() => (
+    [...rawData]
+      .sort((a, b) => {
+        const aScore = b.artifactCount * 2 + b.workItemCount + (b.codeWriteCount > 0 ? 1 : 0);
+        const bScore = a.artifactCount * 2 + a.workItemCount + (a.codeWriteCount > 0 ? 1 : 0);
+        return aScore - bScore;
+      })
+      .slice(0, 3)
+  ), [rawData]);
 
   // filter tabs 计数
-  const statusCounts = rawData.reduce(
-    (acc, u) => {
-      acc.all++;
-      acc[getUserStatus(u, now)]++;
-      return acc;
-    },
-    { all: 0, active: 0, new: 0, silent: 0 } as Record<StatusFilter, number>,
-  );
+  const statusCounts = useMemo(() => {
+    const c: Record<StatusFilter, number> = { all: total, live: liveCount, cold: coldCount, churn: churnCount, new: newCount };
+    return c;
+  }, [total, liveCount, coldCount, churnCount, newCount]);
 
   // 搜索 + 状态过滤
   const filtered = rawData.filter((u) => {
-    if (statusFilter !== 'all' && getUserStatus(u, now) !== statusFilter) return false;
+    if (statusFilter === 'new') {
+      if (!u.isNew) return false;
+    } else if (statusFilter !== 'all') {
+      if (u.status !== statusFilter) return false;
+    }
     if (!debouncedSearch) return true;
     const q = debouncedSearch.toLowerCase();
     return (
@@ -255,39 +288,56 @@ export default function UsersPage() {
 
   const handleSearch = (v: string) => { setSearch(v); reset(); };
   const handleFilter = (v: StatusFilter) => { setStatusFilter(v); reset(); };
-  const selectUser = (userId: string | null) => {
-    const next = new URLSearchParams(params);
-    if (userId) {
-      next.set('userId', userId);
-    } else {
-      next.delete('userId');
-    }
-    setParams(next, { replace: true });
-  };
 
-  const selectedUser = rawData.find((u) => u.id === selectedUserId) ?? null;
-  const selectedUserStatus = selectedUser ? getUserStatus(selectedUser, now) : null;
-  const drawerFields: RowInspectorField[] = selectedUser
-    ? [
-        { label: '用户 ID', value: selectedUser.id, copyValue: selectedUser.id, mono: true },
-        { label: '安装 ID', value: selectedUser.installId ?? '—', copyValue: selectedUser.installId, mono: true },
-        { label: '机器', value: selectedUser.machineName ?? '—' },
-        { label: '需求根目录', value: selectedUser.requirementsRootPath ?? '—', copyValue: selectedUser.requirementsRootPath, mono: true },
-        { label: 'wiki 根目录', value: selectedUser.wikiRootPath ?? '—', copyValue: selectedUser.wikiRootPath, mono: true },
-        { label: '工作项', value: `${formatInteger(selectedUser.workItemCount)} 个`, mono: true },
-        { label: '累计使用', value: `${formatInteger(selectedUser.interactionCount)} 次`, mono: true },
-        { label: '首次活跃', value: formatTime(selectedUser.firstSeenAt), mono: true },
-        { label: '最近活跃', value: formatTime(selectedUser.lastSeenAt), mono: true },
-      ]
-    : [];
+  const goProfile = (userId: string) => navigate(`/sdd/users/${userId}`);
+
+  // 三态堆叠条宽度
+  const triWidth = (count: number) => (total > 0 ? (count / total) * 100 : 0);
+  const triSegments = [
+    { key: 'live', count: liveCount, color: 'var(--color-good-text)' },
+    { key: 'cold', count: coldCount, color: 'var(--color-muted)' },
+    { key: 'churn', count: churnCount, color: '#f87171' },
+  ];
 
   const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-muted)'];
 
   return (
     <div className="grid gap-3">
 
-      {/* Section 1: KPI */}
+      {/* Section 1: KPI (4) */}
       <div className="grid grid-cols-4 gap-3">
+
+        {/* 团队规模 + 三态 */}
+        <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
+          <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
+            <Users size={18} />
+          </div>
+          <div className="flex flex-col justify-between flex-1 min-w-0">
+            <span className="text-[12px] text-[var(--color-secondary)]">团队规模</span>
+            <strong className="text-[24px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+              {isLoading ? '—' : total}
+            </strong>
+            <div>
+              <div className="h-[4px] w-full rounded-full overflow-hidden flex" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                {triSegments.map((seg) => (
+                  <div
+                    key={seg.key}
+                    className="h-full transition-all duration-500"
+                    style={{ width: `${triWidth(seg.count)}%`, background: seg.color }}
+                  />
+                ))}
+              </div>
+              <div className="flex gap-3 mt-[4px] text-[10px]">
+                {triSegments.map((seg) => (
+                  <span key={seg.key} className="inline-flex items-center gap-1 text-[var(--color-muted)]">
+                    <span className="w-[6px] h-[6px] rounded-full" style={{ background: seg.color }} />
+                    {seg.key === 'live' ? '活' : seg.key === 'cold' ? '冷' : '流失'} {seg.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* 近7天活跃 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
@@ -295,7 +345,7 @@ export default function UsersPage() {
             <Activity size={18} />
           </div>
           <div className="flex flex-col justify-between flex-1 min-w-0">
-            <span className="text-[12px] text-[var(--color-secondary)]">近7天活跃</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">近 7 天活跃</span>
             <div>
               <div className="flex items-baseline gap-1 mb-[6px]">
                 <span className="text-[24px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -315,35 +365,21 @@ export default function UsersPage() {
                 />
               </div>
             </div>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">按最近操作时间统计</em>
+            <em className="text-[11px] not-italic text-[var(--color-muted)]">按最近操作时间</em>
           </div>
         </section>
 
-        {/* 工作项总产出 */}
-        <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
-          <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
-            <GitBranch size={18} />
-          </div>
-          <div className="flex flex-col justify-between">
-            <span className="text-[12px] text-[var(--color-secondary)]">工作项总产出</span>
-            <strong className="text-[24px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-              {isLoading ? '—' : formatInteger(totalWorkItems)}
-            </strong>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">全团队累计覆盖需求目录</em>
-          </div>
-        </section>
-
-        {/* 平均使用深度 */}
+        {/* 平均采用成熟度 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
             <Layers size={18} />
           </div>
           <div className="flex flex-col justify-between">
-            <span className="text-[12px] text-[var(--color-secondary)]">平均使用深度</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">平均采用成熟度</span>
             <div>
               <div className="flex items-baseline gap-1 mb-[6px]">
                 <span className="text-[24px] font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
-                  {isLoading ? '—' : avgDepth.toFixed(1)}
+                  {isLoading ? '—' : avgMaturity.toFixed(1)}
                 </span>
                 <span className="text-[13px] text-[var(--color-muted)]">&nbsp;/ 4 阶段</span>
               </div>
@@ -355,8 +391,8 @@ export default function UsersPage() {
                     style={{
                       width: 8,
                       height: 8,
-                      background: i < Math.round(avgDepth) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
-                      opacity: i === Math.floor(avgDepth) && avgDepth % 1 > 0 ? 0.5 : 1,
+                      background: i < Math.round(avgMaturity) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
+                      opacity: i === Math.floor(avgMaturity) && avgMaturity % 1 > 0 ? 0.5 : 1,
                     }}
                   />
                 ))}
@@ -366,117 +402,174 @@ export default function UsersPage() {
           </div>
         </section>
 
-        {/* 本月新增 */}
+        {/* 流失成员 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
-          <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
-            <UserPlus size={18} />
+          <div
+            className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]"
+            style={{ background: 'rgba(248,113,113,0.10)', color: '#f87171' }}
+          >
+            <AlertTriangle size={18} />
           </div>
           <div className="flex flex-col justify-between flex-1 min-w-0">
-            <span className="text-[12px] text-[var(--color-secondary)]">本月新增成员</span>
-            <div className="flex items-center justify-between">
-              <strong className="text-[24px] font-semibold text-[#60a5fa]" style={{ fontFamily: 'var(--font-mono)' }}>
-                {isLoading ? '—' : newThisMonth.length}
-              </strong>
-              {newThisMonth.length > 0 && (
-                <div className="flex -space-x-[5px]">
-                  {newThisMonth.slice(0, 4).map((u) => (
-                    <UserAvatar key={u.id} name={u.userName} size={22} />
-                  ))}
-                </div>
-              )}
-            </div>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">30天内首次接入</em>
+            <span className="text-[12px] text-[var(--color-secondary)]">流失成员</span>
+            <strong className="text-[24px] font-semibold" style={{ fontFamily: 'var(--font-mono)', color: churnCount > 0 ? '#f87171' : 'var(--color-muted)' }}>
+              {isLoading ? '—' : `${churnCount}${churnCount > 0 ? ' ⚠' : ''}`}
+            </strong>
+            <em className="text-[11px] not-italic text-[var(--color-muted)]">曾活跃 · 近 30 天掉零</em>
           </div>
         </section>
       </div>
 
-      {/* Section 2: 漏斗 + 接入健康 */}
+      {/* Section 2: 采用漏斗 + 掉队雷达 */}
       <div className="grid grid-cols-3 gap-3">
 
-        {/* SDD 链路漏斗 */}
+        {/* SDD 采用漏斗 */}
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
               <TrendingDown size={18} />
-              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">SDD 链路覆盖</h3>
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">SDD 采用漏斗</h3>
             </div>
-            <span className="text-[11px] text-[var(--color-muted)]">已使用该阶段的成员人数</span>
+            <span className="text-[11px] text-[var(--color-muted)]">走到各阶段的成员人数</span>
           </div>
-          <div className="flex items-end gap-2" style={{ height: 100 }}>
-            {funnelData.map((item, i) => (
-              <div key={item.stage} className="flex-1 flex flex-col items-center gap-[6px]">
-                <span className="text-[13px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {isLoading ? '—' : item.count}
-                </span>
-                <div className="w-full flex flex-col justify-end" style={{ height: 52 }}>
-                  <div
-                    className="w-full rounded-[3px] transition-all duration-500"
-                    style={{
-                      height: isLoading ? 4 : Math.max((item.count / funnelMax) * 52, 4),
-                      background: `rgba(250,255,105,${1 - i * 0.2})`,
-                    }}
-                  />
+          <div className="flex flex-col gap-[6px]">
+            {funnelData.map((item, i) => {
+              const prev = i > 0 ? funnelData[i - 1]!.count : null;
+              const rate = prev !== null && prev > 0 ? item.count / prev : null;
+              const isCliff = cliff !== null && cliff.to === item.stage && cliff.rate < STAGE_DROP_THRESHOLD;
+              return (
+                <div key={item.stage} className="flex flex-col gap-[3px]">
+                  <div className="flex items-center justify-between text-[12px]">
+                    <span className="inline-flex items-center gap-2 text-[var(--color-secondary)]">
+                      <span className="w-[6px] h-[6px] rounded-full" style={{ background: STAGE_COLORS[item.stage] }} />
+                      {item.label}
+                      <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                        {item.stage}
+                      </code>
+                    </span>
+                    <span className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <b>{item.count}</b> 人
+                    </span>
+                  </div>
+                  <div className="w-full h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.max((item.count / funnelMax) * 100, 2)}%`,
+                        background: STAGE_COLORS[item.stage],
+                      }}
+                    />
+                  </div>
+                  {rate !== null ? (
+                    <div className={`text-[10px] ${isCliff ? 'text-[#f87171]' : 'text-[var(--color-muted)]'}`}>
+                      接续 {Math.round(rate * 100)}%
+                      {isCliff ? (
+                        <span className="ml-2 text-[#f87171]">断崖 ↓ {STAGE_LABELS[cliff.from]} → {STAGE_LABELS[cliff.to]}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-                <span className="text-[11px] text-[var(--color-muted)] text-center whitespace-nowrap">
-                  {item.label}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
-        {/* 接入健康 */}
-        {hasDiagnostics ? (
-          <section
-            className="rounded-[6px]"
-            style={{ border: '1px solid rgba(245,158,11,0.20)', background: 'rgba(245,158,11,0.04)' }}
+        {/* 掉队雷达 */}
+        <section className="rounded-[6px] overflow-hidden" style={{ ...CARD_STYLE, borderColor: dropoffs.length > 0 ? 'rgba(248,113,113,0.20)' : 'var(--color-border)' }}>
+          <div
+            className="flex items-center gap-2 px-[14px] py-3"
+            style={{ borderBottom: `1px solid ${dropoffs.length > 0 ? 'rgba(248,113,113,0.10)' : 'var(--color-border)'}` }}
           >
-            <div
-              className="flex items-center gap-2 px-[14px] py-3"
-              style={{ borderBottom: '1px solid rgba(245,158,11,0.10)' }}
-            >
-              <AlertTriangle size={18} style={{ color: '#f59e0b' }} />
-              <h3 className="text-[14px] font-semibold" style={{ color: '#f59e0b' }}>接入健康</h3>
-            </div>
-            <div className="flex flex-col justify-center" style={{ minHeight: 80 }}>
-              {notFullyConfigured.length > 0 && (
-                <div
-                  className="flex items-center gap-4 px-[14px] py-3"
-                  style={{ borderBottom: '1px solid rgba(245,158,11,0.06)' }}
-                >
-                  <span
-                    className="inline-flex items-center justify-center w-12 h-5 rounded-full text-[11px] font-medium shrink-0 text-[var(--color-warn-text)] bg-[var(--color-warn-bg)]"
+            <Radar size={18} style={{ color: dropoffs.length > 0 ? '#f87171' : 'var(--color-muted)' }} />
+            <h3 className="text-[14px] font-semibold" style={{ color: dropoffs.length > 0 ? '#f87171' : 'var(--color-secondary)' }}>
+              掉队雷达
+            </h3>
+            <span className="text-[11px] text-[var(--color-muted)]">曾活跃 · 近 30 天掉零</span>
+          </div>
+          <div className="flex flex-col">
+            {dropoffs.length === 0 ? (
+              <div className="px-[14px] py-4 text-[12px] text-[var(--color-muted)]">无掉队成员</div>
+            ) : (
+              dropoffs.slice(0, 5).map((u) => {
+                const days = daysSince(u.lastSeenAt, now);
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => goProfile(u.id)}
+                    className="grid items-center gap-2 px-[14px] py-[8px] text-left hover:bg-[#171717] transition-colors"
+                    style={{ gridTemplateColumns: '24px 1fr auto 14px', borderBottom: '1px solid var(--color-border)' }}
                   >
-                    {notFullyConfigured.length} 人
-                  </span>
-                  <span className="text-[12px] text-[var(--color-secondary)]">
-                    尚未完成接入配置，工作项数据可能缺失
-                  </span>
-                </div>
-              )}
-              {inactive14d.length > 0 && (
-                <div className="flex items-center gap-4 px-[14px] py-3">
-                  <span
-                    className="inline-flex items-center justify-center w-12 h-5 rounded-full text-[11px] font-medium shrink-0 text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]"
-                  >
-                    {inactive14d.length} 人
-                  </span>
-                  <span className="text-[12px] text-[var(--color-secondary)]">近14天未使用</span>
-                </div>
-              )}
-            </div>
-          </section>
-        ) : (
-          <section
-            className="rounded-[6px] flex items-center justify-center"
-            style={CARD_STYLE}
-          >
-            <div className="flex items-center gap-2 text-[var(--color-good-text)]">
-              <span className="text-[12px]">接入健康，无异常</span>
-            </div>
-          </section>
-        )}
+                    <UserAvatar name={u.userName} size={24} />
+                    <span className="text-[12px] text-[#f5f5f5] truncate">{u.userName ?? '未知用户'}</span>
+                    <span className="text-[11px] text-[var(--color-muted)] whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {days !== null ? `${days} 天前` : '—'}
+                    </span>
+                    <span className="text-[var(--color-muted)] text-right">→</span>
+                  </button>
+                );
+              })
+            )}
+            {dropoffs.length > 5 ? (
+              <div className="px-[14px] py-[6px] text-[11px] text-[var(--color-muted)]">
+                …另有 {dropoffs.length - 5} 人
+              </div>
+            ) : null}
+          </div>
+        </section>
       </div>
+
+      {/* 能力矩阵 / bus-factor */}
+      <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
+        <div className="flex items-center gap-2 mb-3">
+          <Layers size={18} style={{ color: 'var(--color-primary)' }} />
+          <h3 className="text-[14px] font-semibold text-[#f5f5f5]">团队能力矩阵</h3>
+          <span className="text-[11px] text-[var(--color-muted)]">
+            能做该阶段的人数 · ≤ {BUS_FACTOR_THRESHOLD} 人标单点风险（bus-factor）
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {capability.map((c) => {
+            const isRisk = c.count > 0 && c.count <= BUS_FACTOR_THRESHOLD;
+            return (
+              <div
+                key={c.stage}
+                className="rounded-[4px] px-3 py-[10px]"
+                style={{
+                  background: 'var(--color-hover)',
+                  border: `1px solid ${isRisk ? 'rgba(248,113,113,0.30)' : 'var(--color-border)'}`,
+                }}
+              >
+                <div className="flex items-center justify-between mb-[6px]">
+                  <span className="inline-flex items-center gap-[6px] text-[12px] text-[var(--color-secondary)]">
+                    <span className="w-[6px] h-[6px] rounded-full" style={{ background: STAGE_COLORS[c.stage] }} />
+                    {c.label}
+                  </span>
+                  {isRisk ? (
+                    <span className="text-[10px] text-[#f87171] px-[6px] py-[1px] rounded-full" style={{ border: '1px solid rgba(248,113,113,0.30)' }}>
+                      单点风险
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-baseline gap-1 mb-[6px]">
+                  <span className="text-[20px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                    {c.count}
+                  </span>
+                  <span className="text-[11px] text-[var(--color-muted)]">人</span>
+                </div>
+                <div className="h-[4px] w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.max((c.count / capabilityMax) * 100, 2)}%`,
+                      background: STAGE_COLORS[c.stage],
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Section 3: 标杆成员 */}
       {!isLoading && topContributors.length > 0 && (
@@ -497,73 +590,71 @@ export default function UsersPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             {topContributors.map((u, i) => {
-              const status = getUserStatus(u, now);
-              const depth = getSddDepth(u.semanticStages);
+              const depth = maturityReached(u);
+              const days = daysSince(u.firstSeenAt, now);
               return (
                 <div
                   key={u.id}
-                  className="flex items-center gap-3 p-3 rounded-[6px] relative overflow-hidden"
+                  className="flex flex-col gap-[8px] p-3 rounded-[6px] relative overflow-hidden"
                   style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
                 >
                   <div
                     className="absolute left-0 top-0 bottom-0 w-[3px]"
                     style={{ background: RANK_COLORS[i] }}
                   />
-                  <div className="relative flex-none ml-[2px]">
-                    <UserAvatar name={u.userName} size={40} />
-                    <span
-                      className="absolute -top-1 -right-1 w-[16px] h-[16px] rounded-full flex items-center justify-center text-[9px] font-bold"
-                      style={{
-                        background: RANK_COLORS[i],
-                        color: i === 0 ? '#0a0a0a' : 'var(--color-surface)',
-                      }}
-                    >
-                      {i + 1}
+                  <div className="flex items-center gap-3 ml-[2px]">
+                    <div className="relative flex-none">
+                      <UserAvatar name={u.userName} size={40} />
+                      <span
+                        className="absolute -top-1 -right-1 w-[16px] h-[16px] rounded-full flex items-center justify-center text-[9px] font-bold"
+                        style={{
+                          background: RANK_COLORS[i],
+                          color: i === 0 ? '#0a0a0a' : 'var(--color-surface)',
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-[3px]">
+                        <span className="text-[13px] font-medium text-[#f5f5f5] truncate">
+                          {u.userName ?? '未知用户'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={u.status} isNew={u.isNew} />
+                        <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                          {depth}/4
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-[6px] ml-[2px]">
+                    <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
+                      <GitBranch size={10} />
+                      {u.workItemCount} 需求
                     </span>
+                    <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
+                      <Layers size={10} />
+                      {u.artifactCount} artifact
+                    </span>
+                    {u.codeWriteCount > 0 ? (
+                      <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-good-text)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'var(--color-good-bg)', border: '1px solid var(--color-good-text)' }}>
+                        {u.codeWriteCount} 落地
+                      </span>
+                    ) : null}
+                    {days !== null ? (
+                      <span className="inline-flex items-center text-[11px] text-[var(--color-muted)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                        接入 {days} 天
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-[5px]">
-                      <span className="text-[13px] font-medium text-[#f5f5f5] truncate">
-                        {u.userName ?? '未知用户'}
-                      </span>
-                      <StatusBadge status={status} />
-                    </div>
-                    <div className="flex items-center gap-[4px] mb-[7px]">
-                      {SDD_STAGES.map((s) => (
-                        <div
-                          key={s}
-                          title={STAGE_LABELS[s]}
-                          className="rounded-full"
-                          style={{
-                            width: 6,
-                            height: 6,
-                            background: u.semanticStages.includes(s)
-                              ? 'var(--color-primary)'
-                              : 'rgba(255,255,255,0.12)',
-                          }}
-                        />
-                      ))}
-                      <span className="ml-1 text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                        {depth}/4
-                      </span>
-                    </div>
-                    <div className="flex gap-[6px]">
-                      <span
-                        className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]"
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}
-                      >
-                        <GitBranch size={10} />
-                        {u.workItemCount} 工作项
-                      </span>
-                      <span
-                        className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]"
-                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}
-                      >
-                        <Zap size={10} />
-                        {formatInteger(u.interactionCount)} 次
-                      </span>
-                    </div>
-                  </div>
+                  <Link
+                    to={`/sdd/users/${u.id}`}
+                    className="inline-flex items-center gap-1 text-[11px] text-[var(--color-primary)] hover:underline ml-[2px]"
+                  >
+                    看他怎么干的 →
+                  </Link>
                 </div>
               );
             })}
@@ -571,7 +662,7 @@ export default function UsersPage() {
         </section>
       )}
 
-      {/* Section 4: 用户一览 */}
+      {/* Section 4: 成员一览 */}
       <section className="rounded-[6px]" style={CARD_STYLE}>
 
         {/* 标题 + 搜索 */}
@@ -584,13 +675,13 @@ export default function UsersPage() {
             <h3 className="text-[14px] font-semibold text-[#f5f5f5]">用户一览</h3>
           </div>
           <div
-            className="flex items-center gap-2 h-[28px] px-[10px] w-[220px] rounded-[4px]"
+            className="flex items-center gap-2 h-[28px] px-[10px] w-[260px] rounded-[4px]"
             style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'var(--color-base)' }}
           >
             <Search size={13} className="text-[var(--color-muted)] shrink-0" />
             <input
               className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
-              placeholder="搜索成员名称"
+              placeholder="搜索成员 / 安装 ID / 机器"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
@@ -610,7 +701,7 @@ export default function UsersPage() {
           <table className="w-full" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['成员', '状态', 'SDD 深度', '工作项', '累计使用', '最近活跃'].map((h) => (
+                {['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 落地）', '接入时长', '最近活跃'].map((h) => (
                   <th
                     key={h}
                     className="px-[12px] py-[8px] text-left text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)]"
@@ -624,29 +715,22 @@ export default function UsersPage() {
             <tbody>
               {pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
+                  <td colSpan={7} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
                     {debouncedSearch ? '无匹配成员' : '暂无数据'}
                   </td>
                 </tr>
               ) : (
                 pageItems.map((u) => {
-                  const status = getUserStatus(u, now);
-                  const daysSinceFirst = u.firstSeenAt
-                    ? Math.floor((now - new Date(u.firstSeenAt).getTime()) / 86_400_000)
-                    : null;
+                  const daysSinceFirst = daysSince(u.firstSeenAt, now);
                   return (
                     <tr
                       key={u.id}
                       className="group cursor-pointer"
                       style={{ borderBottom: '1px solid var(--color-border)' }}
-                      onClick={() => selectUser(u.id)}
+                      onClick={() => goProfile(u.id)}
                     >
                       {/* 成员 */}
                       <td className="py-[10px] group-hover:bg-[#171717] transition-colors relative" style={{ paddingLeft: 20, paddingRight: 12 }}>
-                        <div
-                          className="absolute left-0 top-0 bottom-0 w-[3px]"
-                          style={{ background: STATUS_BORDER[status] }}
-                        />
                         <div className="flex items-center gap-2">
                           <UserAvatar name={u.userName} size={26} />
                           <div className="flex flex-col gap-[2px]">
@@ -655,39 +739,50 @@ export default function UsersPage() {
                             ) : (
                               <span className="text-[12px] italic text-[var(--color-muted)]">未知用户</span>
                             )}
-                            {daysSinceFirst !== null && (
-                              <span className="text-[10px] text-[var(--color-muted)]">接入 {daysSinceFirst} 天</span>
-                            )}
+                            {u.machineName ? (
+                              <span className="text-[10px] text-[var(--color-muted)]">{u.machineName}</span>
+                            ) : null}
                           </div>
                         </div>
                       </td>
                       {/* 状态 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        <StatusBadge status={status} />
+                        <StatusBadge status={u.status} isNew={u.isNew} />
                       </td>
-                      {/* SDD 深度 */}
+                      {/* SDD 成熟度 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                         <DepthDots stages={u.semanticStages} />
                       </td>
                       {/* 工作项 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                         {u.workItemCount > 0 ? (
-                          <div className="flex flex-col gap-[2px]">
-                            <span className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                              {formatInteger(u.workItemCount)}
-                            </span>
-                            <span className="text-[10px] text-[var(--color-muted)]">个需求</span>
-                          </div>
+                          <span className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                            {formatInteger(u.workItemCount)}
+                          </span>
                         ) : (
                           <span className="text-[12px] text-[var(--color-muted)]">—</span>
                         )}
                       </td>
-                      {/* 累计使用 */}
+                      {/* 产出转化 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                          {formatInteger(u.interactionCount)}
-                          <span className="text-[10px] text-[var(--color-muted)]"> 次</span>
-                        </span>
+                        <div className="flex gap-[8px] text-[11px]" style={{ fontFamily: 'var(--font-mono)' }}>
+                          <span className="text-[var(--color-secondary)]">
+                            {u.artifactCount} <span className="text-[10px] text-[var(--color-muted)]">artifact</span>
+                          </span>
+                          <span className="text-[var(--color-good-text)]">
+                            {u.codeWriteCount} <span className="text-[10px] text-[var(--color-muted)]">落地</span>
+                          </span>
+                        </div>
+                      </td>
+                      {/* 接入时长 */}
+                      <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
+                        {daysSinceFirst !== null ? (
+                          <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                            {daysSinceFirst} 天
+                          </span>
+                        ) : (
+                          <span className="text-[12px] text-[var(--color-muted)]">—</span>
+                        )}
                       </td>
                       {/* 最近活跃 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
@@ -713,7 +808,10 @@ export default function UsersPage() {
           className="flex items-center justify-between px-[14px] py-[10px]"
           style={{ borderTop: '1px solid var(--color-border)' }}
         >
-          <span className="text-[11px] text-[var(--color-muted)]">共 {filtered.length} 位成员</span>
+          <span className="text-[11px] text-[var(--color-muted)]">
+            共 {filtered.length} 位成员 · 活 {liveCount} / 冷 {coldCount} / 流失 {churnCount}
+            {newCount > 0 ? ` · 新成员 ${newCount}` : ''}
+          </span>
           {(hasNext || hasPrev) && (
             <Pagination
               pageNumber={pageNumber}
@@ -726,82 +824,6 @@ export default function UsersPage() {
           )}
         </div>
       </section>
-
-      {selectedUserId ? (
-        <RowInspectorDrawer
-          open={selectedUserId !== null}
-          onOpenChange={(open) => { if (!open) selectUser(null); }}
-          title={selectedUser?.userName ?? selectedUserId}
-          subtitle={selectedUser?.installId}
-          icon={<UserRound size={18} />}
-          badge={selectedUserStatus ? <StatusBadge status={selectedUserStatus} /> : null}
-          row={selectedUser ?? { id: selectedUserId }}
-          fields={drawerFields}
-          rawData={selectedUser ?? { id: selectedUserId }}
-          loading={isLoading}
-        >
-          {selectedUser ? <UserWikiRecallPanel userId={selectedUser.id} /> : null}
-        </RowInspectorDrawer>
-      ) : null}
     </div>
-  );
-}
-
-function UserWikiRecallPanel({ userId }: { userId: string }) {
-  const filters = useMemo(() => ({ userId }), [userId]);
-  const { data, isLoading, error } = useWikiRecallList('30d', filters);
-  const rows = data?.items.slice(0, 20) ?? [];
-
-  return (
-    <section className="space-y-3">
-      <div
-        className="flex items-center justify-between gap-2 pb-2"
-        style={{ borderBottom: '1px solid var(--color-border)' }}
-      >
-        <div className="flex items-center gap-2">
-          <BookOpen size={14} style={{ color: 'var(--color-primary)' }} />
-          <span className="text-[12px] font-semibold text-[#f5f5f5]">最近 wiki 召回</span>
-        </div>
-        <Link
-          to="/sdd/wiki-recalls"
-          className="text-[11px] text-[var(--color-primary)] hover:underline"
-        >
-          查看排行
-        </Link>
-      </div>
-
-      {isLoading ? <div className="text-[12px] text-[var(--color-muted)]">正在加载召回...</div> : null}
-      {error ? (
-        <div className="text-[12px] text-[#f87171]">
-          召回加载失败：{error instanceof Error ? error.message : String(error)}
-        </div>
-      ) : null}
-      {!isLoading && !error && rows.length === 0 ? (
-        <div className="text-[12px] text-[var(--color-muted)]">该用户最近 30 天无 wiki 召回</div>
-      ) : null}
-      {rows.length > 0 ? (
-        <div className="grid gap-[5px]">
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className="grid items-center gap-2 rounded-[4px] px-2 py-[6px] hover:bg-[#171717]"
-              style={{ gridTemplateColumns: '1fr 64px 72px' }}
-            >
-              <span
-                className="truncate text-[12px] text-[var(--color-secondary)]"
-                style={{ fontFamily: 'var(--font-mono)' }}
-                title={row.wikiRelativePath ?? row.rawPath}
-              >
-                {row.wikiRelativePath ?? row.rawPath}
-              </span>
-              <span className="text-[11px] text-[var(--color-muted)]">{row.actionType}</span>
-              <span className="text-right text-[11px] text-[var(--color-muted)]">
-                {formatTime(row.eventTime)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </section>
   );
 }

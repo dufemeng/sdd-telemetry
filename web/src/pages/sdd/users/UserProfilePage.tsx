@@ -1,0 +1,211 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Zap } from 'lucide-react';
+import { useUserProfile } from './useUserProfile';
+import { useUserActivity } from './useUserActivity';
+import { UserWorkItemList } from './components/UserWorkItemList';
+import { UserActivityTimeline } from './components/UserActivityTimeline';
+import { AdoptionRamp } from './components/AdoptionRamp';
+import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
+import { formatInteger } from '@/lib/format';
+
+const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
+const DAY_MS = 86_400_000;
+
+const AVATAR_COLORS = ['#1a2a1a', '#1a1a2a', '#2a1a1a', '#1a2a2a', '#2a2a1a', '#251a25'];
+
+function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size?: number }) {
+  const idx = (name?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length;
+  return (
+    <div
+      className="flex-none rounded-full flex items-center justify-center font-semibold"
+      style={{
+        width: size,
+        height: size,
+        background: AVATAR_COLORS[idx],
+        color: '#f5f5f5',
+        fontSize: Math.round(size * 0.42),
+        border: '1px solid rgba(255,255,255,0.08)',
+        flexShrink: 0,
+      }}
+    >
+      {name ? name.slice(0, 1) : '?'}
+    </div>
+  );
+}
+
+function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isNew: boolean }) {
+  const map = {
+    live: { cls: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]', label: '活跃' },
+    cold: { cls: 'text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]', label: '转冷' },
+    churn: { cls: 'text-[#f87171] bg-[rgba(248,113,113,0.10)]', label: '流失' },
+  } as const;
+  const { cls, label } = map[status];
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap ${cls}`}>
+        {label}
+      </span>
+      {isNew ? (
+        <span className="inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap text-[#60a5fa] bg-[rgba(96,165,250,0.10)]">
+          新成员
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+export default function UserProfilePage() {
+  const { id: userId = '' } = useParams();
+  const navigate = useNavigate();
+  const profileQuery = useUserProfile(userId);
+  const profile = profileQuery.data;
+
+  const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [openInteractionId, setOpenInteractionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedWorkItemId(null);
+    setSelectedArtifactId(null);
+  }, [userId]);
+
+  const activityNodes = useUserActivity(
+    userId,
+    selectedWorkItemId,
+    selectedArtifactId,
+  );
+
+  if (profileQuery.isLoading) {
+    return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
+  }
+  if (!profile) {
+    return (
+      <div className="p-4 text-[13px] text-[var(--color-muted)]">
+        用户不存在。
+        <Link to="/sdd/users" className="ml-2 text-[var(--color-primary)] hover:underline">返回列表</Link>
+      </div>
+    );
+  }
+
+  const { user, summary, maturity, workItems } = profile;
+  const joinDays = user.firstSeenAt
+    ? Math.floor((Date.now() - new Date(user.firstSeenAt).getTime()) / DAY_MS)
+    : null;
+
+  // 方法论完整度：4 个 canonical 阶段是否都达到
+  const reachedStages = maturity.stages.filter((s) => s.firstReachedAt !== null).map((s) => s.stage);
+  const isComplete = reachedStages.length === maturity.stages.length;
+
+  // 当选中 work item 时，从 workItems 取它的 artifacts 选项（这里简化为只展示活动，artifact 维度在产出分析侧）
+  void selectedArtifactId;
+  void setSelectedArtifactId;
+
+  return (
+    <div className="grid gap-3">
+
+      {/* Header */}
+      <section className="flex flex-col gap-3 p-[14px] rounded-[6px]" style={CARD_STYLE}>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigate('/sdd/users')}
+            className="inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
+          >
+            <ArrowLeft size={14} /> 用户分析
+          </button>
+          <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+            ID {user.id}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <UserAvatar name={user.userName} size={48} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-[4px]">
+              <h2 className="text-[18px] font-semibold text-[#f5f5f5]">
+                {user.userName ?? '未知用户'}
+              </h2>
+              <StatusBadge status={user.status} isNew={user.isNew} />
+              {joinDays !== null ? (
+                <span className="text-[12px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  接入 {joinDays} 天
+                </span>
+              ) : null}
+              <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                成熟度 {reachedStages.length}/{maturity.stages.length}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+              <span><GitBranch size={11} className="inline mr-[3px]" />需求 {summary.workItemCount}</span>
+              <span><Layers size={11} className="inline mr-[3px]" />文档 {summary.artifactCount}</span>
+              <span><MessageSquare size={11} className="inline mr-[3px]" />{formatInteger(summary.turnCount)} turns</span>
+              <span>跨 {formatInteger(summary.sessionCount)} session</span>
+              <span><BookOpen size={11} className="inline mr-[3px]" />wiki {summary.wikiRecallCount}</span>
+              <span><Zap size={11} className="inline mr-[3px]" />落地 {summary.codeWriteCount}</span>
+              {summary.codeReadCount > 0 ? <span>读取 {summary.codeReadCount}</span> : null}
+            </div>
+            {user.requirementsRootPath ? (
+              <div className="text-[10px] text-[var(--color-muted)] mt-[4px]" style={{ fontFamily: 'var(--font-mono)' }} title={user.requirementsRootPath ?? ''}>
+                requirements: {user.requirementsRootPath}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {/* AdoptionRamp */}
+      <AdoptionRamp
+        stages={maturity.stages}
+        firstSeenAt={user.firstSeenAt}
+        rampDays={maturity.rampDays}
+      />
+
+      {/* Two-column body */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
+        <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
+          <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <span className="text-[12px] font-semibold text-[#f5f5f5]">他的需求</span>
+            <span className="text-[10px] text-[var(--color-muted)]">行点击出链 → 产出分析</span>
+          </div>
+          <UserWorkItemList
+            workItems={workItems}
+            selectedId={selectedWorkItemId}
+            onSelect={setSelectedWorkItemId}
+          />
+        </section>
+
+        <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
+          <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-semibold text-[#f5f5f5]">
+                活动时间线
+                {selectedWorkItemId ? ` · ${workItems.find((wi) => wi.workItemId === selectedWorkItemId)?.title ?? '选中需求'}` : ' · 全部'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span
+                className="inline-flex items-center px-[6px] py-[1px] rounded-full"
+                style={{
+                  background: isComplete ? 'var(--color-good-bg)' : 'rgba(255,255,255,0.04)',
+                  color: isComplete ? 'var(--color-good-text)' : 'var(--color-secondary)',
+                  border: `1px solid ${isComplete ? 'var(--color-good-text)' : 'var(--color-border)'}`,
+                }}
+              >
+                方法论完整度 {reachedStages.length}/{maturity.stages.length}
+              </span>
+            </div>
+          </div>
+          <UserActivityTimeline
+            nodes={activityNodes}
+            onOpenInteraction={setOpenInteractionId}
+          />
+        </section>
+      </div>
+
+      <InteractionDetailDrawer
+        interactionId={openInteractionId}
+        open={Boolean(openInteractionId)}
+        onOpenChange={(open) => { if (!open) setOpenInteractionId(null); }}
+      />
+    </div>
+  );
+}
