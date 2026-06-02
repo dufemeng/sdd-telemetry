@@ -1,19 +1,22 @@
-import { useState } from 'react';
 import { BookOpen, FileText, Gauge, TriangleAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useWikiRecallCoverage } from './useWikiRecalls';
 import { BusinessLineCompare } from './components/BusinessLineCompare';
 import { RecallTrendChart } from './components/RecallTrendChart';
 import { TopDomains } from './components/TopDomains';
 import { AssetTable } from './components/AssetTable';
-import { DomainDrawer } from './components/DomainDrawer';
 import { CARD_STYLE, ICON_BOX } from './styles';
 import { formatInteger } from '@/lib/format';
 
 export default function WikiRecallsPage() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useWikiRecallCoverage();
-  const [sel, setSel] = useState<{ repo: string; domain: string } | null>(null);
   const degraded = !isLoading && data?.scan.configured === false;
   const t = data?.totals;
+
+  const goDomain = (repo: string, domain: string) => {
+    navigate(`/sdd/wiki-recalls/${repo}/${encodeURIComponent(domain)}`);
+  };
 
   return (
     <div className="grid gap-3">
@@ -39,12 +42,10 @@ export default function WikiRecallsPage() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: '2fr 1fr' }}>
         <RecallTrendChart />
-        <TopDomains domains={data?.domains ?? []} onSelectDomain={(repo, domain) => setSel({ repo, domain })} />
+        <TopDomains domains={data?.domains ?? []} onSelectDomain={goDomain} />
       </div>
 
-      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} onSelectDomain={(repo, domain) => setSel({ repo, domain })} />
-
-      {sel && <DomainDrawer repo={sel.repo} domain={sel.domain} onClose={() => setSel(null)} />}
+      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} onSelectDomain={goDomain} />
     </div>
   );
 }

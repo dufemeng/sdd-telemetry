@@ -921,6 +921,57 @@ Response：与 6.20 相同的 `SddWikiRecallContentSchema`。
 
 说明：与 6.20 的区别在于入口——6.20 以 `toolCallId` 从 DB 查路径再读文件，6.23 直接以路径读文件。6.23 返回的始终是「当前挂载版本」，前端显示版本提示。
 
+### 6.24 GET /api/sdd/wiki-recalls/doc-detail
+
+按 `(repo, relativePath)` 反查单篇文档的召回明细：趋势、读者榜、来源需求。全部现有表只读聚合，零迁移。
+
+Query：
+
+```text
+repo          string (trade | loan | wealth)
+relativePath  string (URL-encoded)
+```
+
+Response：`WikiDocDetailResponseSchema`
+
+```ts
+export const WikiDocDetailResponseSchema = z.object({
+  repo: z.string(),
+  relativePath: z.string(),
+  trend: z.array(z.object({ t: ISODateTimeSchema, count: z.number() })),
+  readers: z.array(z.object({
+    userId: IdSchema,
+    userName: z.string().nullable(),
+    recallCount: z.number(),
+    lastRecallAt: ISODateTimeSchema.nullable(),
+  })),
+  sourceWorkItems: z.array(z.object({
+    workItemId: IdSchema,
+    workItemSlug: z.string(),
+    businessDomain: z.string().nullable(),
+    recallCount: z.number(),
+  })),
+});
+```
+
+说明：
+- `sdd_wiki_recalls` 无 repo 列，按 `wiki_relative_path` 精确匹配（路径含 `domain-*` 前缀天然区分库内路径）。
+- 根目录文档（`wiki_domain IS NULL`，如 `SUMMARY.md`）同样按路径精确匹配，不受 domain 影响。
+- `readers` 来自 `GROUP BY user_id` JOIN `sdd_users`；`sourceWorkItems` 来自 `GROUP BY COALESCE(wr.work_item_id, su.work_item_id)` JOIN `sdd_work_items`。
+- 无召回的文档返回空数组，不报错。
+
+### 6.25 timeline 扩展参数 wikiDomain
+
+`GET /api/sdd/wiki-recalls/timeline` 新增可选 query 参数：
+
+```text
+wikiDomain  string (可选，URL-encoded)
+```
+
+- 不传 = 原行为（全量，向后兼容）。
+- 传普通域名（如 `cashier`）→ 追加 `AND wiki_domain = ?`。
+- 传 `（根目录）` → 追加 `AND wiki_domain IS NULL`（复用 `ROOT_DOMAIN_LABEL` 特判）。
+
 ## 7. ops API
 
 ops API 面向本地和公司内网排障，不作为业务公开接口。

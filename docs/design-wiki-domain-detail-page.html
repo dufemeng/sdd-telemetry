@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知识库详情页 redesign · 示意 · SDD 质量观测台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --base: #0a0a0a; --surface: #101010; --panel: #14140b; --hover: #171717; --active: #222222;
+    --icon-well: #202016; --nav-active: #2b2b20;
+    --primary: #faff69; --bar-fill: #c9ce3c;
+    --text: #e5e3d3; --secondary: #c9c8af; --muted: #93927c; --bright: #f5f5f5;
+    --border: rgba(255,255,255,0.08);
+    --good-text: #22c55e; --good-bg: rgba(34,197,94,0.10);
+    --warn-text: #f59e0b; --warn-bg: rgba(245,158,11,0.10);
+    --bad-text: #ffb4ab; --bad-bg: rgba(239,68,68,0.16);
+    --info: #60a5fa; --info-bg: rgba(96,165,250,0.10);
+    --purple: #c084fc; --purple-bg: rgba(192,132,252,0.12);
+    --body: Inter, 'PingFang SC', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --z-modal-backdrop: 40; --z-modal: 50;
+    /* 文档状态色（对齐真实页 STATUS_BADGE：hot/cold/dead/new）*/
+    --st-hot: #22c55e; --st-cold: #93927c; --st-dead: #ffb4ab; --st-new: #60a5fa;
+    /* 业务线色（对齐 styles.ts REPO_COLOR）*/
+    --repo-trade: #c9ce3c; --repo-loan: #60a5fa; --repo-wealth: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--base); color: var(--text); font-family: var(--body); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--mono); }
+  h1,h2,h3 { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+  a { text-decoration: none; }
+
+  .shell { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto auto 1fr; min-height: 100vh; }
+
+  /* sidebar */
+  aside { grid-row: 1 / -1; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 10px; min-height: 88px; padding: 18px; border-bottom: 1px solid var(--border); }
+  .brand-logo { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 6px; background: var(--primary); color: var(--base); }
+  .brand h1 { font-size: 18px; font-weight: 700; color: var(--bright); line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav { padding: 10px 0; overflow-y: auto; }
+  .nav-group { margin-top: 10px; }
+  .nav-group > .label { padding: 8px 18px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .nav-item { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: 0 8px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--secondary); position: relative; transition: all .15s; }
+  .nav-item:hover { color: var(--bright); background: var(--icon-well); }
+  .nav-item svg { width: 18px; height: 18px; flex: none; }
+  .nav-item.active { color: var(--primary); background: var(--nav-active); }
+  .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 9px; width: 4px; height: 16px; border-radius: 0 4px 4px 0; background: var(--primary); }
+  .nav-item.active::after { content: ''; position: absolute; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* topbar */
+  header.top { grid-column: 2; display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .crumb { font-size: 12px; color: var(--muted); }
+  .crumb b { color: var(--secondary); font-weight: 500; }
+  .crumb a { color: var(--muted); cursor: pointer; }
+  .crumb a:hover { color: var(--primary); }
+  .snapshot { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--secondary); background: var(--surface); }
+  .snapshot .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good-text); }
+
+  .demo-bar { grid-column: 2; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 20px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  .demo-bar b { color: var(--secondary); font-weight: 600; }
+
+  main { grid-column: 2; padding: 16px 20px 60px; }
+  .screen { display: grid; gap: 12px; align-content: start; }
+  .screen[hidden] { display: none; }
+  .screen-anim { animation: screenIn .28s cubic-bezier(0.22,1,0.36,1) both; }
+  @keyframes screenIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .page-head { display: flex; align-items: baseline; gap: 12px; }
+  .page-head h2 { font-size: 22px; font-weight: 600; color: var(--bright); font-family: var(--mono); letter-spacing: -0.01em; }
+  .page-head .desc { font-size: 12px; color: var(--muted); }
+
+  .card { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; }
+  .pad { padding: 14px; }
+  .sec-title { display: flex; align-items: center; gap: 8px; color: var(--primary); margin-bottom: 14px; }
+  .sec-title svg { width: 18px; height: 18px; }
+  .sec-title h3 { font-size: 14px; font-weight: 600; color: var(--bright); }
+  .sec-title .note { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  .av { flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 600; color: var(--bright); border: 1px solid rgba(255,255,255,0.08); }
+
+  /* KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { display: flex; gap: 12px; min-height: 98px; }
+  .kpi .well { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--icon-well); color: var(--primary); }
+  .kpi .well svg { width: 18px; height: 18px; }
+  .kpi .body { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; flex: 1; }
+  .kpi .name { font-size: 12px; color: var(--secondary); }
+  .kpi .val { font-size: 24px; font-weight: 600; color: var(--bright); font-family: var(--mono); line-height: 1; }
+  .kpi .val small { font-size: 15px; color: var(--muted); }
+  .kpi .val.volt { color: var(--primary); }
+  .kpi .val.bad { color: var(--bad-text); }
+  .kpi .hint { font-size: 11px; color: var(--muted); }
+
+  /* repo tag + cover bar */
+  .repo-tag { font-size: 10px; padding: 2px 7px; border-radius: 3px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); }
+  .cover { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .cover .track { width: 54px; height: 5px; border-radius: 999px; background: #202016; overflow: hidden; }
+  .cover .track > span { display: block; height: 100%; border-radius: 999px; width: 0; transition: width .9s cubic-bezier(0.22,1,0.36,1); }
+  .cover .f { font-family: var(--mono); font-size: 12px; color: var(--secondary); }
+
+  /* overview table */
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .toolbar .ti { font-size: 14px; font-weight: 600; color: var(--bright); }
+  .tabs { display: flex; gap: 6px; }
+  .tabs button { height: 26px; padding: 0 12px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all .15s; }
+  .tabs button.on { background: rgba(250,255,105,0.08); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #141414; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th.r { text-align: right; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+  tbody tr:hover td { background: var(--hover); }
+  tbody td { padding: 10px 12px; font-size: 13px; color: var(--text); vertical-align: middle; }
+  tbody td.r { text-align: right; font-family: var(--mono); }
+  .dm-cell { display: flex; align-items: center; gap: 9px; }
+  .dm-cell .nm { font-size: 13px; color: var(--bright); font-weight: 500; }
+  .row-go { color: var(--muted); display: inline-flex; }
+  tbody tr:hover .row-go { color: var(--primary); }
+  .row-go svg { width: 14px; height: 14px; }
+  .table-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+  /* status badge (文档三态) */
+  .badge { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge .d { width: 6px; height: 6px; border-radius: 50%; }
+  .badge.hot { background: var(--good-bg); color: var(--good-text); } .badge.hot .d { background: var(--st-hot); }
+  .badge.cold { background: rgba(255,255,255,0.06); color: var(--secondary); } .badge.cold .d { background: var(--st-cold); }
+  .badge.dead { background: var(--bad-bg); color: var(--bad-text); } .badge.dead .d { background: var(--st-dead); }
+  .badge.new { background: var(--info-bg); color: var(--info); } .badge.new .d { background: var(--st-new); }
+
+  /* spark (趋势迷你柱) */
+  .spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 26px; }
+  .spark > i { width: 5px; border-radius: 1px 1px 0 0; background: var(--bar-fill); opacity: .85; height: 2px; transition: height .8s cubic-bezier(0.22,1,0.36,1); }
+  .spark.lg { height: 40px; } .spark.lg > i { width: 7px; }
+
+  /* ===== detail header ===== */
+  .pf-head { padding: 16px; border-radius: 6px; }
+  .pf-top { display: flex; align-items: center; gap: 14px; }
+  .pf-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 6px 11px; background: var(--surface); transition: all .15s; }
+  .pf-back:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .pf-back svg { width: 14px; height: 14px; }
+  .pf-id { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .pf-id .ico { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 6px; background: var(--icon-well); color: var(--primary); }
+  .pf-id .ico svg { width: 18px; height: 18px; }
+  .pf-id .nm { font-size: 19px; font-weight: 600; color: var(--bright); }
+  .pf-id .nm small { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .pf-summary { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--secondary); font-family: var(--mono); }
+  .pf-summary b { color: var(--bright); }
+  .pf-summary .bad { color: var(--bad-text); }
+  /* header sub row: 召回需求 top + 域趋势 */
+  .pf-sub { display: grid; grid-template-columns: 1fr auto; gap: 18px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); align-items: center; }
+  .pf-sub .lbl { font-size: 11px; color: var(--muted); margin-bottom: 8px; display: inline-flex; align-items: center; gap: 6px; }
+  .pf-sub .lbl svg { width: 13px; height: 13px; color: var(--primary); }
+  .req-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .out-link { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); border: 1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 4px 9px; font-size: 11px; transition: all .15s; cursor: pointer; }
+  .out-link:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .out-link .c { font-family: var(--mono); color: var(--muted); }
+  .out-link:hover .c { color: var(--primary); }
+  .out-link svg { width: 11px; height: 11px; }
+  .trend-box { text-align: right; }
+  .trend-box .lbl { justify-content: flex-end; }
+
+  /* two-column */
+  .pf-grid { display: grid; grid-template-columns: 320px 1fr; gap: 12px; align-items: start; }
+  /* left: doc list */
+  .dl-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--primary); }
+  .dl-head svg { width: 16px; height: 16px; }
+  .dl-head b { font-size: 13px; color: var(--bright); }
+  .dl-head .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .doc { padding: 10px 14px; cursor: pointer; border-left: 2px solid transparent; transition: background .15s; }
+  .doc + .doc { border-top: 1px solid var(--border); }
+  .doc:hover { background: var(--hover); }
+  .doc.on { background: var(--hover); border-left-color: var(--primary); }
+  .doc .p { font-family: var(--mono); font-size: 12px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc.on .p { color: var(--bright); }
+  .doc .meta { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .doc .meta .ct { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* right: doc detail */
+  .dd-head { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+  .dd-head .p { font-family: var(--mono); font-size: 13px; color: var(--bright); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-head .view { margin-left: auto; flex: none; }
+  .dd-body { padding: 4px 0 10px; }
+  .dd-sec { padding: 14px 16px; }
+  .dd-sec + .dd-sec { border-top: 1px solid var(--border); }
+  .dd-sec .sh { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .dd-sec .sh svg { width: 14px; height: 14px; color: var(--primary); }
+  .dd-sec .sh b { font-size: 12px; color: var(--bright); font-weight: 600; }
+  .dd-sec .sh .n { margin-left: auto; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .dd-sec .sh .trend-sum { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--secondary); }
+
+  /* reader / req rows */
+  .rrow { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; transition: background .15s; }
+  .rrow:hover { background: var(--hover); }
+  .rrow .nm { font-size: 12px; color: var(--secondary); font-weight: 500; min-width: 84px; }
+  .rrow:hover .nm { color: var(--bright); }
+  .rrow .sub { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .rrow .grow { flex: 1; }
+  .rrow .qbar { height: 5px; border-radius: 999px; background: var(--icon-well); overflow: hidden; flex: 1; max-width: 180px; }
+  .rrow .qbar > span { display: block; height: 100%; border-radius: 999px; width: 0; transition: width .8s cubic-bezier(0.22,1,0.36,1); }
+  .rrow .ct { font-family: var(--mono); font-size: 11px; color: var(--secondary); flex: none; width: 48px; text-align: right; }
+  .rrow .go { color: var(--muted); display: inline-flex; flex: none; }
+  .rrow:hover .go { color: var(--primary); }
+  .rrow .go svg { width: 13px; height: 13px; }
+  .req-nm { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .req-nm .t { font-size: 12px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rrow:hover .req-nm .t { color: var(--bright); }
+
+  .empty { padding: 28px 16px; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* modal (正文) */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: var(--z-modal-backdrop); }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -46%); width: 720px; max-width: 94vw; max-height: 86vh; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; z-index: var(--z-modal); opacity: 0; pointer-events: none; transition: all .22s cubic-bezier(0.22,1,0.36,1); display: flex; flex-direction: column; }
+  .modal.show { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+  .modal-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .modal-head .p { font-family: var(--mono); font-size: 13px; color: var(--bright); }
+  .modal-head .close-btn { margin-left: auto; width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--hover); border: 1px solid var(--border); color: var(--secondary); }
+  .modal-head .close-btn:hover { background: var(--active); color: var(--primary); }
+  .modal-head .close-btn svg { width: 15px; height: 15px; }
+  .modal-body { overflow-y: auto; padding: 16px 18px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--secondary); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div><h1>SDD 质量观测台</h1><div class="sub">Data Observation</div></div>
+    </div>
+    <nav>
+      <div class="nav-group"><div class="label">总览</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M2 12h4m12 0h4M5 19l2-2m10 0l2 2"/><circle cx="12" cy="13" r="4"/></svg>总览</div>
+      </div>
+      <div class="nav-group"><div class="label">看板</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>用户分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>技能分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>产出分析</div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>知识库分析</div>
+      </div>
+      <div class="nav-group"><div class="label">配置</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4 12H1m22 0h-3"/></svg>语义映射</div>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- topbar -->
+  <header class="top">
+    <div class="crumb" id="crumb">看板 / <b>知识库分析</b></div>
+    <div class="snapshot"><span class="dot"></span>累计口径 · 分母取快照 · 6-02 10:30</div>
+  </header>
+
+  <div class="demo-bar">
+    <b>示意操作：</b>点「知识资产一览」任意业务域行 → 进入<b>知识域画像页</b>。画像页左栏选文档、右栏看召回趋势 + 读者(出链用户分析) + 来源需求(出链产出分析)、点「查看正文」开正文 Modal。需求/人只<b>出链</b>，本页不展开它们的详情。
+  </div>
+
+  <!-- main -->
+  <main>
+
+    <!-- ════════ Screen 1: 总览（知识资产一览） ════════ -->
+    <div class="screen screen-anim" id="screen-list">
+      <div class="page-head"><h2>知识库分析</h2><span class="desc">团队知识资产 · 累计口径 · 分母取服务器当前快照</span></div>
+
+      <section class="kpi-row">
+        <div class="card pad kpi"><div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div class="body"><span class="name">知识库规模</span><strong class="val">312</strong><em class="hint">3 库 .md 合计 · 当前快照</em></div></div>
+        <div class="card pad kpi"><div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12 7 7"/></svg></div><div class="body"><span class="name">知识利用率</span><strong class="val volt">68%</strong><em class="hint">212 / 312</em></div></div>
+        <div class="card pad kpi"><div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div class="body"><span class="name">累计召回</span><strong class="val volt">4,123</strong><em class="hint">全团队 wiki 读取次数</em></div></div>
+        <div class="card pad kpi"><div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg></div><div class="body"><span class="name">沉睡文档</span><strong class="val bad">37</strong><em class="hint">超 30 天未被召回</em></div></div>
+      </section>
+
+      <section class="card">
+        <div class="toolbar">
+          <span class="ti">知识资产一览</span>
+          <div class="tabs"><button class="on">全部</button><button>交易</button><button>融资</button><button>理财</button></div>
+        </div>
+        <table>
+          <thead><tr>
+            <th>业务域</th><th class="r">覆盖（已读/库内）</th><th class="r">召回</th><th class="r">文档</th><th class="r">读者</th><th class="r">沉睡</th><th class="r">最近召回</th><th></th>
+          </tr></thead>
+          <tbody id="overview-rows"></tbody>
+        </table>
+        <div class="table-foot"><span>共 13 个业务域 · 跨 3 个知识库</span><span>累计口径 · 分母取快照</span></div>
+      </section>
+    </div>
+
+    <!-- ════════ Screen 2: 知识域画像页 ════════ -->
+    <div class="screen" id="screen-detail" hidden>
+      <!-- header -->
+      <section class="card pf-head">
+        <div class="pf-top">
+          <a class="pf-back" onclick="showList()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7M19 12H5"/></svg>知识库分析</a>
+          <div class="pf-id">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+            <div><div class="nm" id="d-title">交易 / cashier</div><div class="nm"><small id="d-repo" class="mono">bk-fe-knowledge-trade</small></div></div>
+          </div>
+        </div>
+        <div class="pf-summary" id="d-summary"></div>
+        <div class="pf-sub">
+          <div>
+            <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>召回本域文档的需求 Top（出链产出分析）</div>
+            <div class="req-chips" id="d-req-top"></div>
+          </div>
+          <div class="trend-box">
+            <div class="lbl">域级召回趋势 · 近 30 天</div>
+            <div class="spark lg" id="d-domain-trend"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- two columns -->
+      <div class="pf-grid">
+        <!-- left -->
+        <section class="card">
+          <div class="dl-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><b>文档清单</b><span class="n" id="d-doc-n">18 篇</span></div>
+          <div id="d-doc-list"></div>
+        </section>
+        <!-- right -->
+        <section class="card" id="d-detail-pane"></section>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 正文 modal -->
+<div class="backdrop" id="backdrop" onclick="closeModal()"></div>
+<div class="modal" id="modal">
+  <div class="modal-head">
+    <span class="p" id="m-path">refund.md</span>
+    <button class="close-btn" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="modal-body" id="m-body"></div>
+</div>
+
+<script>
+  const ICON = {
+    go: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M7 7h10v10"/></svg>',
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>',
+    branch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  };
+  const STATUS = { hot:{c:'hot',t:'热'}, cold:{c:'cold',t:'冷'}, dead:{c:'dead',t:'沉睡'}, new:{c:'new',t:'新增未读'} };
+  const spark = (arr, cls='') => `<div class="spark ${cls}">${arr.map(v=>`<i data-h="${v}"></i>`).join('')}</div>`;
+
+  // ───── mock 数据 ─────
+  const T = [4,6,3,8,12,7,5,9,14,8,6,11,7,4,9,13,8,5,10,7,12,6,9,15,8,4,7,11,9,6];
+  const DOMAINS = {
+    cashier: {
+      repo: 'trade', repoLabel: '交易', domain: 'cashier', repoFull: 'bk-fe-knowledge-trade',
+      totalDocs: 18, recalledDocs: 13, recalls: 519, deadDocs: 3, readers: 9,
+      reqTop: [
+        { id: 1, slug: 'cashier/退款重构', n: 88 }, { id: 3, slug: 'cashier/签约 SDK', n: 42 },
+        { id: 7, slug: 'cashier/延迟扣款', n: 27 }, { id: 9, slug: 'cashier/对账补单', n: 15 },
+      ],
+      trend: T,
+      docs: [
+        { path: 'domain-cashier/flows/refund.md', status: 'hot', n: 88,
+          trend: [2,3,5,4,7,6,9,8,11,7,6,9,12,8,5], readers: [
+            { id: 11, nm: '张三', n: 32 }, { id: 12, nm: '李四', n: 24 }, { id: 13, nm: '王五', n: 18 }, { id: 14, nm: '赵六', n: 14 },
+          ], reqs: [ { id: 1, slug: 'cashier/退款重构', dm: 'cashier', n: 54 }, { id: 7, slug: 'cashier/延迟扣款', dm: 'cashier', n: 22 }, { id: 9, slug: 'cashier/对账补单', dm: 'cashier', n: 12 } ] },
+        { path: 'domain-cashier/architecture/architecture.md', status: 'hot', n: 63,
+          trend: [3,4,2,6,5,8,7,5,9,6,4,7,8,5,4], readers: [ { id: 11, nm: '张三', n: 28 }, { id: 15, nm: '周安', n: 20 }, { id: 12, nm: '李四', n: 15 } ],
+          reqs: [ { id: 3, slug: 'cashier/签约 SDK', dm: 'cashier', n: 40 }, { id: 1, slug: 'cashier/退款重构', dm: 'cashier', n: 23 } ] },
+        { path: 'domain-cashier/business/INDEX.md', status: 'cold', n: 7,
+          trend: [0,1,0,2,0,0,1,0,1,0,1,0,0,1,0], readers: [ { id: 13, nm: '王五', n: 4 }, { id: 14, nm: '赵六', n: 3 } ],
+          reqs: [ { id: 9, slug: 'cashier/对账补单', dm: 'cashier', n: 7 } ] },
+        { path: 'domain-cashier/system/apps/bk-cashier-payment/core.md', status: 'cold', n: 4,
+          trend: [0,0,1,0,0,1,0,0,1,0,0,0,1,0,0], readers: [ { id: 11, nm: '张三', n: 4 } ],
+          reqs: [ { id: 1, slug: 'cashier/退款重构', dm: 'cashier', n: 4 } ] },
+        { path: 'domain-cashier/legacy/old-pricing.md', status: 'dead', n: 0, trend: [], readers: [], reqs: [] },
+        { path: 'domain-cashier/flows/refund-v2.md', status: 'new', n: 0, trend: [], readers: [], reqs: [] },
+      ],
+    },
+    root: {
+      repo: 'trade', repoLabel: '交易', domain: '（根目录）', repoFull: 'bk-fe-knowledge-trade',
+      totalDocs: 4, recalledDocs: 2, recalls: 6, deadDocs: 1, readers: 1,
+      reqTop: [ { id: 3, slug: 'cashier/延迟扣款', n: 4 }, { id: 1, slug: 'cashier/退款重构', n: 2 } ],
+      trend: [0,0,1,0,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
+      docs: [
+        { path: 'SUMMARY.md', status: 'cold', n: 4, trend: [0,1,0,0,1,0,1,0,0,1], readers: [ { id: 11, nm: '张三', n: 4 } ],
+          reqs: [ { id: 3, slug: 'cashier/延迟扣款', dm: 'cashier', n: 3 }, { id: 1, slug: 'cashier/退款重构', dm: 'cashier', n: 1 } ] },
+        { path: 'CLAUDE.md', status: 'cold', n: 2, trend: [0,0,1,0,0,1,0,0,0,0], readers: [ { id: 11, nm: '张三', n: 2 } ],
+          reqs: [ { id: 3, slug: 'cashier/延迟扣款', dm: 'cashier', n: 1 }, { id: 1, slug: 'cashier/退款重构', dm: 'cashier', n: 1 } ] },
+        { path: 'README.md', status: 'dead', n: 0, trend: [], readers: [], reqs: [] },
+      ],
+    },
+  };
+  // 概览表（root 行演示「根目录」也能进详情）
+  const OVERVIEW = [
+    { key:'cashier', repo:'trade', dm:'cashier', cover:'13/18', rate:72, recalls:519, docs:18, readers:9, dead:3, last:'06-02 09:14' },
+    { key:'portfolio', repo:'wealth', dm:'portfolio', cover:'21/24', rate:88, recalls:866, docs:24, readers:8, dead:1, last:'06-02 10:02' },
+    { key:'fund-ops', repo:'wealth', dm:'fund-ops', cover:'15/20', rate:75, recalls:605, docs:20, readers:8, dead:2, last:'06-01 18:40' },
+    { key:'root', repo:'trade', dm:'（根目录）', cover:'2/4', rate:50, recalls:6, docs:4, readers:1, dead:1, last:'05-29 11:20' },
+  ];
+  const REPO_COLOR = { trade:'var(--repo-trade)', loan:'var(--repo-loan)', wealth:'var(--repo-wealth)' };
+  const REPO_LABEL = { trade:'交易', loan:'融资', wealth:'理财' };
+  const coverColor = r => r>=65?'var(--good-text)':r>=45?'var(--warn-text)':'var(--bad-text)';
+
+  // ───── 渲染概览表 ─────
+  function renderOverview() {
+    document.getElementById('overview-rows').innerHTML = OVERVIEW.map(d => `
+      <tr onclick="showDetail('${d.key}')">
+        <td><div class="dm-cell"><span class="repo-tag" style="color:${REPO_COLOR[d.repo]}">${REPO_LABEL[d.repo]}</span><span class="nm">${d.dm}</span></div></td>
+        <td class="r"><div class="cover"><span class="track"><span data-w="${d.rate}%" style="background:${coverColor(d.rate)}"></span></span><span class="f">${d.cover}</span></div></td>
+        <td class="r">${d.recalls.toLocaleString()}</td><td class="r">${d.docs}</td><td class="r">${d.readers}</td>
+        <td class="r" style="color:${d.dead>0?'var(--bad-text)':'var(--muted)'}">${d.dead}</td>
+        <td>${d.last}</td>
+        <td class="r"><span class="row-go">${ICON.go}</span></td>
+      </tr>`).join('');
+    animate(document.getElementById('screen-list'));
+  }
+
+  // ───── 渲染详情页 ─────
+  let cur = null;
+  function showDetail(key) {
+    cur = DOMAINS[key];
+    document.getElementById('screen-list').hidden = true;
+    const sc = document.getElementById('screen-detail'); sc.hidden = false; sc.classList.add('screen-anim');
+    document.getElementById('crumb').innerHTML = `看板 / <a onclick="showList()">知识库分析</a> / <b>${cur.repoLabel} / ${cur.domain}</b>`;
+    document.getElementById('d-title').textContent = `${cur.repoLabel} / ${cur.domain}`;
+    document.getElementById('d-repo').textContent = cur.repoFull;
+    document.getElementById('d-summary').innerHTML =
+      `<span>文档 <b>${cur.totalDocs}</b></span><span>覆盖 <b>${Math.round(cur.recalledDocs/cur.totalDocs*100)}%</b>（${cur.recalledDocs}/${cur.totalDocs}）</span>`
+      + `<span>累计召回 <b>${cur.recalls.toLocaleString()}</b></span><span class="${cur.deadDocs>0?'bad':''}">沉睡 <b>${cur.deadDocs}</b></span><span>读者 <b>${cur.readers}</b></span>`;
+    document.getElementById('d-req-top').innerHTML = cur.reqTop.map(r =>
+      `<span class="out-link" title="${r.slug}">${r.slug.split('/').pop()} <span class="c">${r.n}</span> ${ICON.go}</span>`).join('');
+    document.getElementById('d-domain-trend').innerHTML = cur.trend.map(v=>`<i data-h="${v}"></i>`).join('');
+    document.getElementById('d-doc-n').textContent = `${cur.docs.length} 篇`;
+    document.getElementById('d-doc-list').innerHTML = cur.docs.map((doc, i) => {
+      const st = STATUS[doc.status];
+      return `<div class="doc${i===0?' on':''}" data-i="${i}" onclick="selectDoc(${i})">
+        <div class="p" title="${doc.path}">${doc.path}</div>
+        <div class="meta"><span class="badge ${st.c}"><span class="d"></span>${st.t}</span><span class="ct">${doc.n} 次</span></div>
+      </div>`;
+    }).join('');
+    selectDoc(0);
+    animate(sc);
+    window.scrollTo(0,0);
+  }
+  function selectDoc(i) {
+    document.querySelectorAll('#d-doc-list .doc').forEach(el => el.classList.toggle('on', +el.dataset.i === i));
+    const doc = cur.docs[i];
+    const pane = document.getElementById('d-detail-pane');
+    const head = `<div class="dd-head"><span class="p" title="${doc.path}">${doc.path}</span>
+      <button class="out-link view" onclick="openModal('${doc.path}')">${ICON.eye} 查看正文</button></div>`;
+    if (doc.n === 0) {
+      pane.innerHTML = head + `<div class="empty">该文档暂无召回<br><span style="font-size:11px">${doc.status==='new'?'新增未读 · 14 天内加入、尚无人召回':'沉睡 · 超 30 天未被召回'}</span></div>`;
+      return;
+    }
+    const maxR = Math.max(...doc.readers.map(r=>r.n));
+    const readers = doc.readers.map(r =>
+      `<div class="rrow" onclick="alert('出链 → /sdd/users/${r.id}')"><span class="nm">${r.nm}</span>
+        <span class="qbar"><span data-w="${Math.round(r.n/maxR*100)}%" style="background:var(--st-new)"></span></span>
+        <span class="ct">${r.n} 次</span><span class="go">${ICON.go}</span></div>`).join('');
+    const reqs = doc.reqs.map(r =>
+      `<div class="rrow" onclick="alert('出链 → /sdd/work-items/${r.id}')"><div class="req-nm"><span class="t">${r.slug}</span><span class="sub">${r.dm}</span></div>
+        <span class="ct">${r.n} 次</span><span class="go">${ICON.go}</span></div>`).join('');
+    pane.innerHTML = head + `<div class="dd-body">
+      <div class="dd-sec"><div class="sh">${ICON.chart}<b>召回趋势</b><span class="trend-sum">近 30 天 ${doc.n} 次</span></div>${spark(doc.trend,'lg')}</div>
+      <div class="dd-sec"><div class="sh">${ICON.user}<b>读者</b><span class="n">${doc.readers.length} 人 · 出链用户分析</span></div>${readers}</div>
+      <div class="dd-sec"><div class="sh">${ICON.branch}<b>来源需求</b><span class="n">${doc.reqs.length} 个 · 出链产出分析</span></div>${reqs}</div>
+    </div>`;
+    animate(pane);
+  }
+  function showList() {
+    document.getElementById('screen-detail').hidden = true;
+    const sc = document.getElementById('screen-list'); sc.hidden = false; sc.classList.add('screen-anim');
+    document.getElementById('crumb').innerHTML = '看板 / <b>知识库分析</b>';
+    window.scrollTo(0,0); renderOverview();
+  }
+
+  // 正文 modal
+  function openModal(path) {
+    document.getElementById('m-path').textContent = path;
+    document.getElementById('m-body').textContent =
+      `# ${path.split('/').pop()}\n\n（示意：真实页复用 WikiDocModal，有 lastToolCallId 走 toolCallId 拉召回内容，否则按 {repo, relativePath} 取当前磁盘内容。）\n\n## 概述\n该文档记录 ${cur.repoLabel}/${cur.domain} 域的关键约定……\n\n- 约定一\n- 约定二\n- 约定三`;
+    document.getElementById('backdrop').classList.add('show');
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() {
+    document.getElementById('backdrop').classList.remove('show');
+    document.getElementById('modal').classList.remove('show');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); } });
+
+  // 进入动画：data-w 宽度 + spark 高度
+  function animate(scope) {
+    scope.querySelectorAll('[data-w]').forEach(el => { el.style.width = '0'; requestAnimationFrame(()=>{ el.style.width = el.dataset.w; }); });
+    const max = Math.max(1, ...[...scope.querySelectorAll('.spark > i')].map(i=>+i.dataset.h));
+    scope.querySelectorAll('.spark').forEach(sp => {
+      const m = Math.max(1, ...[...sp.children].map(i=>+i.dataset.h));
+      const h = sp.classList.contains('lg') ? 40 : 26;
+      [...sp.children].forEach(i => { i.style.height = '2px'; requestAnimationFrame(()=>{ i.style.height = Math.max(2, (+i.dataset.h/m)*h) + 'px'; }); });
+    });
+  }
+
+  renderOverview();
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import type {
   WikiRecallWorkItemRankingResponse,
   WikiCoverageResponse,
   WikiDomainDocsResponse,
+  WikiDocDetailResponse,
   SddWikiRecallContent,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
@@ -17,12 +18,13 @@ export function useWikiRecallTimeline(
   range: WikiRecallRange,
   granularity: TimelineGranularity,
   groupBy: TimelineGroupBy,
+  wikiDomain?: string | null,
 ) {
   return useQuery({
-    queryKey: ['wiki-recalls', 'timeline', range, granularity, groupBy],
+    queryKey: ['wiki-recalls', 'timeline', range, granularity, groupBy, wikiDomain ?? null],
     queryFn: () =>
       requestData<WikiRecallTimelineResponse>(
-        `/api/sdd/wiki-recalls/timeline?${toQueryString({ range, granularity, groupBy })}`,
+        `/api/sdd/wiki-recalls/timeline?${toQueryString({ range, granularity, groupBy, wikiDomain: wikiDomain ?? undefined })}`,
       ),
   });
 }
@@ -67,6 +69,17 @@ export function useWikiRecallDomainDocs(repo: string | null, domain: string | nu
     queryFn: () =>
       requestData<WikiDomainDocsResponse>(
         `/api/sdd/wiki-recalls/docs?${toQueryString({ repo: repo!, domain: domain! })}`,
+      ),
+  });
+}
+
+export function useWikiRecallDocDetail(repo: string | null, relativePath: string | null) {
+  return useQuery({
+    queryKey: ['wiki-recalls', 'doc-detail', repo, relativePath],
+    enabled: !!repo && !!relativePath,
+    queryFn: () =>
+      requestData<WikiDocDetailResponse>(
+        `/api/sdd/wiki-recalls/doc-detail?${toQueryString({ repo: repo!, relativePath: relativePath! })}`,
       ),
   });
 }
