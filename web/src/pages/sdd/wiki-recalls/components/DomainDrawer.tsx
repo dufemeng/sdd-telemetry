@@ -1,14 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { BookOpen, GitBranch } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RowInspectorDrawer, type RowInspectorField } from '@/components/ui/RowInspectorDrawer';
 import { WikiDocModal } from '@/components/sdd/WikiDocModal';
 import { SoftBadge } from './WikiRecallControls';
-import { useWikiRecallDomainDocs } from '../useWikiRecalls';
-import { useSddWorkItems } from '@/pages/sdd/work-items/useSddWorkItems';
+import { useWikiRecallDomainDocs, useWikiRecallWorkItemRanking } from '../useWikiRecalls';
 import { REPO_LABEL } from '../styles';
-
-const ROOT_DOMAIN_LABEL = '（根目录）';
 
 const STATUS_BADGE: Record<string, { label: string; tone: 'good' | 'neutral' | 'bad' | 'info' }> = {
   hot: { label: '热', tone: 'good' },
@@ -20,22 +17,17 @@ const STATUS_BADGE: Record<string, { label: string; tone: 'good' | 'neutral' | '
 export function DomainDrawer({ repo, domain, onClose }: { repo: string; domain: string; onClose: () => void }) {
   const navigate = useNavigate();
   const docsQuery = useWikiRecallDomainDocs(repo, domain);
-  const workItemsQuery = useSddWorkItems();
+  // 「召回本域文档的需求」按召回反查（读过本域 .md 的需求），口径累计，与覆盖表一致
+  const reqQuery = useWikiRecallWorkItemRanking('all', { wikiDomain: domain });
   const [doc, setDoc] = useState<{ toolCallId?: string | null; source?: { repo: string; relativePath: string } } | null>(null);
 
   const items = docsQuery.data?.items ?? [];
-  const reqItems = useMemo(() => {
-    const all = workItemsQuery.data ?? [];
-    return all
-      .filter((i) => (i.businessDomain ?? ROOT_DOMAIN_LABEL) === domain)
-      .sort((a, b) => b.artifactCount - a.artifactCount)
-      .slice(0, 20);
-  }, [workItemsQuery.data, domain]);
+  const reqItems = reqQuery.data?.items ?? [];
   const fields: RowInspectorField[] = [
     { label: '知识库', value: `bk-fe-knowledge-${repo}`, mono: true },
     { label: '库内文档', value: `${items.length} 篇` },
     { label: '沉睡文档', value: String(items.filter((i) => i.status === 'dead').length) },
-    { label: '本域需求', value: String(reqItems.length) },
+    { label: '召回需求', value: String(reqQuery.data?.total ?? reqItems.length) },
   ];
 
   return (
@@ -79,30 +71,29 @@ export function DomainDrawer({ repo, domain, onClose }: { repo: string; domain: 
         <section className="px-5 pb-4">
           <div className="mb-3 flex items-center gap-2 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
             <GitBranch size={14} style={{ color: 'var(--color-primary)' }} />
-            <span className="text-[12px] font-semibold text-[#f5f5f5]">本域需求</span>
-            <span className="text-[11px] text-[var(--color-muted)]">· {reqItems.length} 个</span>
+            <span className="text-[12px] font-semibold text-[#f5f5f5]">召回本域文档的需求</span>
+            <span className="text-[11px] text-[var(--color-muted)]">· {reqQuery.data?.total ?? reqItems.length} 个</span>
           </div>
           <div className="grid gap-[4px]">
             {reqItems.length === 0 ? (
               <div className="px-2 py-3 text-[12px] text-[var(--color-muted)]">
-                {workItemsQuery.isLoading ? '加载中…' : '本域暂无需求；请在产出分析确认 work_item.business_domain 是否已写入'}
+                {reqQuery.isLoading ? '加载中…' : '暂无需求召回过本域文档'}
               </div>
             ) : reqItems.map((w) => (
               <button
-                key={w.id}
+                key={w.workItemId}
                 className="flex items-center justify-between gap-2 rounded-[4px] px-2 py-[6px] text-left hover:bg-[#171717]"
-                onClick={() => navigate(`/sdd/work-items/${w.id}`)}
+                onClick={() => navigate(`/sdd/work-items/${w.workItemId}`)}
               >
                 <div className="flex flex-col min-w-0">
-                  <span className="truncate text-[12px] text-[var(--color-secondary)]" title={w.workItemTitle ?? w.workItemSlug}>
-                    {w.workItemTitle ?? w.workItemSlug}
+                  <span className="truncate text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }} title={w.workItemSlug}>
+                    {w.workItemSlug}
                   </span>
-                  {w.workItemTitle && (
-                    <span className="truncate text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {w.workItemSlug}
-                    </span>
+                  {w.businessDomain && (
+                    <span className="truncate text-[10px] text-[var(--color-muted)]">{w.businessDomain}</span>
                   )}
                 </div>
+                <span className="flex-none text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>{w.totalRecalls} 次</span>
               </button>
             ))}
           </div>

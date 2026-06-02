@@ -2,6 +2,7 @@ import { Inject, Provide } from '@midwayjs/core';
 import type { ReportUserSettingsRequest } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { whereSql } from '../query-utils';
+import { ROOT_DOMAIN_LABEL } from './wiki-coverage';
 
 export interface SemanticRow {
   id: string | number;
@@ -867,7 +868,10 @@ export class SddQueryRepository {
       clauses.push('wr.event_time >= ?');
       params.push(rangeSinceDate);
     }
-    if (wikiDomain) {
+    if (wikiDomain === ROOT_DOMAIN_LABEL) {
+      // 根目录文档（库根、非 domain-* 目录）召回记录的 wiki_domain 落库为 NULL
+      clauses.push('wr.wiki_domain IS NULL');
+    } else if (wikiDomain) {
       clauses.push('wr.wiki_domain = ?');
       params.push(wikiDomain);
     }
