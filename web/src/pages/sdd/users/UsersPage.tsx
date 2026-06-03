@@ -210,7 +210,6 @@ export default function UsersPage() {
     label: STAGE_LABELS[stage],
     count: rawData.filter((u) => u.semanticStages.includes(stage)).length,
   }));
-  const funnelMax = Math.max(funnelData[0]?.count ?? 0, 1);
 
   const funnelTransitions = funnelData
     .map((item, i) => {
@@ -410,57 +409,58 @@ export default function UsersPage() {
               <h3 className="text-[14px] font-semibold text-[#f5f5f5]">SDD 阶段渗透</h3>
             </div>
             <span className="text-[11px] text-[var(--color-muted)]">
-              走到各阶段的成员人数 · ≤ {BUS_FACTOR_THRESHOLD} 人即单点风险
+              已达人数 / 全队 {total} · ≤ {BUS_FACTOR_THRESHOLD} 人即单点风险
             </span>
           </div>
-          <div className="flex flex-col gap-[6px]">
+          <div className="flex flex-col gap-[5px]">
             {funnelData.map((item, i) => {
               const prev = i > 0 ? funnelData[i - 1]!.count : null;
               const rate = prev !== null && prev > 0 ? item.count / prev : null;
+              const pct = total > 0 ? (item.count / total) * 100 : 0;
               const isCliff = cliff !== null && cliff.to === item.stage && cliff.rate < STAGE_DROP_THRESHOLD;
               const isBusFactorRisk = item.count > 0 && item.count <= BUS_FACTOR_THRESHOLD;
               return (
-                <div key={item.stage} className="flex flex-col gap-[3px]">
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="inline-flex items-center gap-2 text-[var(--color-secondary)]">
-                      <span className="w-[6px] h-[6px] rounded-full" style={{ background: 'var(--color-primary)' }} />
-                      {item.label}
-                      <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                        {item.stage}
-                      </code>
-                    </span>
-                    <span className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                      <b>{item.count}</b> 人
-                    </span>
-                  </div>
-                  <div className="w-full h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <div
+                  key={item.stage}
+                  className="grid items-center gap-3"
+                  style={{ gridTemplateColumns: '148px 1fr auto' }}
+                >
+                  {/* 阶段标签 */}
+                  <span className="inline-flex items-center gap-2 text-[12px] text-[var(--color-secondary)] min-w-0">
+                    <span className="w-[6px] h-[6px] flex-none rounded-full" style={{ background: 'var(--color-primary)' }} />
+                    {item.label}
+                    <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {item.stage}
+                    </code>
+                  </span>
+                  {/* 居中收窄漏斗条：宽度 = 渗透率（人数 / 全队） */}
+                  <div className="flex justify-center">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
+                      className="h-[20px] rounded-[3px] transition-all duration-500"
                       style={{
-                        width: `${Math.max((item.count / funnelMax) * 100, 2)}%`,
-                        background: 'var(--color-primary)',
+                        width: `${Math.max(pct, 2)}%`,
+                        background: `rgba(250,255,105,${1 - i * 0.22})`,
                       }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className={isCliff ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]'}>
-                      {rate !== null ? <>接续 {Math.round(rate * 100)}%</> : '起点'}
-                      {isCliff ? (
-                        <span className="ml-2 text-[var(--color-bad-text)]">
-                          断崖 ↓ {STAGE_LABELS[cliff.from]} → {STAGE_LABELS[cliff.to]}
-                        </span>
-                      ) : null}
+                  {/* 渗透率 + 接续/断崖 + 单点风险 */}
+                  <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                    <span className="text-[12px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <b>{item.count}</b> 人 · {Math.round(pct)}%
+                    </span>
+                    <span className={`text-[10px] ${isCliff ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]'}`}>
+                      {rate === null ? '起点' : isCliff ? `断崖 ${Math.round(rate * 100)}%` : `接续 ${Math.round(rate * 100)}%`}
                     </span>
                     {isBusFactorRisk ? (
                       <span
-                        className="inline-flex items-center gap-1 px-[6px] py-[1px] rounded-full"
+                        className="inline-flex items-center px-[6px] py-[1px] rounded-full text-[10px]"
                         style={{
                           color: 'var(--color-bad-text)',
                           background: 'var(--color-bad-bg)',
                           border: '1px solid var(--color-bad-text)',
                         }}
                       >
-                        单点风险 · 仅 {item.count} 人
+                        单点风险
                       </span>
                     ) : null}
                   </div>
@@ -537,9 +537,10 @@ export default function UsersPage() {
               const depth = maturityReached(u);
               const days = daysSince(u.firstSeenAt, now);
               return (
-                <div
+                <Link
                   key={u.id}
-                  className="flex flex-col gap-[8px] p-3 rounded-[6px]"
+                  to={`/sdd/users/${u.id}`}
+                  className="flex flex-col gap-[8px] p-3 rounded-[6px] cursor-pointer hover:opacity-80 transition-opacity"
                   style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
                 >
                   <div className="flex items-center gap-3">
@@ -589,13 +590,7 @@ export default function UsersPage() {
                       </span>
                     ) : null}
                   </div>
-                  <Link
-                    to={`/sdd/users/${u.id}`}
-                    className="inline-flex items-center gap-1 text-[11px] text-[var(--color-primary)] hover:underline"
-                  >
-                    看他怎么干的 →
-                  </Link>
-                </div>
+                </Link>
               );
             })}
           </div>
