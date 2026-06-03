@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { formatRelativeTime, formatTime } from '@/lib/format';
 import type { SddUserWorkItem } from '@sdd-telemetry/api';
 
@@ -30,7 +29,6 @@ export function UserWorkItemList({
         <span className="text-[12px] font-semibold text-[#f5f5f5]">
           他的需求 <span className="text-[var(--color-muted)] font-normal">（{workItems.length}）</span>
         </span>
-        <span className="text-[10px] text-[var(--color-muted)]">点击切换时间线 · ↗ 跳详情</span>
       </div>
 
       {workItems.length === 0 ? (
@@ -39,13 +37,6 @@ export function UserWorkItemList({
         </div>
       ) : (
         <ul className="flex flex-col">
-          <li
-            className="px-3 py-[8px] cursor-pointer hover:bg-[var(--color-hover)] transition-colors"
-            style={{ borderBottom: '1px solid var(--color-border)', background: selectedId === null ? 'var(--color-active)' : 'transparent' }}
-            onClick={() => onSelect(null)}
-          >
-            <span className="text-[12px] text-[var(--color-secondary)]">全部活动</span>
-          </li>
           {workItems.map((wi) => {
             const isSelected = selectedId === wi.workItemId;
             return (
@@ -53,19 +44,9 @@ export function UserWorkItemList({
                 key={wi.workItemId}
                 className="px-3 py-[8px] cursor-pointer hover:bg-[var(--color-hover)] transition-colors"
                 style={{ borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-active)' : 'transparent' }}
-                onClick={() => onSelect(wi.workItemId)}
+                onClick={() => onSelect(isSelected ? null : wi.workItemId)}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] text-[#f5f5f5] truncate flex-1 min-w-0">{wi.title}</span>
-                  <Link
-                    to={`/sdd/work-items/${wi.workItemId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[var(--color-secondary)] hover:text-[var(--color-primary)] shrink-0"
-                    title="跳转产出分析"
-                  >
-                    ↗
-                  </Link>
-                </div>
+                <span className="text-[12px] text-[#f5f5f5] truncate">{wi.title}</span>
                 <div className="flex items-center gap-[6px] mt-[4px]">
                   {SDD_STAGES.map((s) => (
                     <span

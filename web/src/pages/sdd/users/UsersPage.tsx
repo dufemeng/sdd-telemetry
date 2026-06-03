@@ -432,7 +432,7 @@ export default function UsersPage() {
                 >
                   {/* 阶段标签 */}
                   <span className="inline-flex items-center gap-2 text-[12px] text-[var(--color-secondary)] min-w-0">
-                    <span className="w-[6px] h-[6px] flex-none rounded-full" style={{ background: 'var(--color-primary)' }} />
+                    <span className="w-[6px] h-[6px] flex-none rounded-full" style={{ background: 'var(--color-muted)' }} />
                     {item.label}
                     {item.code ? (
                       <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -440,12 +440,12 @@ export default function UsersPage() {
                       </code>
                     ) : null}
                   </span>
-                  {/* 漏斗梯形：上沿=本段、下沿=下一段，相邻段共边连成喇叭口；宽度相对全队 */}
+                  {/* 漏斗梯形：左沿对齐成直边，右沿从本段宽收到下一段宽；宽度相对全队 */}
                   <div
                     className="h-[38px] transition-all duration-500"
                     style={{
                       background: `rgba(250,255,105,${1 - i * 0.22})`,
-                      clipPath: `polygon(${50 - topW / 2}% 0%, ${50 + topW / 2}% 0%, ${50 + botW / 2}% 100%, ${50 - botW / 2}% 100%)`,
+                      clipPath: `polygon(0% 0%, ${topW}% 0%, ${botW}% 100%, 0% 100%)`,
                     }}
                   />
                   {/* 数字 = 占全队比例；下方 = 相对上一步的人数变化 */}

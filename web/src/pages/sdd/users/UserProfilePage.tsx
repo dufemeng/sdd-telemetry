@@ -5,7 +5,7 @@ import { useUserProfile } from './useUserProfile';
 import { useUserActivity } from './useUserActivity';
 import { UserWorkItemList } from './components/UserWorkItemList';
 import { UserActivityTimeline } from './components/UserActivityTimeline';
-import { AdoptionRamp } from './components/AdoptionRamp';
+import { SkillUsageChart } from './components/SkillUsageChart';
 import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
 import { formatInteger } from '@/lib/format';
 
@@ -82,13 +82,11 @@ export default function UserProfilePage() {
     );
   }
 
-  const { user, summary, maturity, workItems } = profile;
+  const { user, summary, workItems } = profile;
   const joinDays = user.firstSeenAt
     ? Math.floor((Date.now() - new Date(user.firstSeenAt).getTime()) / DAY_MS)
     : null;
 
-  const reachedStages = maturity.stages.filter((s) => s.firstReachedAt !== null).map((s) => s.stage);
-  const isComplete = reachedStages.length === maturity.stages.length;
   const selectedTitle = selectedWorkItemId
     ? workItems.find((wi) => wi.workItemId === selectedWorkItemId)?.title ?? '选中需求'
     : null;
@@ -123,33 +121,36 @@ export default function UserProfilePage() {
                 </span>
               ) : null}
               <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                阶段 {reachedStages.length}/{maturity.stages.length}
+                {user.skillUsageCount} 次 skill
               </span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
               <span><GitBranch size={11} className="inline mr-[3px]" />需求 {summary.workItemCount}</span>
               <span><Layers size={11} className="inline mr-[3px]" />文档 {summary.artifactCount}</span>
-              <span><MessageSquare size={11} className="inline mr-[3px]" />{formatInteger(summary.turnCount)} turns</span>
+              <span><MessageSquare size={11} className="inline mr-[3px]" />{formatInteger(summary.turnCount)} 轮对话</span>
               <span>跨 {formatInteger(summary.sessionCount)} session</span>
-              <span><BookOpen size={11} className="inline mr-[3px]" />wiki {summary.wikiRecallCount}</span>
-              <span><Zap size={11} className="inline mr-[3px]" />落地 {summary.codeWriteCount}</span>
-              {summary.codeReadCount > 0 ? <span>读取 {summary.codeReadCount}</span> : null}
+              <span><BookOpen size={11} className="inline mr-[3px]" />知识库 {summary.wikiRecallCount} 次</span>
+              <span><Zap size={11} className="inline mr-[3px]" />{summary.codeWriteCount} 次编码</span>
             </div>
-            {user.requirementsRootPath ? (
-              <div className="text-[10px] text-[var(--color-muted)] mt-[4px]" style={{ fontFamily: 'var(--font-mono)' }} title={user.requirementsRootPath ?? ''}>
-                requirements: {user.requirementsRootPath}
+            {(user.requirementsRootPath || user.wikiRootPath) ? (
+              <div className="flex flex-col gap-[2px] mt-[4px]" style={{ fontFamily: 'var(--font-mono)' }}>
+                {user.requirementsRootPath ? (
+                  <div className="text-[10px] text-[var(--color-muted)]" title={user.requirementsRootPath}>
+                    requirements: {user.requirementsRootPath}
+                  </div>
+                ) : null}
+                {user.wikiRootPath ? (
+                  <div className="text-[10px] text-[var(--color-muted)]" title={user.wikiRootPath}>
+                    wiki: {user.wikiRootPath}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
         </div>
       </section>
 
-      {/* AdoptionRamp */}
-      <AdoptionRamp
-        stages={maturity.stages}
-        firstSeenAt={user.firstSeenAt}
-        rampDays={maturity.rampDays}
-      />
+      <SkillUsageChart userId={userId} />
 
       {/* Two-column body */}
       <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
@@ -164,17 +165,7 @@ export default function UserProfilePage() {
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
           <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
             <span className="text-[12px] font-semibold text-[#f5f5f5]">
-              活动时间线{selectedTitle ? ` · ${selectedTitle}` : ' · 全部'}
-            </span>
-            <span
-              className="inline-flex items-center px-[6px] py-[1px] rounded-full text-[10px] whitespace-nowrap"
-              style={{
-                background: isComplete ? 'var(--color-good-bg)' : 'rgba(255,255,255,0.04)',
-                color: isComplete ? 'var(--color-good-text)' : 'var(--color-secondary)',
-                border: `1px solid ${isComplete ? 'var(--color-good-text)' : 'var(--color-border)'}`,
-              }}
-            >
-              完整度 {reachedStages.length}/{maturity.stages.length}
+              {selectedTitle ? `互动记录 · ${selectedTitle}` : '互动记录'}
             </span>
           </div>
           <UserActivityTimeline

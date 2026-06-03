@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, MessageSquare, Sparkles, Wrench } from 'lucide-react';
+import { BookOpen, MessageSquare, Sparkles, Wrench } from 'lucide-react';
 import type { ActivityNode } from '../useUserActivity';
 import { formatRelativeTime, formatTime, truncate } from '@/lib/format';
 
@@ -11,8 +9,6 @@ export function UserActivityTimeline({
   nodes: ActivityNode[];
   onOpenInteraction: (interactionId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
   if (nodes.length === 0) {
     return (
       <div className="p-4 text-[12px] text-[var(--color-muted)] text-center">
@@ -21,33 +17,27 @@ export function UserActivityTimeline({
     );
   }
 
-  const toggle = (id: string) => {
-    const next = new Set(expanded);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpanded(next);
-  };
-
   return (
     <div className="flex flex-col">
       {nodes.map((node) => {
-        const isOpen = expanded.has(node.id);
         const Icon = node.kind === 'skill' ? Sparkles : node.kind === 'wiki' ? BookOpen : node.kind === 'discussion' ? MessageSquare : Wrench;
-        const markerColor = isOpen ? 'var(--color-secondary)' : 'var(--color-border)';
+        const clickable = Boolean(node.interactionId);
         return (
-          <div key={node.id} className="flex gap-[10px] px-3 py-[8px]" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div
+            key={node.id}
+            className={`flex gap-[10px] px-3 py-[8px] ${clickable ? 'cursor-pointer hover:bg-[rgba(255,255,255,0.02)]' : ''}`}
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+            onClick={() => { if (node.interactionId) onOpenInteraction(node.interactionId); }}
+          >
             <div className="flex flex-col items-center pt-[4px]">
-              <span className="w-[6px] h-[6px] rounded-full" style={{ background: markerColor }} />
+              <span className="w-[6px] h-[6px] rounded-full" style={{ background: 'var(--color-border)' }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
-                <button
-                  onClick={() => toggle(node.id)}
-                  className="inline-flex items-center gap-[6px] text-[12px] text-[#f5f5f5] hover:text-[var(--color-primary)] truncate"
-                >
+                <span className="inline-flex items-center gap-[6px] text-[12px] text-[#f5f5f5] truncate">
                   <Icon size={12} className="text-[var(--color-secondary)]" />
                   <span className="truncate">{node.title}</span>
-                </button>
+                </span>
                 <span className="text-[10px] text-[var(--color-muted)] whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }}>
                   {formatRelativeTime(node.eventTime)}
                 </span>
@@ -58,31 +48,11 @@ export function UserActivityTimeline({
                 {node.wikiRelativePath ? <> · wiki</> : null}
                 {node.kind === 'write' || node.kind === 'discussion' ? <> · {node.kind === 'discussion' ? '讨论' : '写入'}</> : null}
               </div>
-              {node.detail && isOpen ? (
+              {node.detail && node.kind !== 'skill' ? (
                 <div className="text-[11px] text-[var(--color-secondary)] mt-[4px] whitespace-pre-wrap break-words" style={{ fontFamily: 'var(--font-mono)' }}>
                   {truncate(node.detail, 400)}
                 </div>
               ) : null}
-              <div className="flex items-center gap-3 mt-[4px]">
-                {node.interactionId ? (
-                  <button
-                    onClick={() => onOpenInteraction(node.interactionId!)}
-                    className="inline-flex items-center gap-1 text-[10px] text-[var(--color-secondary)] hover:text-[var(--color-primary)] hover:underline"
-                  >
-                    展开全文 <ArrowRight size={10} />
-                  </button>
-                ) : null}
-                {node.kind === 'wiki' && node.wikiRelativePath ? (
-                  <Link to="/sdd/wiki-recalls" className="inline-flex items-center gap-1 text-[10px] text-[var(--color-secondary)] hover:text-[var(--color-primary)]">
-                    知识库 ↗
-                  </Link>
-                ) : null}
-                {node.kind === 'skill' ? (
-                  <Link to="/sdd/skills" className="inline-flex items-center gap-1 text-[10px] text-[var(--color-secondary)] hover:text-[var(--color-primary)]">
-                    技能分析 ↗
-                  </Link>
-                ) : null}
-              </div>
             </div>
           </div>
         );
