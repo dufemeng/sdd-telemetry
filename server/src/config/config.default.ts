@@ -65,7 +65,7 @@ export default {
   },
   dailyReport: {
     scheduleEnabled: process.env.DAILY_REPORT_SCHEDULE_ENABLED !== 'false',
-    scheduleTime: process.env.DAILY_REPORT_SCHEDULE_TIME ?? '12:00',
+    scheduleTime: process.env.DAILY_REPORT_SCHEDULE_TIME ?? '00:00',
     timezone: process.env.DAILY_REPORT_TIMEZONE ?? 'Asia/Shanghai',
     baseUrl: process.env.DAILY_REPORT_BASE_URL ?? '',
   },
