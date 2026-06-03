@@ -28,56 +28,124 @@ export function AdoptionRamp({
 }) {
   const stageMap = new Map(stages.map((s) => [s.stage, s.firstReachedAt]));
   const reachedCount = stages.filter((s) => s.firstReachedAt !== null).length;
-  const completionRate = stages.length > 0 ? reachedCount / stages.length : 0;
+  const lastReachedIdx = SDD_STAGES.reduce(
+    (acc, s, i) => ((stageMap.get(s) ?? null) !== null ? i : acc),
+    -1,
+  );
+  const isComplete = reachedCount === SDD_STAGES.length;
 
   return (
     <section
-      className="flex flex-col gap-[8px] p-[12px] rounded-[6px]"
+      className="p-[12px] rounded-[6px]"
       style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
     >
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-[10px]">
         <span className="text-[12px] font-semibold text-[#f5f5f5]">上手进度</span>
         <span className="text-[11px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-          {reachedCount}/{stages.length}
-          {rampDays !== null ? ` · 走通全流程 ${rampDays} 天` : ''}
+          {reachedCount}/{SDD_STAGES.length}
+          {isComplete && rampDays !== null
+            ? ` · 走通全流程 ${rampDays} 天`
+            : !isComplete
+              ? ' · 尚未走通全流程'
+              : ''}
         </span>
       </div>
-      <div className="grid grid-cols-4 gap-[6px]">
-        {SDD_STAGES.map((stage) => {
+
+      {/* Signal rail */}
+      <div
+        className="flex items-start"
+        style={{ gap: 0 }}
+      >
+        {SDD_STAGES.map((stage, i) => {
           const reachedAt = stageMap.get(stage) ?? null;
           const dayOffset = daysFromIso(reachedAt, firstSeenAt);
           const reached = reachedAt !== null;
+          const isLast = i === SDD_STAGES.length - 1;
+
+          const nodeColor = reached ? 'var(--color-primary)' : 'rgba(255,255,255,0.15)';
+          const nodeSize = 8;
+          const railH = 2;
+
           return (
             <div
               key={stage}
-              className="rounded-[4px] px-[8px] py-[6px]"
-              style={{
-                background: 'var(--color-surface)',
-                border: `1px solid ${reached ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                opacity: reached ? 1 : 0.55,
-              }}
+              className="flex-1"
+              style={{ minWidth: 0 }}
             >
-              <div className="text-[10px] text-[var(--color-secondary)] mb-[3px]">{STAGE_LABELS[stage]}</div>
-              <div
-                className="text-[12px] font-semibold"
-                style={{ color: reached ? 'var(--color-primary)' : 'var(--color-muted)', fontFamily: 'var(--font-mono)' }}
-              >
-                {reached ? `D${dayOffset}` : '—'}
+              {/* Rail + Node row */}
+              <div className="flex items-center" style={{ height: nodeSize }}>
+                {/* Rail segment before node (except first) */}
+                {i > 0 && (
+                  <div
+                    className="flex-1"
+                    style={{
+                      height: railH,
+                      background: SDD_STAGES.slice(0, i).every(
+                        (ps) => (stageMap.get(ps) ?? null) !== null,
+                      )
+                        ? 'var(--color-primary)'
+                        : 'rgba(255,255,255,0.08)',
+                      transition: 'background 0.3s',
+                    }}
+                  />
+                )}
+                {/* Node dot */}
+                <div
+                  className="rounded-full flex-none"
+                  style={{
+                    width: nodeSize,
+                    height: nodeSize,
+                    background: nodeColor,
+                    boxShadow: reached ? '0 0 0 3px rgba(250,255,105,0.12)' : 'none',
+                    transition: 'all 0.3s',
+                  }}
+                />
+                {/* Rail segment after node (except last) */}
+                {!isLast && (
+                  <div
+                    className="flex-1"
+                    style={{
+                      height: railH,
+                      background: SDD_STAGES.slice(0, i + 1).every(
+                        (ps) => (stageMap.get(ps) ?? null) !== null,
+                      )
+                        ? 'var(--color-primary)'
+                        : 'rgba(255,255,255,0.08)',
+                      transition: 'background 0.3s',
+                    }}
+                  />
+                )}
               </div>
-              {reached ? (
-                <div className="text-[10px] text-[var(--color-muted)] mt-[2px]">
-                  {new Date(reachedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+
+              {/* Labels below */}
+              <div className="mt-[5px]" style={{ paddingLeft: i > 0 ? 4 : 0, paddingRight: isLast ? 0 : 4 }}>
+                <div
+                  className="text-[11px] whitespace-nowrap"
+                  style={{
+                    color: reached ? 'var(--color-secondary)' : 'var(--color-muted)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {reached ? `D${dayOffset}` : '—'}
                 </div>
-              ) : null}
+                <div
+                  className="text-[10px] whitespace-nowrap mt-[1px]"
+                  style={{ color: reached ? 'var(--color-secondary)' : 'var(--color-muted)' }}
+                >
+                  {STAGE_LABELS[stage]}
+                </div>
+                {reached ? (
+                  <div className="text-[9px] text-[var(--color-muted)] mt-[1px]" style={{ fontFamily: 'var(--font-mono)' }}>
+                    {new Date(reachedAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+                  </div>
+                ) : (
+                  <div className="text-[9px] text-[var(--color-muted)] mt-[1px]">未到达</div>
+                )}
+              </div>
             </div>
           );
         })}
-      </div>
-      <div className="h-[3px] w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${completionRate * 100}%`, background: 'var(--color-primary)' }}
-        />
       </div>
     </section>
   );
