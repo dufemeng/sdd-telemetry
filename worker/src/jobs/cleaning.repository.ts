@@ -1277,6 +1277,34 @@ export class CleaningRepository {
     return m;
   }
 
+  async loadInteractionUserAndTime(
+    connection: PoolConnection,
+    interactionIds: string[],
+  ): Promise<Map<string, { userId: string | null; startedAt: Date | null }>> {
+    const m = new Map<
+      string,
+      { userId: string | null; startedAt: Date | null }
+    >();
+    if (interactionIds.length === 0) return m;
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, user_id AS userId, started_at AS startedAt
+       FROM sdd_interactions
+       WHERE id IN (?)`,
+      [interactionIds],
+    );
+    for (const r of rows as Array<{
+      id: string | number;
+      userId: string | number | null;
+      startedAt: Date | string | null;
+    }>) {
+      m.set(String(r.id), {
+        userId: r.userId == null ? null : String(r.userId),
+        startedAt: r.startedAt ? new Date(r.startedAt) : null,
+      });
+    }
+    return m;
+  }
+
   async listToolCallsForWikiRecalls(
     connection: PoolConnection,
     interactionIds: string[],

@@ -50,7 +50,7 @@ export default function WikiDomainDetailPage() {
 
       <DomainDetailHeader repo={repo} domain={domain} />
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
+      <div className="grid items-start gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
         <section className="rounded-[6px] p-[10px]" style={CARD_STYLE}>
           <div className="mb-2 flex items-center gap-2 px-1 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
             <span className="text-[12px] font-semibold text-[#f5f5f5]">文档清单</span>
@@ -63,7 +63,9 @@ export default function WikiDomainDetailPage() {
           )}
         </section>
 
-        <DocRecallDetail repo={repo} doc={selectedDoc} />
+        <div className="sticky top-0">
+          <DocRecallDetail repo={repo} doc={selectedDoc} />
+        </div>
       </div>
     </div>
   );

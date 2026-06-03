@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import type { Logger } from "pino";
 import { withTransaction } from "../infrastructure/mysql/client";
 import {
@@ -913,31 +913,26 @@ async function upsertWikiRecalls(
       skillUsageIds,
     );
 
-  // 通过 sdd_interactions 表查每个 interaction 的 user_id
-  const [userRows] = await connection.query<RowDataPacket[]>(
-    `SELECT id, user_id, started_at FROM sdd_interactions WHERE id IN (?)`,
-    [interactionIds],
+  // 通过 sdd_interactions 表查每个 interaction 的 user_id / started_at
+  // 走仓库层统一 String 归一化，避免 BIGINT(number) 与 string key 类型不一致导致静默跳过
+  const interactionMeta = await cleaningRepository.loadInteractionUserAndTime(
+    connection,
+    interactionIds,
   );
-  const interactionToUser = new Map<string, string | null>();
-  const interactionToTime = new Map<string, Date | null>();
-  for (const r of userRows as Array<{
-    id: string;
-    user_id: string | null;
-    started_at: Date | string | null;
-  }>) {
-    interactionToUser.set(r.id, r.user_id);
-    interactionToTime.set(r.id, asDate(r.started_at));
-  }
 
   let inserted = 0;
   let hits = 0;
   let parseFailedPartial = 0;
   let skippedInputParseError = 0;
   let skippedWikiRootMissing = 0;
+  let skippedUserMissing = 0;
 
   for (const tc of toolCalls) {
-    const userId = interactionToUser.get(tc.interactionId) ?? null;
-    if (!userId) continue;
+    const userId = interactionMeta.get(tc.interactionId)?.userId ?? null;
+    if (!userId) {
+      skippedUserMissing += 1;
+      continue;
+    }
     const wikiRoot = userWikiRoots.get(userId);
     if (!wikiRoot) {
       skippedWikiRootMissing += 1;
@@ -997,7 +992,7 @@ async function upsertWikiRecalls(
       wikiSystem: parsed.system,
       eventId: null,
       eventSequence: tc.sequence,
-      eventTime: interactionToTime.get(tc.interactionId) ?? null,
+      eventTime: interactionMeta.get(tc.interactionId)?.startedAt ?? null,
       ruleVersion: WIKI_RECALL_RULE_VERSION,
     });
     inserted += 1;
@@ -1009,6 +1004,7 @@ async function upsertWikiRecalls(
       wikiHits: hits,
       inserted,
       parseFailedPartial,
+      skippedUserMissing,
       skippedWikiRootMissing,
       skippedInputParseError,
     },
