@@ -87,7 +87,7 @@ ${clone.outerHTML}
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
     try {
-      const width = el.scrollWidth;
+      const width = el.offsetWidth;
       const height = el.scrollHeight;
 
       const dataUrl = await toPng(el, {

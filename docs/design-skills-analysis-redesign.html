@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>技能分析 redesign · 示意 · SDD 质量观测台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --base: #0a0a0a; --surface: #101010; --panel: #14140b; --hover: #171717; --active: #222222;
+    --icon-well: #202016; --nav-active: #2b2b20;
+    --primary: #faff69; --bar-fill: #c9ce3c;
+    --text: #e5e3d3; --secondary: #c9c8af; --muted: #93927c; --bright: #f5f5f5;
+    --border: rgba(255,255,255,0.08);
+    --good-text: #22c55e; --good-bg: rgba(34,197,94,0.10);
+    --warn-text: #f59e0b; --warn-bg: rgba(245,158,11,0.10);
+    --bad-text: #ffb4ab; --bad-bg: rgba(239,68,68,0.16);
+    --info: #60a5fa; --info-bg: rgba(96,165,250,0.10);
+    --purple: #c084fc; --purple-bg: rgba(192,132,252,0.12);
+    --body: Inter, 'PingFang SC', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --z-drawer-backdrop: 40; --z-drawer: 50;
+    /* SDD 阶段色阶 */
+    --st-proposal: #60a5fa; --st-design: #faff69; --st-task: #c084fc; --st-code: #22c55e; --st-review: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--base); color: var(--text); font-family: var(--body); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--mono); }
+  h1,h2,h3 { margin: 0; }
+  button { font-family: inherit; cursor: pointer; }
+
+  .shell { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto auto 1fr; min-height: 100vh; }
+
+  /* sidebar */
+  aside { grid-row: 1 / -1; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 10px; min-height: 88px; padding: 18px; border-bottom: 1px solid var(--border); }
+  .brand-logo { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 6px; background: var(--primary); color: var(--base); }
+  .brand h1 { font-size: 18px; font-weight: 700; color: var(--bright); line-height: 1.2; }
+  .brand .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav { padding: 10px 0; overflow-y: auto; }
+  .nav-group { margin-top: 10px; }
+  .nav-group > .label { padding: 8px 18px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  .nav-item { display: flex; align-items: center; gap: 12px; min-height: 34px; margin: 0 8px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--secondary); position: relative; transition: all .15s; }
+  .nav-item:hover { color: var(--bright); background: var(--icon-well); }
+  .nav-item svg { width: 18px; height: 18px; flex: none; }
+  .nav-item.active { color: var(--primary); background: var(--nav-active); }
+  .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 9px; width: 4px; height: 16px; border-radius: 0 4px 4px 0; background: var(--primary); }
+  .nav-item.active::after { content: ''; position: absolute; right: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+  /* topbar */
+  header.top { grid-column: 2; display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .crumb { font-size: 12px; color: var(--muted); }
+  .crumb b { color: var(--secondary); font-weight: 500; }
+  .snapshot { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; color: var(--secondary); background: var(--surface); }
+  .snapshot .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good-text); }
+  .snapshot .ver { color: var(--muted); }
+
+  .demo-bar { grid-column: 2; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 20px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+  .demo-bar b { color: var(--secondary); font-weight: 600; }
+
+  main { grid-column: 2; padding: 16px 20px 60px; display: grid; gap: 12px; align-content: start; }
+  .page-head { display: flex; align-items: baseline; gap: 12px; }
+  .page-head h2 { font-size: 22px; font-weight: 600; color: var(--bright); font-family: var(--mono); letter-spacing: -0.01em; }
+  .page-head .desc { font-size: 12px; color: var(--muted); }
+
+  .card { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; }
+  .pad { padding: 14px; }
+  .sec-title { display: flex; align-items: center; gap: 8px; color: var(--primary); margin-bottom: 14px; }
+  .sec-title svg { width: 18px; height: 18px; }
+  .sec-title h3 { font-size: 14px; font-weight: 600; color: var(--bright); }
+  .sec-title .note { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* ① KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { display: flex; gap: 12px; min-height: 102px; }
+  .kpi .well { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--icon-well); color: var(--primary); }
+  .kpi .well svg { width: 18px; height: 18px; }
+  .kpi .body { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; flex: 1; }
+  .kpi .name { font-size: 12px; color: var(--secondary); }
+  .kpi .val { font-size: 24px; font-weight: 600; color: var(--bright); font-family: var(--mono); line-height: 1; }
+  .kpi .val.volt { color: var(--primary); }
+  .kpi .val.bad { color: var(--bad-text); }
+  .kpi .hint { font-size: 11px; color: var(--muted); }
+  .progress { height: 3px; width: 100%; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 6px 0 3px; }
+  .progress > span { display: block; height: 100%; border-radius: 999px; background: var(--good-text); }
+  .kpi .prog-cap { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+
+  /* ② funnel + trend */
+  .grid-2-1 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
+  .funnel { display: grid; gap: 9px; margin-top: 2px; }
+  .stage { position: relative; }
+  .stage .lab { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .stage .lab .nm { font-size: 12px; color: var(--text); display: inline-flex; align-items: center; gap: 7px; }
+  .stage .lab .nm .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .stage .lab .nm .code { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .stage .lab .ct { font-family: var(--mono); font-size: 12px; color: var(--secondary); }
+  .stage .lab .ct b { color: var(--bright); font-weight: 600; }
+  .bar-track { height: 22px; border-radius: 4px; background: var(--icon-well); overflow: hidden; }
+  .bar-track > span { display: block; height: 100%; border-radius: 4px; opacity: 0.9; }
+  .drop { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); padding: 1px 0 1px 2px; }
+  .drop svg { width: 11px; height: 11px; }
+  .drop.cliff { color: var(--bad-text); font-weight: 600; }
+  .cliff-tag { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--bad-bg); color: var(--bad-text); }
+  .funnel-foot { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .out-link { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); border: 1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 4px 9px; }
+  .out-link:hover { color: var(--primary); border-color: rgba(250,255,105,0.22); }
+  .out-link svg { width: 12px; height: 12px; }
+
+  .chart { display: flex; align-items: flex-end; gap: 7px; height: 150px; padding-top: 8px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .chart .stack { width: 18px; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
+  .chart .seg { width: 100%; }
+  .chart .tick { font-size: 9px; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--secondary); border: 1px solid var(--border); background: rgba(255,255,255,0.04); border-radius: 4px; padding: 3px 8px; }
+  .legend .d { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* ③ top3 */
+  .top3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .rank { position: relative; padding: 12px 12px 12px 16px; border-radius: 6px; background: var(--hover); border: 1px solid var(--border); overflow: hidden; }
+  .rank .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .rank .badge-no { position: absolute; top: 0; right: 0; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 0 6px 0 6px; }
+  .rank .title { font-size: 13px; font-weight: 500; color: var(--bright); }
+  .rank .code { margin-top: 2px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .rank .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 11px; color: var(--secondary); font-family: var(--mono); }
+  .rank .conv { margin-top: 10px; }
+  .rank .conv .cap { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .rank .conv .track { height: 4px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .rank .conv .fill { height: 100%; border-radius: 999px; }
+
+  /* ④ table */
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .seg-ctl { display: inline-flex; gap: 4px; padding: 2px; border-radius: 6px; background: var(--base); border: 1px solid var(--border); }
+  .seg-ctl button { height: 26px; padding: 0 11px; border: 1px solid transparent; border-radius: 4px; font-size: 12px; font-weight: 500; color: var(--muted); background: transparent; }
+  .seg-ctl button.on { background: rgba(250,255,105,0.10); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+  .search { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; width: 220px; border: 1px solid rgba(255,255,255,0.10); background: var(--base); border-radius: 4px; }
+  .search svg { width: 13px; height: 13px; color: var(--muted); flex: none; }
+  .search input { border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; width: 100%; }
+  .search input::placeholder { color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin-left: auto; }
+  .tabs button { height: 26px; padding: 0 12px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+  .tabs button.on { background: rgba(250,255,105,0.08); border-color: rgba(250,255,105,0.22); color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); background: #141414; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th.r { text-align: right; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; }
+  tbody tr:hover td { background: var(--hover); }
+  tbody td { padding: 10px 12px; font-size: 13px; color: var(--text); vertical-align: middle; }
+  tbody td.r { text-align: right; font-family: var(--mono); }
+  .sk-cell { display: flex; align-items: center; gap: 10px; position: relative; padding-left: 8px; }
+  .sk-cell .strip { position: absolute; left: -12px; top: -10px; bottom: -10px; width: 3px; }
+  .sk-name { font-size: 13px; color: var(--bright); font-weight: 500; }
+  .sk-name .mono { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+  .next-skill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary); }
+  .next-skill svg { width: 12px; height: 12px; color: var(--muted); }
+  .next-skill .dot { width: 7px; height: 7px; border-radius: 2px; }
+  .next-skill .pct { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .conv-cell { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; font-family: var(--mono); font-size: 12px; }
+  .conv-cell .art { color: var(--secondary); }
+  .conv-cell .land { color: var(--good-text); }
+  .conv-cell .land.zero { color: var(--muted); }
+  .table-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+  /* status badges */
+  .badge { display: inline-flex; align-items: center; gap: 5px; height: 19px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .badge .d { width: 6px; height: 6px; border-radius: 50%; }
+  .badge.live { background: var(--good-bg); color: var(--good-text); }
+  .badge.live .d { background: var(--good-text); }
+  .badge.cold { background: rgba(255,255,255,0.06); color: var(--secondary); }
+  .badge.cold .d { background: var(--muted); }
+  .badge.dead { background: var(--bad-bg); color: var(--bad-text); }
+  .badge.dead .d { background: var(--bad-text); }
+
+  /* drawer */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: var(--z-drawer-backdrop); }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 480px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--border); z-index: var(--z-drawer); transform: translateX(100%); transition: transform .24s cubic-bezier(0.22,1,0.36,1); display: flex; flex-direction: column; }
+  .drawer.show { transform: translateX(0); }
+  .drawer-head { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .drawer-head .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .drawer-head h3 { font-size: 16px; color: var(--bright); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .drawer-head h3 svg { width: 18px; height: 18px; color: var(--primary); }
+  .drawer-head .code { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .close-btn { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 4px; background: var(--hover); border: 1px solid var(--border); color: var(--secondary); }
+  .close-btn:hover { background: var(--active); color: var(--primary); }
+  .close-btn svg { width: 15px; height: 15px; }
+  .drawer-body { overflow-y: auto; padding: 4px 0 18px; }
+  .drawer-sec { padding: 14px 18px; }
+  .drawer-sec .sh { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .drawer-sec .sh svg { width: 14px; height: 14px; color: var(--primary); }
+  .drawer-sec .sh b { font-size: 12px; color: var(--bright); font-weight: 600; }
+  .drawer-sec .sh .n { font-size: 11px; color: var(--muted); margin-left: auto; }
+  /* drawer mini metrics */
+  .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mini { padding: 10px; border-radius: 6px; background: var(--hover); border: 1px solid var(--border); }
+  .mini .v { font-size: 18px; font-family: var(--mono); font-weight: 600; color: var(--bright); }
+  .mini .v.good { color: var(--good-text); }
+  .mini .k { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .mini-chart { display: flex; align-items: flex-end; gap: 4px; height: 60px; }
+  .mini-chart .b { flex: 1; background: var(--bar-fill); border-radius: 2px 2px 0 0; opacity: 0.85; }
+  .row-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 4px; }
+  .row-line:hover { background: var(--hover); }
+  .row-line .lab { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--secondary); }
+  .row-line .lab .dot { width: 8px; height: 8px; border-radius: 2px; }
+  .row-line .lab b { color: var(--text); font-weight: 500; }
+  .row-line .barwrap { flex: 1; margin: 0 10px; height: 5px; border-radius: 999px; background: var(--icon-well); overflow: hidden; }
+  .row-line .barwrap > span { display: block; height: 100%; border-radius: 999px; }
+  .row-line .ct { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 56px; text-align: right; }
+  .row-line .go { color: var(--muted); display: inline-flex; }
+  .row-line:hover .go { color: var(--primary); }
+  .row-line .go svg { width: 13px; height: 13px; }
+  /* debug corner */
+  .debug { margin: 4px 18px 0; border: 1px dashed var(--border); border-radius: 6px; }
+  .debug summary { padding: 9px 12px; font-size: 11px; color: var(--muted); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; }
+  .debug summary::-webkit-details-marker { display: none; }
+  .debug summary svg { width: 12px; height: 12px; }
+  .debug[open] summary { border-bottom: 1px dashed var(--border); color: var(--secondary); }
+  .debug .kv { padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
+  .debug .kv .k { font-size: 11px; color: var(--muted); }
+  .debug .kv .v { font-size: 11px; color: var(--secondary); font-family: var(--mono); word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="shell" id="shell">
+
+  <!-- sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div><h1>SDD 质量观测台</h1><div class="sub">Data Observation</div></div>
+    </div>
+    <nav>
+      <div class="nav-group"><div class="label">总览</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M2 12h4m12 0h4M5 19l2-2m10 0l2 2"/><circle cx="12" cy="13" r="4"/></svg>总览</div>
+      </div>
+      <div class="nav-group"><div class="label">看板</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>用户分析</div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>技能分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg>产出分析</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>知识库分析</div>
+      </div>
+      <div class="nav-group"><div class="label">配置</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4 12H1m22 0h-3"/></svg>语义映射</div>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- topbar -->
+  <header class="top">
+    <div class="crumb">看板 / <b>技能分析</b></div>
+    <div class="snapshot"><span class="dot"></span>累计口径 · 已 seed 13 个 SDD 技能 · 6-02 10:30</div>
+  </header>
+
+  <div class="demo-bar">
+    <b>示意操作：</b>点击任意技能行打开「单技能画像」抽屉。漏斗台阶与抽屉里的人只作<b>出链</b>（跳产出/用户分析），本页绝不展开需求详情。
+  </div>
+
+  <!-- main -->
+  <main>
+    <div class="page-head">
+      <h2>技能分析</h2>
+      <span class="desc">SDD 方法论被用得怎么样 · 阶段漏斗 / 关键技能 / 活冷死</span>
+    </div>
+
+    <!-- ① KPI -->
+    <div class="kpi-row">
+      <section class="card pad kpi">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <div class="body">
+          <span class="name">技能调用量</span>
+          <strong class="val volt">8,432</strong>
+          <div>
+            <div class="progress"><span style="width:55%"></span></div>
+            <div class="prog-cap"><em>方法论完整度 55%</em><em>较上周期 ↑ 12%</em></div>
+          </div>
+        </div>
+      </section>
+      <section class="card pad kpi">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg></div>
+        <div class="body">
+          <span class="name">活跃用户</span>
+          <strong class="val">37</strong>
+          <em class="hint">较上周期 ↑ 8%</em>
+        </div>
+      </section>
+      <section class="card pad kpi">
+        <div class="well"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6m0-6c0 6 6 6 6 6h6"/></svg></div>
+        <div class="body">
+          <span class="name">覆盖需求</span>
+          <strong class="val">216</strong>
+          <em class="hint">至少触发 1 个 SDD 阶段</em>
+        </div>
+      </section>
+      <section class="card pad kpi">
+        <div class="well" style="color:var(--bad-text)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></div>
+        <div class="body">
+          <span class="name">死技能</span>
+          <strong class="val bad">3</strong>
+          <em class="hint">seed 了但 &gt;30 天无人用</em>
+        </div>
+      </section>
+    </div>
+
+    <!-- ② funnel + trend -->
+    <div class="grid-2-1">
+      <section class="card pad">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+          <h3>SDD 方法论完整度漏斗</h3>
+          <span class="note">起步需求 → 各阶段接续率 · 只读</span>
+        </div>
+        <div class="funnel">
+          <div class="stage">
+            <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-proposal)"></span>立项 <span class="code">proposal</span></span><span class="ct"><b>184</b> 需求</span></div>
+            <div class="bar-track"><span style="width:100%;background:var(--st-proposal)"></span></div>
+          </div>
+          <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 78%</div>
+          <div class="stage">
+            <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-design)"></span>设计 <span class="code">design</span></span><span class="ct"><b>143</b> 需求</span></div>
+            <div class="bar-track"><span style="width:78%;background:var(--st-design)"></span></div>
+          </div>
+          <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 79%</div>
+          <div class="stage">
+            <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-task)"></span>拆任务 <span class="code">task</span></span><span class="ct"><b>113</b> 需求</span></div>
+            <div class="bar-track"><span style="width:61%;background:var(--st-task)"></span></div>
+          </div>
+          <div class="drop cliff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 56% <span class="cliff-tag">断崖 ↓ task → code</span></div>
+          <div class="stage">
+            <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-code)"></span>编码落地 <span class="code">code</span></span><span class="ct"><b>63</b> 需求</span></div>
+            <div class="bar-track"><span style="width:34%;background:var(--st-code)"></span></div>
+          </div>
+          <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>接续 51%</div>
+          <div class="stage">
+            <div class="lab"><span class="nm"><span class="dot" style="background:var(--st-review)"></span>评审 <span class="code">review</span></span><span class="ct"><b>32</b> 需求</span></div>
+            <div class="bar-track"><span style="width:17%;background:var(--st-review)"></span></div>
+          </div>
+        </div>
+        <div class="funnel-foot">
+          <span>立项 184 → 落地 63 · <b style="color:var(--bad-text)">最大流失在 task→code（缺一半）</b></span>
+          <a class="out-link" onclick="return false" href="#">看 task 未落地需求 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></a>
+        </div>
+      </section>
+
+      <section class="card pad">
+        <div class="sec-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+          <h3>调用量趋势</h3>
+          <span class="note">堆叠 by 阶段</span>
+        </div>
+        <div class="chart" id="trend"></div>
+        <div class="legend">
+          <span><i class="d" style="background:var(--st-proposal)"></i>proposal</span>
+          <span><i class="d" style="background:var(--st-design)"></i>design</span>
+          <span><i class="d" style="background:var(--st-task)"></i>task</span>
+          <span><i class="d" style="background:var(--st-code)"></i>code</span>
+          <span><i class="d" style="background:var(--st-review)"></i>review</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ③ top3 -->
+    <section class="card pad">
+      <div class="sec-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4a2 2 0 0 1-2-2V4h6m8 5h2a2 2 0 0 0 2-2V4h-6M6 4h12v6a6 6 0 0 1-12 0z"/><path d="M9 20h6M12 16v4"/></svg>
+        <h3>标杆技能</h3>
+        <span class="note">按调用量 TOP 3</span>
+      </div>
+      <div class="top3">
+        <div class="rank">
+          <div class="bar" style="background:var(--primary)"></div>
+          <div class="badge-no" style="background:var(--primary);color:#0a0a0a;border-radius:0 6px 0 6px"># 1</div>
+          <div class="title">代码实现</div>
+          <div class="code">bk-fe-code</div>
+          <div class="meta"><span>2,140 次</span><span>31 人</span><span>156 需求</span></div>
+          <div class="conv"><div class="cap"><span>产出落地</span><span>1,820 次写入</span></div><div class="track"><span class="fill" style="width:85%;background:var(--primary)"></span></div></div>
+        </div>
+        <div class="rank">
+          <div class="bar" style="background:var(--bar-fill)"></div>
+          <div class="badge-no" style="background:var(--bar-fill);color:#0a0a0a;border-radius:0 6px 0 6px"># 2</div>
+          <div class="title">系统设计</div>
+          <div class="code">bk-fe-design</div>
+          <div class="meta"><span>1,460 次</span><span>28 人</span><span>143 需求</span></div>
+          <div class="conv"><div class="cap"><span>产出 artifact</span><span>143 篇 design.md</span></div><div class="track"><span class="fill" style="width:62%;background:var(--bar-fill)"></span></div></div>
+        </div>
+        <div class="rank">
+          <div class="bar" style="background:var(--muted)"></div>
+          <div class="badge-no" style="background:var(--muted);color:#101010;border-radius:0 6px 0 6px"># 3</div>
+          <div class="title">技术提案</div>
+          <div class="code">bk-fe-proposal</div>
+          <div class="meta"><span>1,210 次</span><span>26 人</span><span>184 需求</span></div>
+          <div class="conv"><div class="cap"><span>产出 artifact</span><span>184 篇 proposal.md</span></div><div class="track"><span class="fill" style="width:52%;background:var(--muted)"></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ④ table -->
+    <section class="card">
+      <div class="toolbar">
+        <div class="seg-ctl"><button class="on">全部</button><button>按阶段分组</button></div>
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input placeholder="搜索技能名称" />
+        </div>
+        <div class="tabs"><button class="on">全部</button><button>仅冷/死</button></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>技能</th><th>状态</th><th class="r">调用量</th><th class="r">用户数</th><th class="r">覆盖需求</th>
+            <th>调用后最常接续</th><th class="r">产出转化（artifact / 落地）</th><th class="r">最近调用</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="table-foot"><span>共 13 个 SDD 技能 · 活 8 / 冷 2 / 死 3</span><span>1 / 1 页</span></div>
+    </section>
+  </main>
+</div>
+
+<!-- ── Drawer: 单技能画像 ── -->
+<div class="backdrop" id="bk" onclick="closeDrawer()"></div>
+<div class="drawer" id="dw">
+  <div class="drawer-head">
+    <div class="row">
+      <div>
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg><span id="dwTitle">代码实现</span> <span class="badge live" id="dwBadge"><span class="d"></span>活</span></h3>
+        <div class="code" id="dwCode">bk-fe-code · code</div>
+      </div>
+      <button class="close-btn" onclick="closeDrawer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <!-- 概览三连 -->
+    <div class="drawer-sec">
+      <div class="mini-grid">
+        <div class="mini"><div class="v">2,140</div><div class="k">累计调用</div></div>
+        <div class="mini"><div class="v">31</div><div class="k">使用人数</div></div>
+        <div class="mini"><div class="v good">1,820</div><div class="k">落地代码写入</div></div>
+      </div>
+    </div>
+    <!-- 调用趋势 -->
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg><b>调用趋势</b><span class="n">近 30 天</span></div>
+      <div class="mini-chart" id="dwChart"></div>
+    </div>
+    <!-- 接续分布（技能侧独占）-->
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg><b>调用后最常接续</b><span class="n">同会话下一个技能</span></div>
+      <div class="row-line"><span class="lab"><span class="dot" style="background:var(--st-review)"></span><b>代码评审</b> codereview</span><span class="barwrap"><span style="width:46%;background:var(--st-review)"></span></span><span class="ct">46%</span></div>
+      <div class="row-line"><span class="lab"><span class="dot" style="background:var(--st-task)"></span><b>拆任务</b> task</span><span class="barwrap"><span style="width:22%;background:var(--st-task)"></span></span><span class="ct">22%</span></div>
+      <div class="row-line"><span class="lab"><span class="dot" style="background:var(--muted)"></span>链路终点（无下一跳）</span><span class="barwrap"><span style="width:32%;background:var(--muted)"></span></span><span class="ct">32%</span></div>
+    </div>
+    <!-- 谁在用 → 出链用户分析 -->
+    <div class="drawer-sec">
+      <div class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg><b>谁在用</b><span class="n">Top 用户 · 点击跳用户分析</span></div>
+      <div class="row-line" style="cursor:pointer"><span class="lab"><b>li.meng</b></span><span class="ct">412 次</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+      <div class="row-line" style="cursor:pointer"><span class="lab"><b>wang.fei</b></span><span class="ct">388 次</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+      <div class="row-line" style="cursor:pointer"><span class="lab"><b>zhao.lin</b></span><span class="ct">301 次</span><span class="go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg></span></div>
+    </div>
+    <!-- 调试角（旧的语义配对自检收敛到这里）-->
+    <details class="debug">
+      <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>埋点自检（语义配对 · 排障用）</summary>
+      <div class="kv">
+        <span class="k">语义代码</span><span class="v">code</span>
+        <span class="k">原始技能名</span><span class="v">bk-fe-code, bk-fe:code, /bk-fe-code</span>
+        <span class="k">配对方式</span><span class="v">alias_exact</span>
+        <span class="k">首次出现</span><span class="v">2026-05-12 09:33</span>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+  // ── trend stacked bars (by stage) ──
+  const ST = ['var(--st-proposal)','var(--st-design)','var(--st-task)','var(--st-code)','var(--st-review)'];
+  const trend = document.getElementById('trend');
+  const days = 14;
+  for (let i=0;i<days;i++){
+    const segs=[12+Math.round(Math.random()*10),10+Math.round(Math.random()*9),7+Math.round(Math.random()*7),6+Math.round(Math.random()*8),2+Math.round(Math.random()*4)];
+    const total=segs.reduce((a,b)=>a+b,0);
+    const col=document.createElement('div'); col.className='col';
+    const stack=document.createElement('div'); stack.className='stack'; stack.style.height=(total*1.7)+'px';
+    segs.forEach((s,si)=>{const seg=document.createElement('div');seg.className='seg';seg.style.height=(s*1.7)+'px';seg.style.background=ST[si];stack.appendChild(seg);});
+    const tick=document.createElement('div'); tick.className='tick'; tick.textContent=(i%3===0)?('5/'+(20+i)):'';
+    col.appendChild(stack); col.appendChild(tick); trend.appendChild(col);
+  }
+  // drawer mini chart
+  const dwc=document.getElementById('dwChart');
+  for(let i=0;i<30;i++){const b=document.createElement('div');b.className='b';b.style.height=(20+Math.random()*40)+'px';dwc.appendChild(b);}
+
+  // ── table rows ──
+  const dot=(c)=>`<span class="dot" style="background:${c}"></span>`;
+  const rows=[
+    {n:'代码实现',c:'bk-fe-code',code:'code',st:'live',u:2140,usr:31,wi:156,next:['代码评审','codereview',46,'var(--st-review)'],art:'—',land:1820},
+    {n:'系统设计',c:'bk-fe-design',code:'design',st:'live',u:1460,usr:28,wi:143,next:['代码实现','code',71,'var(--st-code)'],art:143,land:0},
+    {n:'技术提案',c:'bk-fe-proposal',code:'proposal',st:'live',u:1210,usr:26,wi:184,next:['系统设计','design',78,'var(--st-design)'],art:184,land:0},
+    {n:'任务拆解',c:'bk-fe-task',code:'task',st:'live',u:980,usr:24,wi:131,next:['代码实现','code',56,'var(--st-code)'],art:131,land:0},
+    {n:'代码评审',c:'bk-fe-codereview',code:'codereview',st:'live',u:540,usr:19,wi:88,next:['代码实现','code',38,'var(--st-code)'],art:88,land:210},
+    {n:'设计评审',c:'bk-fe-designreview',code:'designreview',st:'cold',u:62,usr:7,wi:21,next:['系统设计','design',40,'var(--st-design)'],art:21,land:0},
+    {n:'测试',c:'bk-fe-test',code:'test',st:'cold',u:48,usr:5,wi:14,next:['—','无',0,'var(--muted)'],art:'—',land:96},
+    {n:'风险学习',c:'bk-fe-risk-learn',code:'risk-learn',st:'dead',u:0,usr:0,wi:0,next:['—','从无调用',0,'var(--muted)'],art:'—',land:0},
+    {n:'排障医生',c:'bk-fe-doctor',code:'doctor',st:'dead',u:0,usr:0,wi:0,next:['—','从无调用',0,'var(--muted)'],art:'—',land:0},
+  ];
+  const STMAP={live:['live','活'],cold:['cold','冷'],dead:['dead','死']};
+  const stripColor={live:'var(--good-text)',cold:'var(--muted)',dead:'var(--bad-text)'};
+  const fmt=(v)=>v==='—'?'—':v.toLocaleString();
+  document.getElementById('rows').innerHTML=rows.map(r=>{
+    const [bc,bl]=STMAP[r.st];
+    const nameColor = r.st==='dead' ? 'color:var(--bad-text)' : '';
+    const land = r.land===0?'<span class="land zero">0</span>':`<span class="land">${fmt(r.land)}</span>`;
+    const nextHtml = r.next[2]>0
+      ? `<span class="next-skill">${dot(r.next[3])}<b style="color:var(--text);font-weight:500">${r.next[0]}</b><span class="pct">${r.next[2]}%</span></span>`
+      : `<span class="next-skill" style="color:var(--muted)">${r.next[1]}</span>`;
+    return `<tr onclick="openDrawer('${r.n}','${r.c}','${r.code}','${r.st}')">
+      <td><div class="sk-cell"><span class="strip" style="background:${stripColor[r.st]}"></span>
+        <span class="sk-name" style="${nameColor}">${r.n}<span class="mono">${r.c}</span></span></div></td>
+      <td><span class="badge ${bc}"><span class="d"></span>${bl}</span></td>
+      <td class="r">${fmt(r.u)}</td>
+      <td class="r">${r.usr||'—'}</td>
+      <td class="r">${r.wi||'—'}</td>
+      <td>${nextHtml}</td>
+      <td class="r"><span class="conv-cell"><span class="art">${fmt(r.art)}</span><span style="color:var(--muted)">/</span>${land}</span></td>
+      <td class="r" style="color:var(--secondary)">${r.st==='dead'?'—':'2h 前'}</td>
+    </tr>`;
+  }).join('');
+
+  // ── drawer ──
+  function openDrawer(n,c,code,st){
+    document.getElementById('dwTitle').textContent=n;
+    document.getElementById('dwCode').textContent=c+' · '+code;
+    const [bc,bl]=STMAP[st];
+    const b=document.getElementById('dwBadge'); b.className='badge '+bc; b.innerHTML='<span class="d"></span>'+bl;
+    document.getElementById('bk').classList.add('show');
+    document.getElementById('dw').classList.add('show');
+  }
+  function closeDrawer(){
+    document.getElementById('bk').classList.remove('show');
+    document.getElementById('dw').classList.remove('show');
+  }
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+</script>
+</body>
+</html>
