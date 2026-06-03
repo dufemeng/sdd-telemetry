@@ -34,8 +34,12 @@ const STAGE_LABELS: Record<SddStage, string> = {
 type UserStatus = 'live' | 'cold' | 'churn';
 type StatusFilter = 'all' | UserStatus | 'new';
 
-const BUS_FACTOR_THRESHOLD = 2;
-const STAGE_DROP_THRESHOLD = 0.5;
+// 三态状态的中文标签：单一来源，徽标 / tab / 图例 / 页脚统一引用，避免简写不一致
+const STATUS_LABELS: Record<UserStatus, string> = {
+  live: '活跃',
+  cold: '转冷',
+  churn: '流失',
+};
 
 function getSddDepth(stages: string[]): number {
   return SDD_STAGES.filter((s) => stages.includes(s)).length;
@@ -70,12 +74,13 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
 
 // ---- StatusBadge (live/cold/churn + optional new overlay) ----
 function StatusBadge({ status, isNew }: { status: UserStatus; isNew?: boolean }) {
-  const map: Record<UserStatus, { cls: string; label: string }> = {
-    live: { cls: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]', label: '活跃' },
-    cold: { cls: 'text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]', label: '转冷' },
-    churn: { cls: 'text-[var(--color-bad-text)] bg-[var(--color-bad-bg)]', label: '流失' },
+  const clsMap: Record<UserStatus, string> = {
+    live: 'text-[var(--color-good-text)] bg-[var(--color-good-bg)]',
+    cold: 'text-[var(--color-secondary)] bg-[rgba(255,255,255,0.06)]',
+    churn: 'text-[var(--color-bad-text)] bg-[var(--color-bad-bg)]',
   };
-  const { cls, label } = map[status];
+  const cls = clsMap[status];
+  const label = STATUS_LABELS[status];
   return (
     <span className="inline-flex items-center gap-1">
       <span
@@ -130,9 +135,9 @@ function FilterTabs({
 }) {
   const tabs: Array<{ key: StatusFilter; label: string }> = [
     { key: 'all', label: '全部' },
-    { key: 'live', label: '活' },
-    { key: 'cold', label: '冷' },
-    { key: 'churn', label: '流失' },
+    { key: 'live', label: STATUS_LABELS.live },
+    { key: 'cold', label: STATUS_LABELS.cold },
+    { key: 'churn', label: STATUS_LABELS.churn },
     { key: 'new', label: '新成员' },
   ];
   return (
@@ -204,28 +209,27 @@ export default function UsersPage() {
     ? rawData.reduce((s, u) => s + maturityReached(u), 0) / total
     : 0;
 
-  // 漏斗：每阶段命中人数 + 接续率 + 断崖 + bus-factor 单点风险
-  const funnelData = SDD_STAGES.map((stage) => ({
-    stage,
-    label: STAGE_LABELS[stage],
-    count: rawData.filter((u) => u.semanticStages.includes(stage)).length,
-  }));
+  // 漏斗：起点为团队规模，往下是各 SDD 阶段走到的人数。形状相对全队收窄，并标出相邻段绝对流失最多的一步
+  const funnelRows = [
+    { key: 'team', label: '团队规模', code: null as string | null, count: total },
+    ...SDD_STAGES.map((stage) => ({
+      key: stage as string,
+      label: STAGE_LABELS[stage],
+      code: stage as string | null,
+      count: rawData.filter((u) => u.semanticStages.includes(stage)).length,
+    })),
+  ];
+  const funnelMax = Math.max(...funnelRows.map((d) => d.count), 1);
+  const worstDropKey = funnelRows.reduce<{ key: string; drop: number } | null>((worst, item, i) => {
+    if (i === 0) return worst;
+    const drop = funnelRows[i - 1]!.count - item.count;
+    if (drop > 0 && (worst === null || drop > worst.drop)) return { key: item.key, drop };
+    return worst;
+  }, null)?.key ?? null;
 
-  const funnelTransitions = funnelData
-    .map((item, i) => {
-      if (i === 0) return null;
-      const prev = funnelData[i - 1]!.count;
-      const rate = prev > 0 ? item.count / prev : 0;
-      return { from: funnelData[i - 1]!.stage, to: item.stage, rate };
-    })
-    .filter((x): x is { from: SddStage; to: SddStage; rate: number } => x !== null);
-  const cliff = funnelTransitions.length > 0
-    ? funnelTransitions.reduce((min, t) => (t.rate < min.rate ? t : min), funnelTransitions[0]!)
-    : null;
-
-  // 流失预警：churn 且曾有活动
-  const dropoffs = rawData
-    .filter((u) => u.status === 'churn' && (u.skillUsageCount > 0 || u.interactionCount > 0))
+  // 转冷预警：cold（7~30 天无活动）且曾有活动，是挽回的早期信号，区别于已流失
+  const coolingMembers = rawData
+    .filter((u) => u.status === 'cold' && (u.skillUsageCount > 0 || u.interactionCount > 0))
     .sort((a, b) => {
       const aDays = daysSince(a.lastSeenAt, now) ?? -1;
       const bDays = daysSince(b.lastSeenAt, now) ?? -1;
@@ -273,7 +277,7 @@ export default function UsersPage() {
 
   // 三态堆叠条
   const triWidth = (count: number) => (total > 0 ? (count / total) * 100 : 0);
-  const triSegments = [
+  const triSegments: Array<{ key: UserStatus; count: number; color: string }> = [
     { key: 'live', count: liveCount, color: 'var(--color-good-text)' },
     { key: 'cold', count: coldCount, color: 'var(--color-muted)' },
     { key: 'churn', count: churnCount, color: 'var(--color-bad-text)' },
@@ -309,7 +313,7 @@ export default function UsersPage() {
                 {triSegments.map((seg) => (
                   <span key={seg.key} className="inline-flex items-center gap-1 text-[var(--color-muted)]">
                     <span className="w-[6px] h-[6px] rounded-full" style={{ background: seg.color }} />
-                    {seg.key === 'live' ? '活' : seg.key === 'cold' ? '冷' : '流失'} {seg.count}
+                    {STATUS_LABELS[seg.key]} {seg.count}
                   </span>
                 ))}
               </div>
@@ -398,10 +402,10 @@ export default function UsersPage() {
         </section>
       </div>
 
-      {/* Section 2: SDD 阶段渗透 + 流失预警 */}
+      {/* Section 2: SDD 阶段渗透 + 转冷预警 */}
       <div className="grid grid-cols-3 gap-3">
 
-        {/* SDD 阶段渗透（含 bus-factor 单点风险提示） */}
+        {/* SDD 阶段渗透：相对第一步收窄的漏斗 */}
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
@@ -409,19 +413,20 @@ export default function UsersPage() {
               <h3 className="text-[14px] font-semibold text-[#f5f5f5]">SDD 阶段渗透</h3>
             </div>
             <span className="text-[11px] text-[var(--color-muted)]">
-              已达人数 / 全队 {total} · ≤ {BUS_FACTOR_THRESHOLD} 人即单点风险
+              从全队 {total} 人逐阶段收窄 · 数字为占全队比例
             </span>
           </div>
-          <div className="flex flex-col gap-[5px]">
-            {funnelData.map((item, i) => {
-              const prev = i > 0 ? funnelData[i - 1]!.count : null;
-              const rate = prev !== null && prev > 0 ? item.count / prev : null;
-              const pct = total > 0 ? (item.count / total) * 100 : 0;
-              const isCliff = cliff !== null && cliff.to === item.stage && cliff.rate < STAGE_DROP_THRESHOLD;
-              const isBusFactorRisk = item.count > 0 && item.count <= BUS_FACTOR_THRESHOLD;
+          <div className="flex flex-col">
+            {funnelRows.map((item, i) => {
+              const drop = i > 0 ? funnelRows[i - 1]!.count - item.count : null;
+              const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
+              const topW = item.count <= 0 ? 0 : Math.max((item.count / funnelMax) * 100, 6);
+              const nextCount = i < funnelRows.length - 1 ? funnelRows[i + 1]!.count : item.count;
+              const botW = nextCount <= 0 ? 0 : Math.max((nextCount / funnelMax) * 100, 6);
+              const isWorstDrop = item.key === worstDropKey;
               return (
                 <div
-                  key={item.stage}
+                  key={item.key}
                   className="grid items-center gap-3"
                   style={{ gridTemplateColumns: '148px 1fr auto' }}
                 >
@@ -429,40 +434,36 @@ export default function UsersPage() {
                   <span className="inline-flex items-center gap-2 text-[12px] text-[var(--color-secondary)] min-w-0">
                     <span className="w-[6px] h-[6px] flex-none rounded-full" style={{ background: 'var(--color-primary)' }} />
                     {item.label}
-                    <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {item.stage}
-                    </code>
-                  </span>
-                  {/* 居中收窄漏斗条：宽度 = 渗透率（人数 / 全队） */}
-                  <div className="flex justify-center">
-                    <div
-                      className="h-[20px] rounded-[3px] transition-all duration-500"
-                      style={{
-                        width: `${Math.max(pct, 2)}%`,
-                        background: `rgba(250,255,105,${1 - i * 0.22})`,
-                      }}
-                    />
-                  </div>
-                  {/* 渗透率 + 接续/断崖 + 单点风险 */}
-                  <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                    <span className="text-[12px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                      <b>{item.count}</b> 人 · {Math.round(pct)}%
-                    </span>
-                    <span className={`text-[10px] ${isCliff ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]'}`}>
-                      {rate === null ? '起点' : isCliff ? `断崖 ${Math.round(rate * 100)}%` : `接续 ${Math.round(rate * 100)}%`}
-                    </span>
-                    {isBusFactorRisk ? (
-                      <span
-                        className="inline-flex items-center px-[6px] py-[1px] rounded-full text-[10px]"
-                        style={{
-                          color: 'var(--color-bad-text)',
-                          background: 'var(--color-bad-bg)',
-                          border: '1px solid var(--color-bad-text)',
-                        }}
-                      >
-                        单点风险
-                      </span>
+                    {item.code ? (
+                      <code className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                        {item.code}
+                      </code>
                     ) : null}
+                  </span>
+                  {/* 漏斗梯形：上沿=本段、下沿=下一段，相邻段共边连成喇叭口；宽度相对全队 */}
+                  <div
+                    className="h-[38px] transition-all duration-500"
+                    style={{
+                      background: `rgba(250,255,105,${1 - i * 0.22})`,
+                      clipPath: `polygon(${50 - topW / 2}% 0%, ${50 + topW / 2}% 0%, ${50 + botW / 2}% 100%, ${50 - botW / 2}% 100%)`,
+                    }}
+                  />
+                  {/* 数字 = 占全队比例；下方 = 相对上一步的人数变化 */}
+                  <div className="flex flex-col items-end leading-tight">
+                    <span className="text-[12px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <b>{item.count}</b> 人 · 占全队 {pct}%
+                    </span>
+                    <span className={`text-[10px] ${isWorstDrop ? 'text-[var(--color-bad-text)]' : 'text-[var(--color-muted)]'}`}>
+                      {drop === null
+                        ? '起点'
+                        : isWorstDrop
+                          ? `流失最严重 · 少 ${drop} 人`
+                          : drop > 0
+                            ? `较上一步少 ${drop} 人`
+                            : drop === 0
+                              ? '与上一步持平'
+                              : `较上一步多 ${-drop} 人`}
+                    </span>
                   </div>
                 </div>
               );
@@ -470,7 +471,7 @@ export default function UsersPage() {
           </div>
         </section>
 
-        {/* 流失预警 */}
+        {/* 转冷预警：早期挽回信号，区别于已流失 */}
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE }>
           <div
             className="flex items-center gap-2 px-[14px] py-3"
@@ -478,16 +479,16 @@ export default function UsersPage() {
           >
             <AlertTriangle
               size={18}
-              style={{ color: dropoffs.length > 0 ? 'var(--color-bad-text)' : 'var(--color-muted)' }}
+              style={{ color: coolingMembers.length > 0 ? 'var(--color-warn-text)' : 'var(--color-muted)' }}
             />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">流失预警</h3>
-            <span className="text-[11px] text-[var(--color-muted)]">曾活跃 · 近 30 天掉零</span>
+            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">转冷预警</h3>
+            <span className="text-[11px] text-[var(--color-muted)]">曾活跃 · 7~30 天无活动</span>
           </div>
           <div className="flex flex-col">
-            {dropoffs.length === 0 ? (
+            {coolingMembers.length === 0 ? (
               <div className="px-[14px] py-4 text-[12px] text-[var(--color-muted)]">暂无</div>
             ) : (
-              dropoffs.slice(0, 5).map((u) => {
+              coolingMembers.slice(0, 5).map((u) => {
                 const days = daysSince(u.lastSeenAt, now);
                 return (
                   <button
@@ -506,9 +507,9 @@ export default function UsersPage() {
                 );
               })
             )}
-            {dropoffs.length > 5 ? (
+            {coolingMembers.length > 5 ? (
               <div className="px-[14px] py-[6px] text-[11px] text-[var(--color-muted)]">
-                …另有 {dropoffs.length - 5} 人
+                …另有 {coolingMembers.length - 5} 人
               </div>
             ) : null}
           </div>
@@ -581,7 +582,7 @@ export default function UsersPage() {
                     </span>
                     {u.codeWriteCount > 0 ? (
                       <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-good-text)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'var(--color-good-bg)', border: '1px solid var(--color-good-text)' }}>
-                        {u.codeWriteCount} 落地
+                        {u.codeWriteCount} 次编码
                       </span>
                     ) : null}
                     {days !== null ? (
@@ -636,7 +637,7 @@ export default function UsersPage() {
           <table className="w-full" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 落地）', '接入时长', '最近活跃'].map((h) => (
+                {['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃'].map((h) => (
                   <th
                     key={h}
                     className="px-[12px] py-[8px] text-left text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)]"
@@ -705,7 +706,7 @@ export default function UsersPage() {
                             {u.artifactCount} <span className="text-[10px] text-[var(--color-muted)]">artifact</span>
                           </span>
                           <span className="text-[var(--color-good-text)]">
-                            {u.codeWriteCount} <span className="text-[10px] text-[var(--color-muted)]">落地</span>
+                            {u.codeWriteCount} <span className="text-[10px] text-[var(--color-muted)]">次编码</span>
                           </span>
                         </div>
                       </td>
@@ -744,7 +745,7 @@ export default function UsersPage() {
           style={{ borderTop: '1px solid var(--color-border)' }}
         >
           <span className="text-[11px] text-[var(--color-muted)]">
-            共 {filtered.length} 位成员 · 活 {liveCount} / 冷 {coldCount} / 流失 {churnCount}
+            共 {filtered.length} 位成员 · {STATUS_LABELS.live} {liveCount} / {STATUS_LABELS.cold} {coldCount} / {STATUS_LABELS.churn} {churnCount}
             {newCount > 0 ? ` · 新成员 ${newCount}` : ''}
           </span>
           {(hasNext || hasPrev) && (
