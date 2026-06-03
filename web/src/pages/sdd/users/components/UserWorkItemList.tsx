@@ -40,8 +40,8 @@ export function UserWorkItemList({
       ) : (
         <ul className="flex flex-col">
           <li
-            className="px-3 py-[8px] cursor-pointer hover:bg-[#171717] transition-colors"
-            style={{ borderBottom: '1px solid var(--color-border)', background: selectedId === null ? 'rgba(250,255,105,0.06)' : 'transparent' }}
+            className="px-3 py-[8px] cursor-pointer hover:bg-[var(--color-hover)] transition-colors"
+            style={{ borderBottom: '1px solid var(--color-border)', background: selectedId === null ? 'var(--color-active)' : 'transparent' }}
             onClick={() => onSelect(null)}
           >
             <span className="text-[12px] text-[var(--color-secondary)]">全部活动</span>
@@ -51,8 +51,8 @@ export function UserWorkItemList({
             return (
               <li
                 key={wi.workItemId}
-                className="px-3 py-[8px] cursor-pointer hover:bg-[#171717] transition-colors"
-                style={{ borderBottom: '1px solid var(--color-border)', background: isSelected ? 'rgba(250,255,105,0.06)' : 'transparent' }}
+                className="px-3 py-[8px] cursor-pointer hover:bg-[var(--color-hover)] transition-colors"
+                style={{ borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-active)' : 'transparent' }}
                 onClick={() => onSelect(wi.workItemId)}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -60,7 +60,7 @@ export function UserWorkItemList({
                   <Link
                     to={`/sdd/work-items/${wi.workItemId}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="text-[var(--color-primary)] hover:brightness-125 shrink-0"
+                    className="text-[var(--color-secondary)] hover:text-[var(--color-primary)] shrink-0"
                     title="跳转产出分析"
                   >
                     ↗
@@ -72,7 +72,7 @@ export function UserWorkItemList({
                       key={s}
                       title={STAGE_LABELS[s]}
                       className="w-[5px] h-[5px] rounded-full"
-                      style={{ background: wi.stageCodes.includes(s) ? 'var(--color-primary)' : 'rgba(255,255,255,0.10)' }}
+                      style={{ background: wi.stageCodes.includes(s) ? 'var(--color-secondary)' : 'var(--color-border)' }}
                     />
                   ))}
                   <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>

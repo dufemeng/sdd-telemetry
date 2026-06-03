@@ -704,11 +704,11 @@ schema_parse_failed
 - 产出：`artifactCount` / `codeWriteCount` / `codeReadCount`（基于 `sdd_interaction_tool_calls` 的工具调用计数，业务代码路径判定同 daily-report，最近无窗口）
 - 上手进度：`rampDays: number | null`（从 `firstSeenAt` 到走通 4 个 canonical 阶段 `proposal/design/task/codereview` 的天数，未走通时为 `null`）
 
-> 返回 `ORDER BY lastSeenAt DESC, id DESC`，受 `LIMIT 200` 限制。详情请用 `6.19 GET /api/sdd/users/:userId`（不受 200 限制）。
+> 返回 `ORDER BY lastSeenAt DESC, id DESC`，受 `LIMIT 200` 限制。详情请用 `6.16 GET /api/sdd/users/:userId`（不受 200 限制）。
 
 ### 6.16 GET /api/sdd/users/:userId
 
-单用户画像深下钻。响应为 `SddUserDetailResponse`：
+单用户画像深下钻。响应为 `SddUserDetail`（contract schema `SddUserDetailSchema`）：
 
 ```json
 {

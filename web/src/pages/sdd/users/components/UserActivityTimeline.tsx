@@ -33,10 +33,11 @@ export function UserActivityTimeline({
       {nodes.map((node) => {
         const isOpen = expanded.has(node.id);
         const Icon = node.kind === 'skill' ? Sparkles : node.kind === 'wiki' ? BookOpen : node.kind === 'discussion' ? MessageSquare : Wrench;
+        const markerColor = isOpen ? 'var(--color-secondary)' : 'var(--color-border)';
         return (
           <div key={node.id} className="flex gap-[10px] px-3 py-[8px]" style={{ borderBottom: '1px solid var(--color-border)' }}>
             <div className="flex flex-col items-center pt-[4px]">
-              <span className="w-[6px] h-[6px] rounded-full" style={{ background: 'var(--color-primary)' }} />
+              <span className="w-[6px] h-[6px] rounded-full" style={{ background: markerColor }} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
@@ -66,7 +67,7 @@ export function UserActivityTimeline({
                 {node.interactionId ? (
                   <button
                     onClick={() => onOpenInteraction(node.interactionId!)}
-                    className="inline-flex items-center gap-1 text-[10px] text-[var(--color-primary)] hover:underline"
+                    className="inline-flex items-center gap-1 text-[10px] text-[var(--color-secondary)] hover:text-[var(--color-primary)] hover:underline"
                   >
                     展开全文 <ArrowRight size={10} />
                   </button>

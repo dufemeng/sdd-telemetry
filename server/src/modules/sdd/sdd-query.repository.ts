@@ -797,7 +797,7 @@ export class SddQueryRepository {
   ): Promise<ArtifactWriteRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const userFilter = userId
-      ? ` AND EXISTS (SELECT 1 FROM sdd_interactions i WHERE i.id = {alias}.interaction_id AND i.user_id = ?)`
+      ? ` AND {alias}.user_id = ?`
       : '';
     const writeUserParams = userId ? [userId] : [];
     const turnUserParams = userId ? [userId] : [];

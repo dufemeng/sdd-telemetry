@@ -28,11 +28,13 @@ export function AdoptionRamp({
 }) {
   const stageMap = new Map(stages.map((s) => [s.stage, s.firstReachedAt]));
   const reachedCount = stages.filter((s) => s.firstReachedAt !== null).length;
-  const lastReachedIdx = SDD_STAGES.reduce(
+  const activeStageIndex = SDD_STAGES.reduce(
     (acc, s, i) => ((stageMap.get(s) ?? null) !== null ? i : acc),
     -1,
   );
   const isComplete = reachedCount === SDD_STAGES.length;
+  const completedRail = 'var(--color-secondary)';
+  const emptyRail = 'var(--color-border)';
 
   return (
     <section
@@ -63,7 +65,12 @@ export function AdoptionRamp({
           const reached = reachedAt !== null;
           const isLast = i === SDD_STAGES.length - 1;
 
-          const nodeColor = reached ? 'var(--color-primary)' : 'rgba(255,255,255,0.15)';
+          const isActive = i === activeStageIndex;
+          const nodeColor = isActive
+            ? 'var(--color-primary)'
+            : reached
+              ? 'var(--color-secondary)'
+              : 'var(--color-border)';
           const nodeSize = 8;
           const railH = 2;
 
@@ -84,9 +91,9 @@ export function AdoptionRamp({
                       background: SDD_STAGES.slice(0, i).every(
                         (ps) => (stageMap.get(ps) ?? null) !== null,
                       )
-                        ? 'var(--color-primary)'
-                        : 'rgba(255,255,255,0.08)',
-                      transition: 'background 0.3s',
+                        ? completedRail
+                        : emptyRail,
+                      transition: 'background 0.2s',
                     }}
                   />
                 )}
@@ -97,8 +104,7 @@ export function AdoptionRamp({
                     width: nodeSize,
                     height: nodeSize,
                     background: nodeColor,
-                    boxShadow: reached ? '0 0 0 3px rgba(250,255,105,0.12)' : 'none',
-                    transition: 'all 0.3s',
+                    transition: 'background 0.2s',
                   }}
                 />
                 {/* Rail segment after node (except last) */}
@@ -110,9 +116,9 @@ export function AdoptionRamp({
                       background: SDD_STAGES.slice(0, i + 1).every(
                         (ps) => (stageMap.get(ps) ?? null) !== null,
                       )
-                        ? 'var(--color-primary)'
-                        : 'rgba(255,255,255,0.08)',
-                      transition: 'background 0.3s',
+                        ? completedRail
+                        : emptyRail,
+                      transition: 'background 0.2s',
                     }}
                   />
                 )}
