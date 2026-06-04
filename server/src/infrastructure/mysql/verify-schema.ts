@@ -20,6 +20,15 @@ const expectedTables = [
   'sdd_errors',
   'sdd_daily_reports',
   'source_references',
+  'profile_projection_runs',
+  'profile_current_projection_runs',
+  'profile_capability_usages',
+  'profile_delivery_units',
+  'profile_artifacts',
+  'profile_artifact_writes',
+  'profile_artifact_turns',
+  'profile_knowledge_recalls',
+  'profile_code_activities',
 ];
 
 const expectedUniqueIndexes = [
@@ -41,6 +50,13 @@ const expectedUniqueIndexes = [
   'uk_sdd_errors_error_key',
   'uk_daily_report_date_timezone',
   'uk_source_references_reference_key',
+  'uk_profile_capability_usages_run_key',
+  'uk_profile_delivery_units_run_key',
+  'uk_profile_artifacts_run_key',
+  'uk_profile_artifact_writes_run_key',
+  'uk_profile_artifact_turns_run_key',
+  'uk_profile_knowledge_recalls_run_key',
+  'uk_profile_code_activities_run_key',
 ];
 
 const expectedColumns: Record<string, string[]> = {

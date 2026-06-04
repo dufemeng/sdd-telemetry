@@ -35,7 +35,8 @@
     "db:reclean": "pnpm --filter @sdd-telemetry/server db:reclean",
     "db:import-legacy-sqlite": "pnpm --filter @sdd-telemetry/server db:import-legacy-sqlite",
     "auth:bootstrap-admin": "pnpm --filter @sdd-telemetry/server auth:bootstrap-admin",
-    "profile:rebuild-source-references": "pnpm --filter @sdd-telemetry/worker profile:rebuild-source-references"
+    "profile:rebuild-source-references": "pnpm --filter @sdd-telemetry/worker profile:rebuild-source-references",
+    "profile:rebuild": "pnpm --filter @sdd-telemetry/worker profile:rebuild"
   },
   "devDependencies": {
     "@sdd-telemetry/config": "workspace:*",
