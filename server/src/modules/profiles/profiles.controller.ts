@@ -17,6 +17,9 @@ import {
   ProfileOverviewQuerySchema,
   ProfileOverviewSchema,
   ProfileSummaryListSchema,
+  ProfileUserDetailSchema,
+  ProfileUsersQuerySchema,
+  ProfileUsersResponseSchema,
   type ProfileArtifactTimelineItem,
   type ProfileCapabilityAnalytics,
   type ProfileCapabilityManifest,
@@ -25,6 +28,8 @@ import {
   type ProfileDemandDetail,
   type ProfileOverview,
   type ProfileSummary,
+  type ProfileUserDetail,
+  type ProfileUserItem,
 } from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
@@ -116,5 +121,21 @@ export class ProfilesController {
     const query = parseWithSchema(ProfileCapabilityUsagesQuerySchema, this.ctx.query);
     const data = await this.profilesService.listCapabilityUsages(profileId, query);
     return ok(parseWithSchema(ProfileCapabilityUsagesResponseSchema, data));
+  }
+
+  @Get('/:profileId/users')
+  async users() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileUsersQuerySchema, this.ctx.query);
+    const { items, total, page, pageSize } = await this.profilesService.listUsers(profileId, query);
+    return ok(parseWithSchema(ProfileUsersResponseSchema, { items, total, page, pageSize }));
+  }
+
+  @Get('/:profileId/users/:userId')
+  async userDetail() {
+    const profileId = this.ctx.params.profileId as string;
+    const userId = this.ctx.params.userId as string;
+    const data: ProfileUserDetail = await this.profilesService.getUserDetail(profileId, userId);
+    return ok(parseWithSchema(ProfileUserDetailSchema, data));
   }
 }

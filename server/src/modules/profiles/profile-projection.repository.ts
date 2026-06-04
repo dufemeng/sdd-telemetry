@@ -13,6 +13,13 @@ import type {
   ProfileDemandDetail,
   ProfileOverview,
   ProfileOverviewQuery,
+  ProfileUserDeliveryUnit,
+  ProfileUserDetail,
+  ProfileUserItem,
+  ProfileUserMaturity,
+  ProfileUserMaturityStage,
+  ProfileUserSummary,
+  ProfileUsersQuery,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, whereSql } from '../query-utils';
@@ -635,5 +642,281 @@ export class ProfileProjectionRepository {
     }));
 
     return { items, total: toNumber(countRows[0]?.v) };
+  }
+
+  // ── Users ────────────────────────────────────────────────────────────────────
+
+  async listUsers(
+    profileId: string,
+    runId: number,
+    query: ProfileUsersQuery,
+  ): Promise<{ items: ProfileUserItem[]; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['u.profile_id = ?', 'u.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+    addTimeRangeWhere(clauses, params, 'u.last_seen_at', query);
+
+    if (query.status && query.status !== 'live' && query.status !== 'cold' && query.status !== 'churn') {
+      // no-op
+    }
+    if (query.keyword) {
+      clauses.push('(u.display_name LIKE ? OR u.user_key LIKE ?)');
+      const kw = `%${query.keyword}%`;
+      params.push(kw, kw);
+    }
+
+    const offset = (query.page - 1) * query.pageSize;
+
+    const countRows = (await dataSource.query(
+      `SELECT COUNT(*) AS v FROM profile_users u ${whereSql(clauses)}`,
+      params,
+    )) as Array<Record<string, unknown>>;
+
+    const rows = (await dataSource.query(
+      `SELECT u.id, u.user_key, u.install_id, u.display_name, u.machine_id, u.machine_name,
+              u.first_seen_at, u.last_seen_at,
+              (SELECT COUNT(*) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id) AS capability_usage_count,
+              (SELECT COUNT(DISTINCT cu.interaction_id) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.interaction_id IS NOT NULL) AS interaction_count,
+              (SELECT COUNT(DISTINCT cu.delivery_unit_id) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.delivery_unit_id IS NOT NULL) AS delivery_unit_count,
+              (SELECT GROUP_CONCAT(DISTINCT cu.capability_code) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.capability_code IS NOT NULL) AS capability_stages,
+              (SELECT COUNT(*) FROM profile_artifacts a
+                WHERE a.projection_run_id = u.projection_run_id AND a.user_id = u.id) AS artifact_count,
+              (SELECT COUNT(*) FROM profile_knowledge_recalls kr
+                WHERE kr.projection_run_id = u.projection_run_id AND kr.user_id = u.id) AS knowledge_recall_count,
+              (SELECT COUNT(*) FROM profile_code_activities ca
+                WHERE ca.projection_run_id = u.projection_run_id AND ca.user_id = u.id AND ca.action_type IN ('write','edit','update')) AS code_write_count,
+              (SELECT COUNT(*) FROM profile_code_activities ca
+                WHERE ca.projection_run_id = u.projection_run_id AND ca.user_id = u.id AND ca.action_type IN ('read','grep','glob')) AS code_read_count
+       FROM profile_users u
+       ${whereSql(clauses)}
+       ORDER BY u.last_seen_at DESC, u.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, query.pageSize, offset],
+    )) as Array<Record<string, unknown>>;
+
+    const items: ProfileUserItem[] = rows.map((row) => {
+      const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : 0;
+      const firstSeen = row.first_seen_at ? new Date(String(row.first_seen_at)).getTime() : 0;
+      const now = Date.now();
+      const liveThreshold = 14 * 86_400_000;
+      const churnThreshold = 60 * 86_400_000;
+
+      let status: 'live' | 'cold' | 'churn' = 'cold';
+      if (lastSeen > 0 && now - lastSeen <= liveThreshold) status = 'live';
+      else if (lastSeen === 0 || now - lastSeen > churnThreshold) status = 'churn';
+
+      const rampDays = firstSeen > 0 ? Math.round((now - firstSeen) / 86_400_000) : null;
+      const isNew = firstSeen > 0 && now - firstSeen <= 30 * 86_400_000;
+
+      return {
+        id: toStringId(row.id),
+        userKey: String(row.user_key ?? ''),
+        installId: (row.install_id as string | null) ?? null,
+        displayName: (row.display_name as string | null) ?? null,
+        machineId: (row.machine_id as string | null) ?? null,
+        machineName: (row.machine_name as string | null) ?? null,
+        firstSeenAt: toIsoDate(row.first_seen_at),
+        lastSeenAt: toIsoDate(row.last_seen_at),
+        capabilityUsageCount: toNumber(row.capability_usage_count),
+        interactionCount: toNumber(row.interaction_count),
+        deliveryUnitCount: toNumber(row.delivery_unit_count),
+        capabilityStages: row.capability_stages ? String(row.capability_stages).split(',').filter(Boolean) : [],
+        status,
+        isNew,
+        artifactCount: toNumber(row.artifact_count),
+        knowledgeRecallCount: toNumber(row.knowledge_recall_count),
+        codeWriteCount: toNumber(row.code_write_count),
+        codeReadCount: toNumber(row.code_read_count),
+        rampDays,
+      };
+    });
+
+    return { items, total: toNumber(countRows[0]?.v) };
+  }
+
+  async getUserDetail(
+    profileId: string,
+    runId: number,
+    userId: string,
+  ): Promise<ProfileUserDetail | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+
+    const userRows = (await dataSource.query(
+      `SELECT u.id, u.user_key, u.install_id, u.display_name, u.machine_id, u.machine_name,
+              u.first_seen_at, u.last_seen_at
+       FROM profile_users u
+       WHERE u.profile_id = ? AND u.projection_run_id = ? AND u.id = ?
+       LIMIT 1`,
+      [profileId, runId, userId],
+    )) as Array<Record<string, unknown>>;
+
+    if (userRows.length === 0) return null;
+
+    const row = userRows[0]!;
+    const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : 0;
+    const firstSeen = row.first_seen_at ? new Date(String(row.first_seen_at)).getTime() : 0;
+    const now = Date.now();
+    const liveThreshold = 14 * 86_400_000;
+    const churnThreshold = 60 * 86_400_000;
+
+    let status: 'live' | 'cold' | 'churn' = 'cold';
+    if (lastSeen > 0 && now - lastSeen <= liveThreshold) status = 'live';
+    else if (lastSeen === 0 || now - lastSeen > churnThreshold) status = 'churn';
+
+    const isNew = firstSeen > 0 && now - firstSeen <= 30 * 86_400_000;
+    const rampDays = firstSeen > 0 ? Math.round((now - firstSeen) / 86_400_000) : null;
+
+    const [summaryRows, deliveryUnitRows, maturityRows] = await Promise.all([
+      this.getUserSummary(runId, userId),
+      this.getUserDeliveryUnits(runId, userId),
+      this.getUserMaturity(runId, userId),
+    ]);
+
+    const s = summaryRows[0] ?? {};
+    const capabilityStages = (await dataSource.query(
+      `SELECT GROUP_CONCAT(DISTINCT cu.capability_code) AS v
+       FROM profile_capability_usages cu
+       WHERE cu.projection_run_id = ? AND cu.user_id = ? AND cu.capability_code IS NOT NULL`,
+      [runId, userId],
+    )) as Array<Record<string, unknown>>;
+
+    const user: ProfileUserItem = {
+      id: toStringId(row.id),
+      userKey: String(row.user_key ?? ''),
+      installId: (row.install_id as string | null) ?? null,
+      displayName: (row.display_name as string | null) ?? null,
+      machineId: (row.machine_id as string | null) ?? null,
+      machineName: (row.machine_name as string | null) ?? null,
+      firstSeenAt: toIsoDate(row.first_seen_at),
+      lastSeenAt: toIsoDate(row.last_seen_at),
+      capabilityUsageCount: toNumber(s.capability_usage_count),
+      interactionCount: toNumber(s.interaction_count),
+      deliveryUnitCount: toNumber(s.delivery_unit_count),
+      capabilityStages: capabilityStages[0]?.v ? String(capabilityStages[0].v).split(',').filter(Boolean) : [],
+      status,
+      isNew,
+      artifactCount: toNumber(s.artifact_count),
+      knowledgeRecallCount: toNumber(s.knowledge_recall_count),
+      codeWriteCount: toNumber(s.code_write_count),
+      codeReadCount: toNumber(s.code_read_count),
+      rampDays,
+    };
+
+    const summary: ProfileUserSummary = {
+      deliveryUnitCount: toNumber(s.delivery_unit_count),
+      artifactCount: toNumber(s.artifact_count),
+      turnCount: toNumber(s.turn_count),
+      sessionCount: toNumber(s.session_count),
+      knowledgeRecallCount: toNumber(s.knowledge_recall_count),
+      codeWriteCount: toNumber(s.code_write_count),
+      codeReadCount: toNumber(s.code_read_count),
+    };
+
+    const m = maturityRows[0] ?? {};
+    const maturity: ProfileUserMaturity = {
+      stages: this.computeMaturityStages(user),
+      completionRate: this.computeMaturityCompletion(user),
+      rampDays,
+    };
+
+    const deliveryUnits: ProfileUserDeliveryUnit[] = deliveryUnitRows.map((du) => ({
+      deliveryUnitId: toStringId(du.id),
+      title: (du.title as string | null) ?? null,
+      stageCodes: du.stages ? String(du.stages).split(',').filter(Boolean) : [],
+      lastActivityAt: toIsoDate(du.last_activity_at),
+    }));
+
+    return { user, summary, maturity, deliveryUnits };
+  }
+
+  private async getUserSummary(
+    runId: number,
+    userId: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT
+        (SELECT COUNT(*) FROM profile_capability_usages cu
+          WHERE cu.projection_run_id = ? AND cu.user_id = ?) AS capability_usage_count,
+        (SELECT COUNT(DISTINCT cu.interaction_id) FROM profile_capability_usages cu
+          WHERE cu.projection_run_id = ? AND cu.user_id = ? AND cu.interaction_id IS NOT NULL) AS interaction_count,
+        (SELECT COUNT(DISTINCT cu.delivery_unit_id) FROM profile_capability_usages cu
+          WHERE cu.projection_run_id = ? AND cu.user_id = ? AND cu.delivery_unit_id IS NOT NULL) AS delivery_unit_count,
+        (SELECT COUNT(*) FROM profile_artifacts a
+          WHERE a.projection_run_id = ? AND a.user_id = ?) AS artifact_count,
+        (SELECT COUNT(DISTINCT interaction_id) FROM profile_artifact_turns t
+          WHERE t.projection_run_id = ? AND t.user_id = ? AND t.interaction_id IS NOT NULL) AS turn_count,
+        (SELECT COUNT(DISTINCT session_id) FROM profile_capability_usages cu
+          WHERE cu.projection_run_id = ? AND cu.user_id = ? AND cu.session_id IS NOT NULL) AS session_count,
+        (SELECT COUNT(*) FROM profile_knowledge_recalls kr
+          WHERE kr.projection_run_id = ? AND kr.user_id = ?) AS knowledge_recall_count,
+        (SELECT COUNT(*) FROM profile_code_activities ca
+          WHERE ca.projection_run_id = ? AND ca.user_id = ? AND ca.action_type IN ('write','edit','update')) AS code_write_count,
+        (SELECT COUNT(*) FROM profile_code_activities ca
+          WHERE ca.projection_run_id = ? AND ca.user_id = ? AND ca.action_type IN ('read','grep','glob')) AS code_read_count`,
+      [runId, userId, runId, userId, runId, userId, runId, userId,
+       runId, userId, runId, userId, runId, userId, runId, userId, runId, userId],
+    )) as Array<Record<string, unknown>>;
+  }
+
+  private async getUserDeliveryUnits(
+    runId: number,
+    userId: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    return (await dataSource.query(
+      `SELECT du.id, du.title,
+              (SELECT GROUP_CONCAT(DISTINCT a.artifact_type) FROM profile_artifacts a
+                WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
+              (SELECT MAX(cu.event_time) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id AND cu.user_id = ?) AS last_activity_at
+       FROM profile_delivery_units du
+       WHERE du.projection_run_id = ?
+         AND EXISTS (
+           SELECT 1 FROM profile_capability_usages cu
+           WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id AND cu.user_id = ?
+         )
+       ORDER BY last_activity_at DESC`,
+      [userId, runId, userId],
+    )) as Array<Record<string, unknown>>;
+  }
+
+  private async getUserMaturity(
+    runId: number,
+    _userId: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    return [{}];
+  }
+
+  private computeMaturityStages(user: ProfileUserItem): ProfileUserMaturityStage[] {
+    const stages: ProfileUserMaturityStage[] = [];
+    const now = new Date().toISOString();
+    if (user.capabilityUsageCount > 0) {
+      stages.push({ stage: 'first_capability_use', firstReachedAt: user.firstSeenAt ?? now });
+    }
+    if (user.deliveryUnitCount > 0) {
+      stages.push({ stage: 'first_delivery_contribution', firstReachedAt: user.firstSeenAt ?? now });
+    }
+    if (user.knowledgeRecallCount > 0) {
+      stages.push({ stage: 'first_knowledge_recall', firstReachedAt: user.firstSeenAt ?? now });
+    }
+    if (user.codeWriteCount > 0) {
+      stages.push({ stage: 'first_code_write', firstReachedAt: user.firstSeenAt ?? now });
+    }
+    return stages;
+  }
+
+  private computeMaturityCompletion(user: ProfileUserItem): number {
+    const total = 4;
+    let reached = 0;
+    if (user.capabilityUsageCount > 0) reached++;
+    if (user.deliveryUnitCount > 0) reached++;
+    if (user.knowledgeRecallCount > 0) reached++;
+    if (user.codeWriteCount > 0) reached++;
+    return reached / total;
   }
 }

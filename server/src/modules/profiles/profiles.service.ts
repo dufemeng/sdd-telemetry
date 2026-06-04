@@ -14,6 +14,9 @@ import type {
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileSummary,
+  ProfileUserDetail,
+  ProfileUserItem,
+  ProfileUsersQuery,
 } from '@sdd-telemetry/api';
 import { ApiHttpError } from '../../common/auth/api-http-error';
 import { SddQueryService } from '../sdd/sdd-query.service';
@@ -328,6 +331,44 @@ export class ProfilesService {
       eventTime: s.eventTime,
     }));
     return { items, total: items.length, page: query.page, pageSize: query.pageSize };
+  }
+
+  async listUsers(
+    profileId: string,
+    query: ProfileUsersQuery,
+  ): Promise<{ items: ProfileUserItem[]; total: number; page: number; pageSize: number }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const { items, total } = await this.profileProjectionRepository.listUsers(profileId, runId, query);
+        return { items, total, page: query.page, pageSize: query.pageSize };
+      }
+    }
+
+    throw new ApiHttpError(501, 'UNSUPPORTED', 'users not available via legacy source');
+  }
+
+  async getUserDetail(
+    profileId: string,
+    userId: string,
+  ): Promise<ProfileUserDetail> {
+    this.requireProfile(profileId);
+    const manifest = getProfileConfig(profileId)!.manifest;
+    if (!manifest.capabilityUsage) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'users not supported for this profile');
+    }
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const detail = await this.profileProjectionRepository.getUserDetail(profileId, runId, userId);
+        if (detail) return detail;
+      }
+    }
+
+    throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {
