@@ -30,6 +30,7 @@ interface CodeRefRow extends RowDataPacket {
   normalized_locator: string | null;
   event_time: Date | null;
   skill_usage_id: number | null;
+  work_item_id: number | null;
 }
 
 function sha256(value: string): string {
@@ -48,9 +49,11 @@ export const codeOperator: ProjectionOperator = {
       const [rows] = await ctx.pool.query<CodeRefRow[]>(
         `SELECT sr.id AS source_reference_id, sr.reference_key AS source_reference_key,
                 sr.tool_call_id, sr.interaction_id, sr.user_id, sr.session_id, sr.prompt_id,
-                sr.action_type, sr.normalized_locator, sr.event_time, tc.skill_usage_id
+                sr.action_type, sr.normalized_locator, sr.event_time, tc.skill_usage_id,
+                su.work_item_id
          FROM source_references sr
          LEFT JOIN sdd_interaction_tool_calls tc ON tc.id = sr.tool_call_id
+         LEFT JOIN sdd_skill_usages su ON su.id = tc.skill_usage_id
          WHERE sr.id > ? AND sr.locator_type = 'path' AND sr.normalized_locator IS NOT NULL
          ORDER BY sr.id ASC LIMIT 1000`,
         [lastId],
@@ -73,17 +76,21 @@ export const codeOperator: ProjectionOperator = {
           row.skill_usage_id != null
             ? ctx.registry.capabilityUsageBySkillUsageId.get(row.skill_usage_id) ?? null
             : null;
+        const deliveryUnitId = row.work_item_id != null
+          ? ctx.registry.deliveryUnitByWorkItemId.get(row.work_item_id) ?? null
+          : null;
 
         await ctx.pool.query<ResultSetHeader>(
           `INSERT INTO profile_code_activities
              (profile_id, projection_run_id, activity_key, source_reference_key, source_reference_id,
-              tool_call_id, interaction_id, capability_usage_id, user_id, session_id, prompt_id,
+              tool_call_id, interaction_id, delivery_unit_id, capability_usage_id, user_id, session_id, prompt_id,
               action_type, code_locator, repo_name, module_name, repo_kind, event_time,
               matched_rule_id, confidence, evidence_json, rule_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [
             ctx.profileId, ctx.projectionRunId, activityKey, row.source_reference_key,
-            row.source_reference_id, row.tool_call_id, row.interaction_id, capabilityUsageId,
+            row.source_reference_id, row.tool_call_id, row.interaction_id, deliveryUnitId,
+            capabilityUsageId,
             row.user_id, row.session_id, row.prompt_id, row.action_type, locator,
             null, null, 'unknown', row.event_time, 'code-exclude-doc-roots', 'high',
             JSON.stringify({ source: 'source_references' }), CODE_RULE_VERSION,
