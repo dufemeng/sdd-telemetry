@@ -11,6 +11,7 @@
     "once": "WORKER_ONCE=true node dist/main.js",
     "profile:rebuild-source-references": "tsx src/jobs/rebuild-source-references.ts",
     "profile:rebuild": "tsx src/jobs/profile-rebuild.ts",
+    "profile:diff": "tsx src/jobs/profile-diff.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:integration": "vitest run test/integration",
