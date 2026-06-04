@@ -39,6 +39,7 @@ interface SkillUsageRow extends RowDataPacket {
   event_time: Date | null;
   semantic_code: string | null;
   display_name: string | null;
+  work_item_id: number | null;
 }
 
 const capabilityOperator: ProjectionOperator = {
@@ -47,22 +48,24 @@ const capabilityOperator: ProjectionOperator = {
     const [rows] = await ctx.pool.query<SkillUsageRow[]>(
       `SELECT su.id, su.usage_key, su.interaction_id, su.user_id, su.session_id, su.prompt_id,
               su.raw_skill_name, su.skill_source, su.status, su.event_time,
-              sem.semantic_code, sem.display_name
+              sem.semantic_code, sem.display_name, su.work_item_id
        FROM sdd_skill_usages su
        LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id`,
     );
     let inserted = 0;
     for (const row of rows) {
       const usageKey = sha256(`${ctx.profileId}:capability:${row.usage_key}`);
+      const deliveryUnitId = mapId(ctx.registry.deliveryUnitByWorkItemId, row.work_item_id);
       const id = await insertReturningId(
         ctx.pool,
         `INSERT INTO profile_capability_usages
-           (profile_id, projection_run_id, usage_key, interaction_id, user_id, session_id, prompt_id,
+           (profile_id, projection_run_id, usage_key, delivery_unit_id, interaction_id, user_id, session_id, prompt_id,
             raw_capability_name, capability_code, display_name, capability_source, status, event_time,
             matched_rule_id, confidence, evidence_json, rule_version)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          ctx.profileId, ctx.projectionRunId, usageKey, row.interaction_id, row.user_id,
+          ctx.profileId, ctx.projectionRunId, usageKey, deliveryUnitId,
+          row.interaction_id, row.user_id,
           row.session_id, row.prompt_id, row.raw_skill_name, row.semantic_code, row.display_name,
           row.skill_source, row.status, row.event_time, null, 'high',
           bridgeEvidence(row.id), BRIDGE_RULE_VERSION,
@@ -267,10 +270,10 @@ const artifactTurnOperator: ProjectionOperator = {
   },
 };
 
-/** PR-4 桥接算子，按依赖顺序：capability/delivery 无依赖 → artifact 依赖 delivery → writes/turns 依赖三者。 */
+/** 桥接算子，按依赖顺序：deliveryUnit 先建 registry → capability 依赖 deliveryUnit → artifact 依赖 delivery → writes/turns 依赖三者。 */
 export const SDD_BRIDGE_OPERATORS: ProjectionOperator[] = [
-  capabilityOperator,
   deliveryUnitOperator,
+  capabilityOperator,
   artifactOperator,
   artifactWriteOperator,
   artifactTurnOperator,
