@@ -1,6 +1,13 @@
 import { Inject, Provide } from '@midwayjs/core';
 import type {
   ProfileArtifactTimelineItem,
+  ProfileCapabilityAnalytics,
+  ProfileCapabilityTimeseries,
+  ProfileCapabilityTimeseriesQuery,
+  ProfileCapabilityUsageItem,
+  ProfileCapabilityUsageSummaryItem,
+  ProfileCapabilityUsagesQuery,
+  ProfileCapabilityUsageSummaryQuery,
   ProfileDemand,
   ProfileDemandArtifact,
   ProfileDemandDetail,
@@ -280,5 +287,353 @@ export class ProfileProjectionRepository {
           WHERE projection_run_id = ? AND delivery_unit_id = ?) AS knowledge_recall_count`,
       [runId, demandId, runId, demandId, runId, demandId, runId, demandId],
     )) as Array<Record<string, unknown>>;
+  }
+
+  // ── Capability Analytics ────────────────────────────────────────────────────
+
+  async getCapabilityAnalytics(
+    profileId: string,
+    runId: number,
+    query: ProfileOverviewQuery,
+  ): Promise<ProfileCapabilityAnalytics> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+
+    const buildClauses = (extra: string[] = []): { clauses: string[]; params: unknown[] } => {
+      const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?', ...extra];
+      const params: unknown[] = [profileId, runId];
+      addTimeRangeWhere(clauses, params, 'cu.event_time', query);
+      return { clauses, params };
+    };
+
+    const kpiQuery = (extra: string[] = []) => {
+      const { clauses, params } = buildClauses(extra);
+      return dataSource.query(
+        `SELECT
+           COUNT(*) AS usage_count,
+           COUNT(DISTINCT cu.user_id) AS active_user_count,
+           COUNT(DISTINCT cu.delivery_unit_id) AS covered_delivery_unit_count,
+           SUM(CASE WHEN cu.trigger_source = 'user' THEN 1 ELSE 0 END) AS user_triggered_count,
+           SUM(CASE WHEN cu.trigger_source = 'auto' THEN 1 ELSE 0 END) AS auto_triggered_count
+         FROM profile_capability_usages cu
+         ${whereSql(clauses)}`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const multiStageQuery = () => {
+      const { clauses, params } = buildClauses([]);
+      return dataSource.query(
+        `SELECT COUNT(DISTINCT du.id) AS v
+         FROM profile_delivery_units du
+         WHERE du.profile_id = ? AND du.projection_run_id = ?
+           AND (
+             SELECT COUNT(DISTINCT a.artifact_type)
+             FROM profile_artifacts a
+             WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id
+           ) >= 2`,
+        [profileId, runId],
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const qualityQuery = () => {
+      const { clauses, params } = buildClauses([]);
+      return dataSource.query(
+        `SELECT
+           COUNT(*) AS triggered_count,
+           SUM(CASE WHEN cu.prompt_id IS NOT NULL THEN 1 ELSE 0 END) AS with_prompt_count,
+           SUM(CASE WHEN cu.interaction_id IS NOT NULL THEN 1 ELSE 0 END) AS with_response_count,
+           SUM(CASE WHEN cu.interaction_id IS NOT NULL AND cu.prompt_id IS NOT NULL THEN 1 ELSE 0 END) AS paired_count,
+           SUM(CASE WHEN cu.status = 'failed' THEN 1 ELSE 0 END) AS failed_count
+         FROM profile_capability_usages cu
+         ${whereSql(clauses)}`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const topCapabilitiesQuery = () => {
+      const { clauses, params } = buildClauses([]);
+      return dataSource.query(
+        `SELECT
+           cu.capability_code,
+           MAX(cu.display_name) AS display_name,
+           COUNT(*) AS usage_count,
+           COUNT(DISTINCT cu.user_id) AS user_count,
+           COUNT(DISTINCT cu.delivery_unit_id) AS delivery_unit_count
+         FROM profile_capability_usages cu
+         ${whereSql(clauses)} AND cu.capability_code IS NOT NULL
+         GROUP BY cu.capability_code
+         ORDER BY usage_count DESC
+         LIMIT 10`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const matchHealthQuery = () => {
+      const { clauses, params } = buildClauses([]);
+      return dataSource.query(
+        `SELECT
+           SUM(CASE WHEN cu.capability_code IS NOT NULL THEN 1 ELSE 0 END) AS matched_count,
+           SUM(CASE WHEN cu.capability_code IS NULL THEN 1 ELSE 0 END) AS unmatched_count
+         FROM profile_capability_usages cu
+         ${whereSql(clauses)}`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const topUnmatchedQuery = () => {
+      const { clauses, params } = buildClauses([]);
+      return dataSource.query(
+        `SELECT cu.raw_capability_name, COUNT(*) AS usage_count
+         FROM profile_capability_usages cu
+         ${whereSql(clauses)} AND cu.capability_code IS NULL
+         GROUP BY cu.raw_capability_name
+         ORDER BY usage_count DESC
+         LIMIT 5`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>;
+    };
+
+    const [currentKpis, qualityRows, topRows, matchRows, unmatchedRows, multiStageRows] =
+      await Promise.all([
+        kpiQuery(),
+        qualityQuery(),
+        topCapabilitiesQuery(),
+        matchHealthQuery(),
+        topUnmatchedQuery(),
+        multiStageQuery(),
+      ]);
+
+    const k = currentKpis[0] ?? {};
+    const q = qualityRows[0] ?? {};
+    const matchedCount = toNumber(matchRows[0]?.matched_count);
+    const unmatchedCount = toNumber(matchRows[0]?.unmatched_count);
+    const totalMatchState = matchedCount + unmatchedCount;
+    const usageCountTotal = toNumber(k.usage_count);
+    const triggeredCount = toNumber(q.triggered_count);
+
+    return {
+      kpis: {
+        capabilityUsageCount: { current: usageCountTotal, previous: null },
+        activeUserCount: { current: toNumber(k.active_user_count), previous: null },
+        coveredDeliveryUnitCount: { current: toNumber(k.covered_delivery_unit_count), previous: null },
+        userTriggeredCount: { current: toNumber(k.user_triggered_count), previous: null },
+        autoTriggeredCount: { current: toNumber(k.auto_triggered_count), previous: null },
+        multiStageDeliveryUnitCount: { current: toNumber(multiStageRows[0]?.v), previous: null },
+      },
+      callQuality: {
+        triggeredCount,
+        withPromptCount: toNumber(q.with_prompt_count),
+        withResponseCount: toNumber(q.with_response_count),
+        pairedCount: toNumber(q.paired_count),
+        promptCoverageRate: triggeredCount > 0 ? toNumber(q.with_prompt_count) / triggeredCount : null,
+        responseCoverageRate: triggeredCount > 0 ? toNumber(q.with_response_count) / triggeredCount : null,
+        pairingSuccessRate: triggeredCount > 0 ? 1 - toNumber(q.failed_count) / triggeredCount : null,
+      },
+      topCapabilities: topRows.map((row) => {
+        const usageCount = toNumber(row.usage_count);
+        return {
+          capabilityCode: String(row.capability_code ?? 'unknown'),
+          displayName: String(row.display_name ?? '未匹配'),
+          usageCount,
+          userCount: toNumber(row.user_count),
+          deliveryUnitCount: toNumber(row.delivery_unit_count),
+          conversionRate: usageCountTotal > 0 ? usageCount / usageCountTotal : null,
+        };
+      }),
+      matchHealth: {
+        matchedCount,
+        unmatchedCount,
+        matchRate: totalMatchState > 0 ? matchedCount / totalMatchState : null,
+        topUnmatched: unmatchedRows.map((row) => ({
+          rawCapabilityName: String(row.raw_capability_name ?? ''),
+          usageCount: toNumber(row.usage_count),
+        })),
+      },
+    };
+  }
+
+  async getCapabilityTimeseries(
+    profileId: string,
+    runId: number,
+    query: ProfileCapabilityTimeseriesQuery,
+  ): Promise<ProfileCapabilityTimeseries> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const bucket = query.bucket ?? '1h';
+    const bucketSeconds = bucket === '15m' ? 900 : bucket === '3h' ? 10800 : 3600;
+
+    const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+    addTimeRangeWhere(clauses, params, 'cu.event_time', query);
+
+    const rows = (await dataSource.query(
+      `SELECT
+         FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(cu.event_time) / ?) * ?) AS bucket_ts,
+         COUNT(*) AS triggered_count,
+         SUM(CASE WHEN cu.interaction_id IS NOT NULL AND cu.prompt_id IS NOT NULL THEN 1 ELSE 0 END) AS paired_count
+       FROM profile_capability_usages cu
+       ${whereSql(clauses)}
+       GROUP BY bucket_ts
+       ORDER BY bucket_ts ASC`,
+      [bucketSeconds, bucketSeconds, ...params.slice(2)],
+    )) as Array<Record<string, unknown>>;
+
+    return {
+      bucket,
+      points: rows.map((row) => ({
+        timestamp: toIsoDate(row.bucket_ts) ?? '',
+        triggeredCount: toNumber(row.triggered_count),
+        pairedCount: toNumber(row.paired_count),
+      })),
+    };
+  }
+
+  async listCapabilityUsageSummary(
+    profileId: string,
+    runId: number,
+    query: ProfileCapabilityUsageSummaryQuery,
+  ): Promise<{ items: ProfileCapabilityUsageSummaryItem[]; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+    addTimeRangeWhere(clauses, params, 'cu.event_time', query);
+
+    if (query.capabilityCode) {
+      clauses.push('cu.capability_code = ?');
+      params.push(query.capabilityCode);
+    }
+    if (query.status) {
+      clauses.push('cu.status = ?');
+      params.push(query.status);
+    }
+    if (query.matched === 'matched') {
+      clauses.push('cu.capability_code IS NOT NULL');
+    } else if (query.matched === 'unmatched') {
+      clauses.push('cu.capability_code IS NULL');
+    }
+    if (query.keyword) {
+      clauses.push('(cu.raw_capability_name LIKE ? OR cu.display_name LIKE ?)');
+      const kw = `%${query.keyword}%`;
+      params.push(kw, kw);
+    }
+
+    const offset = (query.page - 1) * query.pageSize;
+
+    const countRows = (await dataSource.query(
+      `SELECT COUNT(DISTINCT cu.raw_capability_name) AS v
+       FROM profile_capability_usages cu
+       ${whereSql(clauses)}`,
+      params,
+    )) as Array<Record<string, unknown>>;
+
+    const rows = (await dataSource.query(
+      `SELECT
+         cu.capability_code,
+         MAX(cu.display_name) AS capability_display_name,
+         cu.raw_capability_name,
+         COUNT(*) AS usage_count,
+         COUNT(DISTINCT cu.user_id) AS active_user_count,
+         COUNT(DISTINCT cu.session_id) AS session_count,
+         COUNT(DISTINCT cu.delivery_unit_id) AS delivery_unit_count,
+         MIN(cu.event_time) AS first_seen_at,
+         MAX(cu.event_time) AS last_seen_at
+       FROM profile_capability_usages cu
+       ${whereSql(clauses)}
+       GROUP BY cu.raw_capability_name
+       ORDER BY usage_count DESC
+       LIMIT ? OFFSET ?`,
+      [...params, query.pageSize, offset],
+    )) as Array<Record<string, unknown>>;
+
+    const items: ProfileCapabilityUsageSummaryItem[] = rows.map((row) => ({
+      capabilityCode: (row.capability_code as string | null) ?? null,
+      capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
+      rawCapabilityName: String(row.raw_capability_name ?? ''),
+      usageCount: toNumber(row.usage_count),
+      activeUserCount: toNumber(row.active_user_count),
+      sessionCount: toNumber(row.session_count),
+      deliveryUnitCount: toNumber(row.delivery_unit_count),
+      versions: [],
+      firstSeenAt: toIsoDate(row.first_seen_at),
+      lastSeenAt: toIsoDate(row.last_seen_at),
+    }));
+
+    return { items, total: toNumber(countRows[0]?.v) };
+  }
+
+  async listCapabilityUsages(
+    profileId: string,
+    runId: number,
+    query: ProfileCapabilityUsagesQuery,
+  ): Promise<{ items: ProfileCapabilityUsageItem[]; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+    addTimeRangeWhere(clauses, params, 'cu.event_time', query);
+
+    if (query.capabilityCode) {
+      clauses.push('cu.capability_code = ?');
+      params.push(query.capabilityCode);
+    }
+    if (query.rawCapabilityName) {
+      clauses.push('cu.raw_capability_name = ?');
+      params.push(query.rawCapabilityName);
+    }
+    if (query.userId) {
+      clauses.push('cu.user_id = ?');
+      params.push(query.userId);
+    }
+    if (query.deliveryUnitId) {
+      clauses.push('cu.delivery_unit_id = ?');
+      params.push(query.deliveryUnitId);
+    }
+    if (query.sessionId) {
+      clauses.push('cu.session_id = ?');
+      params.push(query.sessionId);
+    }
+    if (query.promptId) {
+      clauses.push('cu.prompt_id = ?');
+      params.push(query.promptId);
+    }
+    if (query.status) {
+      clauses.push('cu.status = ?');
+      params.push(query.status);
+    }
+
+    const offset = (query.page - 1) * query.pageSize;
+
+    const countRows = (await dataSource.query(
+      `SELECT COUNT(*) AS v FROM profile_capability_usages cu ${whereSql(clauses)}`,
+      params,
+    )) as Array<Record<string, unknown>>;
+
+    const rows = (await dataSource.query(
+      `SELECT cu.id, cu.usage_key, cu.capability_code, cu.display_name AS capability_display_name,
+              cu.raw_capability_name, cu.capability_source, cu.status,
+              cu.user_id, cu.interaction_id, cu.delivery_unit_id,
+              cu.session_id, cu.prompt_id, cu.event_time
+       FROM profile_capability_usages cu
+       ${whereSql(clauses)}
+       ORDER BY cu.event_time DESC, cu.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, query.pageSize, offset],
+    )) as Array<Record<string, unknown>>;
+
+    const items: ProfileCapabilityUsageItem[] = rows.map((row) => ({
+      id: toStringId(row.id),
+      usageKey: String(row.usage_key ?? ''),
+      capabilityCode: (row.capability_code as string | null) ?? null,
+      capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
+      rawCapabilityName: String(row.raw_capability_name ?? ''),
+      capabilitySource: (row.capability_source as string | null) ?? null,
+      status: String(row.status ?? ''),
+      userId: row.user_id == null ? null : toStringId(row.user_id),
+      interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
+      deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
+      sessionId: (row.session_id as string | null) ?? null,
+      promptId: (row.prompt_id as string | null) ?? null,
+      eventTime: toIsoDate(row.event_time),
+    }));
+
+    return { items, total: toNumber(countRows[0]?.v) };
   }
 }

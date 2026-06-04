@@ -2,7 +2,15 @@ import { Controller, Get, Inject } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import {
   ProfileArtifactTimelineResponseSchema,
+  ProfileCapabilityAnalyticsQuerySchema,
+  ProfileCapabilityAnalyticsSchema,
   ProfileCapabilityManifestSchema,
+  ProfileCapabilityTimeseriesQuerySchema,
+  ProfileCapabilityTimeseriesSchema,
+  ProfileCapabilityUsageSummaryQuerySchema,
+  ProfileCapabilityUsageSummaryResponseSchema,
+  ProfileCapabilityUsagesQuerySchema,
+  ProfileCapabilityUsagesResponseSchema,
   ProfileDemandDetailSchema,
   ProfileDemandListSchema,
   ProfileDemandQuerySchema,
@@ -10,7 +18,9 @@ import {
   ProfileOverviewSchema,
   ProfileSummaryListSchema,
   type ProfileArtifactTimelineItem,
+  type ProfileCapabilityAnalytics,
   type ProfileCapabilityManifest,
+  type ProfileCapabilityTimeseries,
   type ProfileDemand,
   type ProfileDemandDetail,
   type ProfileOverview,
@@ -74,5 +84,37 @@ export class ProfilesController {
       profileId, demandId, artifactId,
     );
     return ok(parseWithSchema(ProfileArtifactTimelineResponseSchema, { items }));
+  }
+
+  @Get('/:profileId/capabilities/analytics')
+  async capabilityAnalytics() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileCapabilityAnalyticsQuerySchema, this.ctx.query);
+    const data: ProfileCapabilityAnalytics = await this.profilesService.getCapabilityAnalytics(profileId, query);
+    return ok(parseWithSchema(ProfileCapabilityAnalyticsSchema, data));
+  }
+
+  @Get('/:profileId/capabilities/timeseries')
+  async capabilityTimeseries() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileCapabilityTimeseriesQuerySchema, this.ctx.query);
+    const data: ProfileCapabilityTimeseries = await this.profilesService.getCapabilityTimeseries(profileId, query);
+    return ok(parseWithSchema(ProfileCapabilityTimeseriesSchema, data));
+  }
+
+  @Get('/:profileId/capabilities/usages/summary')
+  async capabilityUsageSummary() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileCapabilityUsageSummaryQuerySchema, this.ctx.query);
+    const data = await this.profilesService.listCapabilityUsageSummary(profileId, query);
+    return ok(parseWithSchema(ProfileCapabilityUsageSummaryResponseSchema, data));
+  }
+
+  @Get('/:profileId/capabilities/usages')
+  async capabilityUsages() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileCapabilityUsagesQuerySchema, this.ctx.query);
+    const data = await this.profilesService.listCapabilityUsages(profileId, query);
+    return ok(parseWithSchema(ProfileCapabilityUsagesResponseSchema, data));
   }
 }

@@ -1,7 +1,14 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
   ProfileArtifactTimelineItem,
+  ProfileCapabilityAnalytics,
   ProfileCapabilityManifest,
+  ProfileCapabilityTimeseries,
+  ProfileCapabilityTimeseriesQuery,
+  ProfileCapabilityUsageItem,
+  ProfileCapabilityUsageSummaryItem,
+  ProfileCapabilityUsagesQuery,
+  ProfileCapabilityUsageSummaryQuery,
   ProfileDemand,
   ProfileDemandDetail,
   ProfileOverview,
@@ -184,6 +191,143 @@ export class ProfilesService {
       promptPreview: w.promptPreview,
       contentPreview: w.contentPreview,
     }));
+  }
+
+  async getCapabilityAnalytics(
+    profileId: string,
+    query: ProfileOverviewQuery,
+  ): Promise<ProfileCapabilityAnalytics> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getCapabilityAnalytics(profileId, runId, query);
+      }
+    }
+
+    const sdd = await this.sddQueryService.getSkillAnalytics(query);
+    return {
+      kpis: {
+        capabilityUsageCount: sdd.kpis.skillUsageCount,
+        activeUserCount: sdd.kpis.activeUserCount,
+        coveredDeliveryUnitCount: sdd.kpis.coveredWorkItemCount,
+        userTriggeredCount: sdd.kpis.userTriggeredCount,
+        autoTriggeredCount: sdd.kpis.autoTriggeredCount,
+        multiStageDeliveryUnitCount: sdd.kpis.multiStageWorkItemCount,
+      },
+      callQuality: sdd.callQuality,
+      topCapabilities: sdd.topSemantics.map((s) => ({
+        capabilityCode: s.semanticCode,
+        displayName: s.displayName,
+        usageCount: s.usageCount,
+        userCount: s.userCount,
+        deliveryUnitCount: s.workItemCount,
+        conversionRate: s.conversionRate,
+      })),
+      matchHealth: {
+        matchedCount: sdd.matchHealth.matchedCount,
+        unmatchedCount: sdd.matchHealth.unmatchedCount,
+        matchRate: sdd.matchHealth.matchRate,
+        topUnmatched: sdd.matchHealth.topUnmatched.map((u) => ({
+          rawCapabilityName: u.rawSkillName,
+          usageCount: u.usageCount,
+        })),
+      },
+    };
+  }
+
+  async getCapabilityTimeseries(
+    profileId: string,
+    query: ProfileCapabilityTimeseriesQuery,
+  ): Promise<ProfileCapabilityTimeseries> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getCapabilityTimeseries(profileId, runId, query);
+      }
+    }
+
+    return this.sddQueryService.getSkillTimeseries(query);
+  }
+
+  async listCapabilityUsageSummary(
+    profileId: string,
+    query: ProfileCapabilityUsageSummaryQuery,
+  ): Promise<{ items: ProfileCapabilityUsageSummaryItem[]; total: number; page: number; pageSize: number }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const { items, total } = await this.profileProjectionRepository.listCapabilityUsageSummary(profileId, runId, query);
+        return { items, total, page: query.page, pageSize: query.pageSize };
+      }
+    }
+
+    const sddQuery = {
+      ...query,
+      semanticCode: query.capabilityCode,
+    };
+    const sdd = await this.sddQueryService.getUsageSummary(sddQuery);
+    return {
+      items: sdd.items.map((s) => ({
+        capabilityCode: s.semanticCode,
+        capabilityDisplayName: s.semanticDisplayName,
+        rawCapabilityName: s.rawSkillName,
+        usageCount: s.usageCount,
+        activeUserCount: s.activeUserCount,
+        sessionCount: s.sessionCount,
+        deliveryUnitCount: s.workItemCount,
+        versions: s.versions,
+        firstSeenAt: s.firstSeenAt,
+        lastSeenAt: s.lastSeenAt,
+      })),
+      total: sdd.total,
+      page: sdd.page,
+      pageSize: sdd.pageSize,
+    };
+  }
+
+  async listCapabilityUsages(
+    profileId: string,
+    query: ProfileCapabilityUsagesQuery,
+  ): Promise<{ items: ProfileCapabilityUsageItem[]; total: number; page: number; pageSize: number }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const { items, total } = await this.profileProjectionRepository.listCapabilityUsages(profileId, runId, query);
+        return { items, total, page: query.page, pageSize: query.pageSize };
+      }
+    }
+
+    const sddQuery = {
+      ...query,
+      semanticCode: query.capabilityCode,
+      workItemId: query.deliveryUnitId,
+      limit: query.pageSize,
+    };
+    const sddItems = await this.sddQueryService.listUsages(sddQuery);
+    const items: ProfileCapabilityUsageItem[] = sddItems.map((s) => ({
+      id: s.id,
+      usageKey: s.usageKey,
+      capabilityCode: s.semanticCode,
+      capabilityDisplayName: s.semanticDisplayName,
+      rawCapabilityName: s.rawSkillName,
+      capabilitySource: null,
+      status: s.status,
+      userId: s.userId,
+      interactionId: s.interactionId,
+      deliveryUnitId: s.workItemId,
+      sessionId: s.sessionId,
+      promptId: s.promptId,
+      eventTime: s.eventTime,
+    }));
+    return { items, total: items.length, page: query.page, pageSize: query.pageSize };
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {
