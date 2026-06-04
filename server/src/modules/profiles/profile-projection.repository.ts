@@ -104,7 +104,10 @@ export class ProfileProjectionRepository {
               (SELECT COUNT(*) FROM profile_artifacts a
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS artifact_count,
               (SELECT GROUP_CONCAT(DISTINCT a.artifact_type) FROM profile_artifacts a
-                WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages
+                WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
+              (SELECT COUNT(*) FROM profile_capability_usages cu
+                WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
+              0 AS error_count
        FROM profile_delivery_units du
        ${whereSql(clauses)}
        ORDER BY du.last_seen_at DESC, du.id DESC`,
@@ -121,6 +124,8 @@ export class ProfileProjectionRepository {
       firstSeenAt: toIsoDate(row.first_seen_at),
       lastSeenAt: toIsoDate(row.last_seen_at),
       artifactCount: toNumber(row.artifact_count),
+      capabilityUsageCount: toNumber(row.capability_usage_count),
+      errorCount: toNumber(row.error_count),
       coverageStages: row.stages ? String(row.stages).split(',').filter(Boolean) : [],
     }));
   }

@@ -96,6 +96,8 @@ export class ProfilesService {
       firstSeenAt: w.firstSeenAt,
       lastSeenAt: w.lastSeenAt,
       artifactCount: w.artifactCount,
+      capabilityUsageCount: w.usageCount,
+      errorCount: w.errorCount,
       coverageStages: w.coverageStages,
     }));
   }
