@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, RefreshCw } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { AccountMenu } from './AccountMenu';
+import { ProfileSwitcher } from './ProfileSwitcher';
 
 export type TimeRange = '24h' | '7d' | '30d';
 
@@ -12,9 +13,17 @@ interface TopBarProps {
   onTimeRangeChange: (range: TimeRange) => void;
   /** 累计/快照口径的页面传 false：选择器置灰不可点。默认 true。 */
   rangeApplies?: boolean;
+  profileId: string;
+  onProfileChange: (profileId: string) => void;
 }
 
-export function TopBar({ timeRange, onTimeRangeChange, rangeApplies = true }: TopBarProps) {
+export function TopBar({
+  timeRange,
+  onTimeRangeChange,
+  rangeApplies = true,
+  profileId,
+  onProfileChange,
+}: TopBarProps) {
   const isFetching = useIsFetching() > 0;
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +54,9 @@ export function TopBar({ timeRange, onTimeRangeChange, rangeApplies = true }: To
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        {/* Profile Switcher（与时间范围同级） */}
+        <ProfileSwitcher profileId={profileId} onProfileChange={onProfileChange} />
+
         {/* Time range */}
         <div
           title={rangeApplies ? undefined : '本页为累计 / 快照口径，时间范围不适用'}

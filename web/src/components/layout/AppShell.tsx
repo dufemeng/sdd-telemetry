@@ -8,8 +8,21 @@ import { ShellContext } from './useShellContext';
 // 累计 / 快照口径的看板，不消费全局时间范围（顶栏选择器在这些页禁用）
 const RANGE_EXEMPT_PREFIXES = ['/sdd/users', '/sdd/work-items', '/sdd/wiki-recalls', '/reports/daily'];
 
+const PROFILE_STORAGE_KEY = 'sdd-telemetry.profileId';
+const DEFAULT_PROFILE_ID = 'sdd-default';
+
 export function AppShell() {
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [profileId, setProfileId] = useState<string>(() => {
+    if (typeof window === 'undefined') return DEFAULT_PROFILE_ID;
+    return window.localStorage.getItem(PROFILE_STORAGE_KEY) ?? DEFAULT_PROFILE_ID;
+  });
+
+  function handleProfileChange(next: string) {
+    setProfileId(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem(PROFILE_STORAGE_KEY, next);
+  }
+
   const { pathname } = useLocation();
   const prefersReducedMotion = useReducedMotion();
   const rangeApplies = !RANGE_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
@@ -29,12 +42,14 @@ export function AppShell() {
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}
         rangeApplies={rangeApplies}
+        profileId={profileId}
+        onProfileChange={handleProfileChange}
       />
       <main
         className="overflow-hidden"
         style={{ background: 'var(--color-base)', gridColumn: 2, gridRow: 2 }}
       >
-        <ShellContext.Provider value={{ timeRange }}>
+        <ShellContext.Provider value={{ timeRange, profileId }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
