@@ -1088,8 +1088,9 @@ MVP-1 完成必须同时满足：
 
 - **PR-1~6 后端全闭环**：source_references 抽取 + 重建（幂等、duplicates=0）、profile_* 9 表 + current-pointer 框架（失败不切 pointer 实测）、桥接 projection（对账 0 差异）、knowledge 非自证投影（`profile:diff` gate PASS：`old_not_in_new=0`、`orphan_source_ref=0`）、读源开关 + overview 读 projection（parity 一致）。
 - **PR-7 前端**：全站 Profile Switcher + ShellContext.profileId（localStorage 持久化）；overview headline KPI（技能调用/活跃用户/覆盖需求）接入 Profile Contract；manifest 降级机制（`useProfileManifest` + `FeatureGate`）。
-- **Task 13** code activity 算子 + overview code 概况（read/write 计数，不参与对账）。
+- **Task 13** code activity 算子 + overview code 概况（read/write 计数，不参与对账）；overview 已补 知识库/代码 卡片（DoD §13#12 可视闭合）。
 - **Task 15** `profile:link-check` 抽样链路对账（gate PASS）。
+- **Task 20 产出分析（部分）**：`GET /api/profiles/:id/demands` 端点（读 profile_delivery_units + artifacts，current run，legacy 可回退）+ `useProfileDemands` hook 已就位、已验证。
 
 ### 16.2 实现决策 / 与本文的偏差（已确认）
 
@@ -1103,5 +1104,5 @@ MVP-1 完成必须同时满足：
 
 ### 16.3 未完成（增量，不阻塞主干）
 
-- **Task 19 深化 / Task 20 四大看板取数**：当前总览仅 headline KPI 走 contract；产出/知识库/能力/用户四大看板从 profile contract 取数尚未做，需新增 `/api/profiles/:id/{users,capabilities/analytics,demands,knowledge/coverage}` 端点（各自读 profile_* current run）+ 逐页改造 + manifest 降级落点。属较大增量，按文档「逐步接入」推进。
+- **Task 20 四大看板取数（进行中）**：产出分析 `/demands` 端点 + hook 已就位（上面）；但 WorkItemsPage 全量接入需「调用次数」按 delivery_unit 聚合，依赖 **capability→delivery 链路**（桥接当前 `profile_capability_usages.delivery_unit_id` 为空），属前置增量。知识库/能力/用户三大看板端点（`/knowledge/coverage`、`/capabilities/analytics`、`/users`）尚未做。需求详情 + artifact timeline 下钻端点（§11.5）尚未做。按「逐步接入」推进。
 - **§13 完成定义**：第 1–9、11 项已满足；第 10 项部分（后端可提供、前端仅 headline 接入）；第 12 项已补（code 概况展示）。
