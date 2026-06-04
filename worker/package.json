@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "once": "WORKER_ONCE=true node dist/main.js",
+    "profile:rebuild-source-references": "tsx src/jobs/rebuild-source-references.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:integration": "vitest run test/integration",

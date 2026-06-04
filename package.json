@@ -34,7 +34,8 @@
     "db:reset-derived": "pnpm --filter @sdd-telemetry/server db:reset-derived",
     "db:reclean": "pnpm --filter @sdd-telemetry/server db:reclean",
     "db:import-legacy-sqlite": "pnpm --filter @sdd-telemetry/server db:import-legacy-sqlite",
-    "auth:bootstrap-admin": "pnpm --filter @sdd-telemetry/server auth:bootstrap-admin"
+    "auth:bootstrap-admin": "pnpm --filter @sdd-telemetry/server auth:bootstrap-admin",
+    "profile:rebuild-source-references": "pnpm --filter @sdd-telemetry/worker profile:rebuild-source-references"
   },
   "devDependencies": {
     "@sdd-telemetry/config": "workspace:*",

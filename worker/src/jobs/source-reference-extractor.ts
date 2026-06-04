@@ -1,0 +1,341 @@
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+
+/**
+ * Source Reference 抽取算子（MVP-1，Task 5）
+ *
+ * 纯函数：把一次工具调用的事实，投影成 0..N 条 source reference。
+ * - 从完整 tool input 抽取（调用方负责传完整 attributes_json.tool_input，不是 4096 preview）。
+ * - 支持 double-encoded JSON（最多受控解码 3 层）。
+ * - 解码失败记录 parse_failed evidence、降级为 unknown locator，不抛错。
+ * - 身份与幂等基于稳定的 reference_key；stable_evidence_id 取 tool_use_id，回退 event_id。
+ *
+ * 注：第一期聚焦 input direction（SDD-default 的 locator 都在 tool input）。result direction
+ * 抽取（boss-b 在线文档创建/更新返回的 docId 常在 tool result）留待 B 接入时扩展。
+ */
+
+export const SOURCE_REFERENCE_RULE_VERSION = 'src-ref-v1';
+
+export type SourceLocatorType = 'path' | 'url' | 'mcp_doc' | 'unknown';
+export type SourceDirection = 'input' | 'result' | 'event';
+
+export interface ToolCallFact {
+  toolUseId: string | null;
+  eventId: string | null;
+  toolName: string;
+  mcpServer: string | null;
+  /** attributes.tool_input 原值：可能是 double-encoded JSON 字符串，也可能已是对象 */
+  toolInput: unknown;
+  interactionId: number | null;
+  toolCallId: number | null;
+  userId: number | null;
+  sessionId: string | null;
+  promptId: string | null;
+  eventTime: Date | null;
+}
+
+export interface SourceReferenceInput {
+  referenceKey: string;
+  interactionId: number | null;
+  toolCallId: number | null;
+  eventId: string | null;
+  userId: number | null;
+  sessionId: string | null;
+  promptId: string | null;
+  actionType: string;
+  locatorType: SourceLocatorType;
+  direction: SourceDirection;
+  rawLocator: string | null;
+  normalizedLocator: string | null;
+  normalizedLocatorHash: string | null;
+  mcpServer: string | null;
+  mcpToolName: string | null;
+  docId: string | null;
+  url: string | null;
+  title: string | null;
+  spaceId: string | null;
+  collectionId: string | null;
+  docType: string | null;
+  eventTime: Date | null;
+  evidenceJson: Record<string, unknown>;
+  ruleVersion: string;
+}
+
+const PATH_TOOL_ACTIONS: Record<string, string> = {
+  Read: 'read',
+  Grep: 'grep',
+  Glob: 'glob',
+  Write: 'write',
+  Edit: 'edit',
+  MultiEdit: 'edit',
+};
+
+export function extractSourceReferences(fact: ToolCallFact): SourceReferenceInput[] {
+  const stableEvidenceId = fact.toolUseId ?? fact.eventId;
+  if (!stableEvidenceId) {
+    // 没有稳定证据 id 无法构造幂等 key，跳过。
+    return [];
+  }
+
+  const decoded = decodeMaybeDoubleEncoded(fact.toolInput);
+  if (decoded.parseFailed) {
+    return [
+      buildReference(fact, stableEvidenceId, {
+        actionType: 'unknown',
+        locatorType: 'unknown',
+        rawLocator: previewString(fact.toolInput),
+        normalizedLocator: null,
+        evidence: { parseFailed: true, reason: decoded.reason ?? 'json_parse_failed' },
+      }),
+    ];
+  }
+
+  const input = decoded.value;
+  if (!isRecord(input)) {
+    return [];
+  }
+
+  const pathAction = PATH_TOOL_ACTIONS[fact.toolName];
+  if (pathAction) {
+    return extractPaths(fact, stableEvidenceId, pathAction, input);
+  }
+
+  if (isMcpTool(fact)) {
+    return extractOnlineDoc(fact, stableEvidenceId, input);
+  }
+
+  // 非 locator 类工具（Bash、Task 等）不产生 source reference。
+  return [];
+}
+
+function extractPaths(
+  fact: ToolCallFact,
+  stableEvidenceId: string,
+  actionType: string,
+  input: Record<string, unknown>,
+): SourceReferenceInput[] {
+  const candidates = collectPathCandidates(fact.toolName, input);
+  const refs: SourceReferenceInput[] = [];
+  for (const raw of candidates) {
+    const normalized = normalizePath(raw);
+    refs.push(
+      buildReference(fact, stableEvidenceId, {
+        actionType,
+        locatorType: 'path',
+        rawLocator: raw,
+        normalizedLocator: normalized,
+        evidence: { toolName: fact.toolName, field: 'path' },
+      }),
+    );
+  }
+  return refs;
+}
+
+function collectPathCandidates(toolName: string, input: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const pushIfString = (value: unknown) => {
+    if (typeof value === 'string' && value.trim() !== '') out.push(value);
+  };
+
+  switch (toolName) {
+    case 'Glob':
+      pushIfString(input.path ?? input.pattern);
+      break;
+    case 'Grep':
+      pushIfString(input.path ?? input.glob);
+      break;
+    default: {
+      // Read / Write / Edit / MultiEdit：file_path 可能是字符串或数组
+      const fp = input.file_path ?? input.path;
+      if (Array.isArray(fp)) {
+        for (const item of fp) pushIfString(item);
+      } else {
+        pushIfString(fp);
+      }
+    }
+  }
+  return out;
+}
+
+function extractOnlineDoc(
+  fact: ToolCallFact,
+  stableEvidenceId: string,
+  input: Record<string, unknown>,
+): SourceReferenceInput[] {
+  const url = firstString(input, ['url', 'uri', 'link', 'href']);
+  const docId = firstString(input, ['docId', 'doc_id', 'documentId', 'document_id', 'id']);
+  const collectionId = firstString(input, ['collectionId', 'collection_id']);
+  const spaceId = firstString(input, ['spaceId', 'space_id']);
+  const docType = firstString(input, ['docType', 'doc_type', 'type']);
+  const title = firstString(input, ['title', 'name']);
+
+  const locator = url ?? docId ?? collectionId;
+  if (!locator) {
+    // MCP 调用但拿不到任何在线文档 locator：记 unknown，便于排查、不进 KPI。
+    return [
+      buildReference(fact, stableEvidenceId, {
+        actionType: 'read',
+        locatorType: 'unknown',
+        rawLocator: null,
+        normalizedLocator: null,
+        evidence: { mcpServer: fact.mcpServer, toolName: fact.toolName, reason: 'no_online_locator' },
+      }),
+    ];
+  }
+
+  const locatorType: SourceLocatorType = url ? 'url' : 'mcp_doc';
+  const normalized = url ? normalizeUrl(url) : locator;
+  return [
+    buildReference(fact, stableEvidenceId, {
+      actionType: 'read',
+      locatorType,
+      rawLocator: locator,
+      normalizedLocator: normalized,
+      docId,
+      url,
+      collectionId,
+      spaceId,
+      docType,
+      title,
+      evidence: { mcpServer: fact.mcpServer, toolName: fact.toolName },
+    }),
+  ];
+}
+
+interface ReferenceParts {
+  actionType: string;
+  locatorType: SourceLocatorType;
+  rawLocator: string | null;
+  normalizedLocator: string | null;
+  docId?: string | null;
+  url?: string | null;
+  collectionId?: string | null;
+  spaceId?: string | null;
+  docType?: string | null;
+  title?: string | null;
+  evidence: Record<string, unknown>;
+}
+
+function buildReference(
+  fact: ToolCallFact,
+  stableEvidenceId: string,
+  parts: ReferenceParts,
+): SourceReferenceInput {
+  const direction: SourceDirection = 'input';
+  const normalizedLocatorHash = parts.normalizedLocator
+    ? sha256(parts.normalizedLocator)
+    : null;
+  const referenceKey = sha256(
+    [
+      stableEvidenceId,
+      direction,
+      parts.actionType,
+      parts.locatorType,
+      normalizedLocatorHash ?? '',
+    ].join(':'),
+  );
+
+  return {
+    referenceKey,
+    interactionId: fact.interactionId,
+    toolCallId: fact.toolCallId,
+    eventId: fact.eventId,
+    userId: fact.userId,
+    sessionId: fact.sessionId,
+    promptId: fact.promptId,
+    actionType: parts.actionType,
+    locatorType: parts.locatorType,
+    direction,
+    rawLocator: parts.rawLocator,
+    normalizedLocator: parts.normalizedLocator,
+    normalizedLocatorHash,
+    mcpServer: fact.mcpServer,
+    mcpToolName: isMcpTool(fact) ? fact.toolName : null,
+    docId: parts.docId ?? null,
+    url: parts.url ?? null,
+    title: parts.title ?? null,
+    spaceId: parts.spaceId ?? null,
+    collectionId: parts.collectionId ?? null,
+    docType: parts.docType ?? null,
+    eventTime: fact.eventTime,
+    evidenceJson: { stableEvidenceId, ...parts.evidence },
+    ruleVersion: SOURCE_REFERENCE_RULE_VERSION,
+  };
+}
+
+export interface DecodeResult {
+  value: unknown;
+  parseFailed: boolean;
+  reason?: string;
+}
+
+/** 受控解码 double-encoded JSON：最多 maxDepth 层，遇非 JSON 字符串即停止。 */
+export function decodeMaybeDoubleEncoded(value: unknown, maxDepth = 3): DecodeResult {
+  let current = value;
+  for (let depth = 0; depth < maxDepth; depth += 1) {
+    if (current !== null && typeof current === 'object') {
+      return { value: current, parseFailed: false };
+    }
+    if (typeof current !== 'string') {
+      return { value: current, parseFailed: false };
+    }
+    const trimmed = current.trim();
+    // { / [ 是对象/数组；" 是被再包了一层的 JSON 字符串（double-encoding 的中间层）。
+    const looksJson =
+      trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"');
+    if (!looksJson) {
+      // 普通字符串，不是被序列化的 JSON。
+      return { value: current, parseFailed: false };
+    }
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return { value: current, parseFailed: true, reason: 'json_parse_failed' };
+    }
+  }
+  return { value: current, parseFailed: false };
+}
+
+function normalizePath(raw: string): string {
+  if (raw.startsWith('/')) {
+    return path.posix.normalize(raw);
+  }
+  return raw;
+}
+
+function normalizeUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    // 去掉末尾斜杠，host 小写；保留 path/hash 用于命中 source rule。
+    const pathname = u.pathname.replace(/\/+$/, '');
+    return `${u.protocol}//${u.host.toLowerCase()}${pathname}${u.search}${u.hash}`;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
+function firstString(input: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim() !== '') return value;
+  }
+  return null;
+}
+
+function isMcpTool(fact: ToolCallFact): boolean {
+  return fact.mcpServer != null || fact.toolName.startsWith('mcp__');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function previewString(value: unknown, maxLen = 512): string | null {
+  if (value === null || value === undefined) return null;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > maxLen ? text.slice(0, maxLen) : text;
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}

@@ -13,6 +13,7 @@ import { CreateOpsResourceSnapshots1780000002000 } from './migrations/1780000002
 import { CreateArtifactWrites1780000003000 } from './migrations/1780000003000-create-artifact-writes';
 import { CreateArtifactTurns1780000004000 } from './migrations/1780000004000-create-artifact-turns';
 import { CreateSddDailyReports1780000005000 } from './migrations/1780000005000-create-sdd-daily-reports';
+import { CreateSourceReferences1780000006000 } from './migrations/1780000006000-create-source-references';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -42,6 +43,7 @@ export function createAppDataSource(): DataSource {
       CreateArtifactWrites1780000003000,
       CreateArtifactTurns1780000004000,
       CreateSddDailyReports1780000005000,
+      CreateSourceReferences1780000006000,
     ],
   });
 }

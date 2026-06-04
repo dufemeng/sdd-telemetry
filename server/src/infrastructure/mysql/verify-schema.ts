@@ -19,6 +19,7 @@ const expectedTables = [
   'sdd_wiki_recalls',
   'sdd_errors',
   'sdd_daily_reports',
+  'source_references',
 ];
 
 const expectedUniqueIndexes = [
@@ -39,6 +40,7 @@ const expectedUniqueIndexes = [
   'uk_recall_key',
   'uk_sdd_errors_error_key',
   'uk_daily_report_date_timezone',
+  'uk_source_references_reference_key',
 ];
 
 const expectedColumns: Record<string, string[]> = {
@@ -76,6 +78,20 @@ const expectedColumns: Record<string, string[]> = {
     'query_version',
     'generated_at',
     'generated_by',
+  ],
+  source_references: [
+    'reference_key',
+    'action_type',
+    'locator_type',
+    'direction',
+    'raw_locator',
+    'normalized_locator',
+    'normalized_locator_hash',
+    'doc_id',
+    'url',
+    'event_time',
+    'evidence_json',
+    'rule_version',
   ],
 };
 
