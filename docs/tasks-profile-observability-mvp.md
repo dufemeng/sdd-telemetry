@@ -151,6 +151,12 @@ sha256(
 )
 ```
 
+`stable_evidence_id` 定义（load-bearing，必须钉死）：
+
+- `stable_evidence_id` 是**每次调用粒度**的稳定证据 id：优先 `sdd_interaction_tool_calls.tool_use_id`，无 tool call 时回退 `otel_log_events.event_id`。
+- 它决定 source reference 的计数粒度：同一篇文档被读两次产生两条 source reference，**与旧 `sdd_wiki_recalls` 按 tool call 计数的口径对齐**，保证 knowledge 对账的 `old_not_in_new = 0` 可达成。
+- 禁止取更粗的粒度（如只到 locator），否则同文档多次读取会被折叠，knowledge recall 系统性少于旧表，对账必然阻塞。
+
 验证：
 
 ```bash
@@ -426,8 +432,9 @@ pnpm --filter @sdd-telemetry/server profile:rebuild-source-references
 
 约束：
 
-- 不允许 `TRUNCATE source_references`。
-- MVP-1 不做硬删除过期 source reference；当前源日志未过期清理，全量 upsert 足够。
+- 常规 rebuild 按 `reference_key` 幂等 upsert，不 `TRUNCATE`，保证按 `source_reference_id` 下钻的连续性。
+- 但 `rule_version` 变更时必须全清重建（`TRUNCATE` 后重抽）。原因：`normalized_locator_hash` 进入 `reference_key`，归一化逻辑一变会对同一次读取产生新 `reference_key` 的新行，旧归一化行若不清理会残留并被下游重复计数。下游已按稳定 `reference_key` 幂等，且 §12 是先 rebuild-source-references 再 profile:rebuild，全清重建对下游身份安全。
+- MVP-1 不做按时间过期的硬删除；当前源日志未过期清理，全量 upsert（或 rule_version 变更时全清重建）足够。
 - 下游 projection 可以保存 `source_reference_id` 供 join，但身份和幂等必须基于稳定的 `reference_key`。
 
 验收 SQL：
@@ -668,6 +675,7 @@ SELECT COUNT(*) FROM profile_artifact_turns WHERE profile_id = 'sdd-default';
 核心规则：
 
 - 只统计 `action_type = read` 的知识库引用。
+- 同一 `stable_evidence_id` + locator 身份若存在多条 source reference（历史 `rule_version` 残留），只取最新 `rule_version` 的一条投影，避免归一化变更导致重复计数。
 - locator 必须命中 `sdd-default` 的 wiki source rule，例如 `wiki_root_path` 或后续 URL prefix。
 - `source_reference_key` 必须写入 `profile_knowledge_recalls`，值来自 `source_references.reference_key`。
 - `source_reference_id` 必须写入 `profile_knowledge_recalls`，用于 join / 下钻，但不进入幂等 key。
@@ -689,15 +697,18 @@ WHERE profile_id = 'sdd-default'
 GROUP BY action_type
 ORDER BY action_type;
 
-SELECT COUNT(*) AS missing_source_ref
-FROM profile_knowledge_recalls
-WHERE profile_id = 'sdd-default'
-  AND (source_reference_key IS NULL OR source_reference_id IS NULL);
+-- source_reference_id / source_reference_key 由 NOT NULL 约束在 schema 层保证非空，
+-- 这里查真正的完整性问题：投影出的 source_reference_key 是否都能在 source_references 中找到（无悬挂引用）。
+SELECT COUNT(*) AS orphan_source_ref
+FROM profile_knowledge_recalls k
+LEFT JOIN source_references s ON s.reference_key = k.source_reference_key
+WHERE k.profile_id = 'sdd-default'
+  AND s.reference_key IS NULL;
 ```
 
 目标：
 
-- `missing_source_ref = 0`。
+- `orphan_source_ref = 0`（每条 knowledge recall 都能反查到真实 source reference）。
 - 旧 `sdd_wiki_recalls` 命中的 knowledge recall，新的 `profile_knowledge_recalls` 不得漏掉。
 - 新 `profile_knowledge_recalls` 多于旧 `sdd_wiki_recalls` 是允许的，但必须归因到完整 raw/event 抽取、规则差异或 locator 归一化差异。
 - `tool_call_id / interaction_id / skill_usage_id / work_item_id` 链路能映射到 profile ids；没有映射时必须进入 diff 解释。
@@ -770,7 +781,7 @@ codeChanges:     skipped strong diff, known adapter metric
 - capability usage：目标 0 差异；若非 0，必须逐条解释。
 - knowledge recall 采用非对称门槛：`old_not_in_new = 0` 必须满足。
 - `new_not_in_old` 允许非 0，但每条必须归因到完整 raw/event 抽取、规则差异或 locator 归一化差异。
-- knowledge recall 必须来自 `source_references`，`missing_source_ref = 0`。
+- knowledge recall 必须来自 `source_references`，`orphan_source_ref = 0`（无悬挂引用）。
 - `old_not_in_new` 若非 0，必须阻塞通过，并区分是 source reference 未抽到、knowledge rule 未命中、还是映射 bug。
 - codeChanges：不参与强一致。
 
@@ -1005,7 +1016,7 @@ MVP-1 完成必须同时满足：
 3. source references 可全量重建，幂等，无重复 key。
 4. `sdd-default` projection 可全量重建，重复跑不重复计数。
 5. projection read path 使用 current pointer，failed run 不影响当前看板数据。
-6. `knowledgeRecalls` 从 `source_references` 投影，`missing_source_ref = 0`。
+6. `knowledgeRecalls` 从 `source_references` 投影，`orphan_source_ref = 0`，无悬挂引用。
 7. 新旧对账通过；桥接链路差异为 0 或逐条解释。
 8. knowledge recall 对账满足 `old_not_in_new = 0`，`new_not_in_old` 全部有归因。
 9. Profile Contract 至少支撑 profiles / manifest / overview。
