@@ -10,7 +10,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import type { SddUsageItem, SddUsageSummaryItem } from '@sdd-telemetry/api';
+import type { ProfileCapabilityUsageItem, ProfileCapabilityUsageSummaryItem } from '@sdd-telemetry/api';
 import { useShellContext } from '@/components/layout/useShellContext';
 import { DataTable, type DataTableRow } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -25,11 +25,16 @@ import {
   formatTime,
 } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { timeRangeToFromIso } from '@/lib/timeRange';
 import { TrendChart } from './components/TrendChart';
-import { useSddUsageSummary, type UsageMatchFilter } from './hooks/useSddUsageSummary';
-import { useSkillAnalytics } from './hooks/useSkillAnalytics';
-import { useSkillTimeseries } from './hooks/useSkillTimeseries';
-import { useSkillUsages } from './hooks/useSkillUsages';
+import {
+  useProfileCapabilityAnalytics,
+  useProfileCapabilityTimeseries,
+  useProfileCapabilityUsageSummary,
+  useProfileCapabilityUsages,
+} from '@/pages/profiles/useProfiles';
+
+type UsageMatchFilter = 'all' | 'matched' | 'unmatched';
 
 const PAGE_SIZE = 20;
 const CARD_STYLE = {
@@ -49,36 +54,40 @@ type Metric = {
 type SkillFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
 
 export default function SkillsPage() {
-  const { timeRange } = useShellContext();
-  const analyticsQuery = useSkillAnalytics(timeRange);
-  const timeseriesQuery = useSkillTimeseries(timeRange);
+  const { timeRange, profileId } = useShellContext();
+  const fromIso = timeRangeToFromIso(timeRange);
+  const analyticsQuery = useProfileCapabilityAnalytics(profileId, fromIso);
+  const timeseriesQuery = useProfileCapabilityTimeseries(profileId, fromIso);
   const [keyword, setKeyword] = useState('');
   const [matched, setMatched] = useState<SkillFilter>('all');
   const [page, setPage] = useState(1);
-  const [selectedRawSkillName, setSelectedRawSkillName] = useState<string | null>(null);
+  const [selectedRawCapabilityName, setSelectedRawCapabilityName] = useState<string | null>(null);
   const debouncedKeyword = useDebouncedValue(keyword, 300);
-  const summaryQuery = useSddUsageSummary({
-    timeRange,
+  const summaryQuery = useProfileCapabilityUsageSummary(profileId, {
+    fromIso,
     matched,
     keyword: debouncedKeyword,
     page,
     pageSize: PAGE_SIZE,
   });
-  const usageQuery = useSkillUsages({ timeRange, rawSkillName: selectedRawSkillName });
+  const usageQuery = useProfileCapabilityUsages(profileId, {
+    fromIso,
+    rawCapabilityName: selectedRawCapabilityName,
+  });
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedKeyword, matched, timeRange]);
+  }, [debouncedKeyword, matched, fromIso]);
 
   const analytics = analyticsQuery.data;
   const callQuality = analytics?.callQuality;
   const pairingRate = callQuality?.pairingSuccessRate ?? null;
-  const topSemantics = analytics?.topSemantics.slice(0, 3) ?? [];
+  const topCapabilities = analytics?.topCapabilities.slice(0, 3) ?? [];
   const items = summaryQuery.data?.items ?? [];
   const total = summaryQuery.data?.total ?? 0;
   const selectedItem = useMemo(
-    () => items.find((item) => item.rawSkillName === selectedRawSkillName) ?? null,
-    [items, selectedRawSkillName],
+    () => items.find((item) => item.rawCapabilityName === selectedRawCapabilityName) ?? null,
+    [items, selectedRawCapabilityName],
   );
   const hasPrev = page > 1;
   const hasNext = page * PAGE_SIZE < total;
@@ -98,8 +107,8 @@ export default function SkillsPage() {
         <KpiCard
           icon={Layers3}
           label="技能调用量"
-          value={analytics?.kpis.skillUsageCount.current}
-          hint={deltaHint(analytics?.kpis.skillUsageCount)}
+          value={analytics?.kpis.capabilityUsageCount.current}
+          hint={deltaHint(analytics?.kpis.capabilityUsageCount)}
           loading={analyticsQuery.isLoading}
           progress={pairingRate}
           progressLabel={`有效配对 ${formatRate(pairingRate)}`}
@@ -113,16 +122,16 @@ export default function SkillsPage() {
         />
         <KpiCard
           icon={GitBranch}
-          label="覆盖工作项"
-          value={analytics?.kpis.coveredWorkItemCount.current}
-          hint={deltaHint(analytics?.kpis.coveredWorkItemCount)}
+          label="覆盖需求"
+          value={analytics?.kpis.coveredDeliveryUnitCount.current}
+          hint={deltaHint(analytics?.kpis.coveredDeliveryUnitCount)}
           loading={analyticsQuery.isLoading}
         />
         <KpiCard
           icon={Layers}
           label="全链路需求"
-          value={analytics?.kpis.multiStageWorkItemCount.current}
-          hint="覆盖 >=3 个 SDD 阶段"
+          value={analytics?.kpis.multiStageDeliveryUnitCount.current}
+          hint="覆盖 >=2 个阶段"
           loading={analyticsQuery.isLoading}
         />
       </div>
@@ -175,7 +184,7 @@ export default function SkillsPage() {
         </section>
       </div>
 
-      {!analyticsQuery.isLoading && topSemantics.length > 0 ? (
+      {!analyticsQuery.isLoading && topCapabilities.length > 0 ? (
         <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-3">
             <Trophy size={18} style={{ color: 'var(--color-primary)' }} />
@@ -188,13 +197,13 @@ export default function SkillsPage() {
                 background: 'rgba(250,255,105,0.06)',
               }}
             >
-              TOP {topSemantics.length}
+              TOP {topCapabilities.length}
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            {topSemantics.map((item, index) => (
+            {topCapabilities.map((item, index) => (
               <div
-                key={item.semanticCode}
+                key={item.capabilityCode}
                 className="flex flex-col gap-3 p-3 rounded-[6px] relative overflow-hidden"
                 style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
               >
@@ -219,9 +228,9 @@ export default function SkillsPage() {
                   <div
                     className="mt-1 text-[11px] text-[var(--color-muted)] truncate"
                     style={{ fontFamily: 'var(--font-mono)' }}
-                    title={item.semanticCode}
+                    title={item.capabilityCode}
                   >
-                    {item.semanticCode}
+                    {item.capabilityCode}
                   </div>
                 </div>
                 <div className="pl-[10px]">
@@ -230,7 +239,7 @@ export default function SkillsPage() {
                 <div className="flex flex-wrap gap-[6px] pl-[10px]">
                   <SkillChip icon={Zap} value={`${formatInteger(item.usageCount)} 次`} />
                   <SkillChip icon={UserRound} value={`${formatInteger(item.userCount)} 人`} />
-                  <SkillChip icon={GitBranch} value={`${formatInteger(item.workItemCount)} 需求`} />
+                  <SkillChip icon={GitBranch} value={`${formatInteger(item.deliveryUnitCount)} 需求`} />
                 </div>
                 {item.conversionRate !== null ? (
                   <div className="grid gap-[6px] pl-[10px]">
@@ -311,13 +320,13 @@ export default function SkillsPage() {
                   <TableMessage text={debouncedKeyword ? '无匹配技能' : '暂无数据'} />
                 ) : (
                   items.map((item) => {
-                    const isMatched = Boolean(item.semanticCode);
+                    const isMatched = Boolean(item.capabilityCode);
                     return (
                       <tr
-                        key={item.rawSkillName}
+                        key={item.rawCapabilityName}
                         className="group cursor-pointer"
                         style={{ borderBottom: '1px solid var(--color-border)' }}
-                        onClick={() => setSelectedRawSkillName(item.rawSkillName)}
+                        onClick={() => setSelectedRawCapabilityName(item.rawCapabilityName)}
                       >
                         <td
                           className="py-[10px] group-hover:bg-[#171717] transition-colors relative"
@@ -332,14 +341,14 @@ export default function SkillsPage() {
                               className="text-[13px] font-medium truncate max-w-[300px]"
                               style={{ color: isMatched ? '#f5f5f5' : 'var(--color-bad-text)' }}
                             >
-                              {item.semanticDisplayName ?? item.semanticCode ?? item.rawSkillName}
+                              {item.capabilityDisplayName ?? item.capabilityCode ?? item.rawCapabilityName}
                             </span>
                             {isMatched ? (
                               <span
                                 className="text-[10px] text-[var(--color-muted)] truncate max-w-[300px]"
                                 style={{ fontFamily: 'var(--font-mono)' }}
                               >
-                                {item.rawSkillName}
+                                {item.rawCapabilityName}
                               </span>
                             ) : (
                               <span className="text-[10px] text-[var(--color-bad-text)]">未匹配</span>
@@ -348,7 +357,7 @@ export default function SkillsPage() {
                         </td>
                         <MetricCell value={item.usageCount} />
                         <MetricCell value={item.activeUserCount} />
-                        <MetricCell value={item.workItemCount} emptyZero />
+                        <MetricCell value={item.deliveryUnitCount} emptyZero />
                         <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                           <div className="flex flex-col gap-[2px]">
                             <span className="text-[12px] text-[var(--color-secondary)]">
@@ -391,27 +400,27 @@ export default function SkillsPage() {
         </div>
       </section>
 
-      {selectedRawSkillName ? (
+      {selectedRawCapabilityName ? (
         <RowInspectorDrawer
-          open={selectedRawSkillName !== null}
+          open={selectedRawCapabilityName !== null}
           onOpenChange={(open) => {
-            if (!open) setSelectedRawSkillName(null);
+            if (!open) setSelectedRawCapabilityName(null);
           }}
-          title={selectedItem?.semanticDisplayName ?? selectedItem?.rawSkillName ?? selectedRawSkillName}
-          subtitle={selectedItem?.semanticCode}
+          title={selectedItem?.capabilityDisplayName ?? selectedItem?.rawCapabilityName ?? selectedRawCapabilityName}
+          subtitle={selectedItem?.capabilityCode}
           icon={<Layers3 size={18} />}
           badge={
             selectedItem ? (
               <StatusBadge
-                status={selectedItem.semanticCode ? '已匹配' : '未匹配'}
-                variant={selectedItem.semanticCode ? 'good' : 'bad'}
+                status={selectedItem.capabilityCode ? '已匹配' : '未匹配'}
+                variant={selectedItem.capabilityCode ? 'good' : 'bad'}
               />
             ) : null
           }
-          row={selectedItem ?? { rawSkillName: selectedRawSkillName }}
+          row={selectedItem ?? { rawCapabilityName: selectedRawCapabilityName }}
           overview={selectedItem ? toOverviewFields(selectedItem) : []}
           fields={selectedItem ? toDetailFields(selectedItem) : []}
-          rawData={{ summary: selectedItem, usages: usageQuery.data ?? [] }}
+          rawData={{ summary: selectedItem, usages: usageQuery.data?.items ?? [] }}
           loading={usageQuery.isLoading}
           error={usageQuery.error instanceof Error ? usageQuery.error.message : null}
           size="xl"
@@ -420,7 +429,7 @@ export default function SkillsPage() {
             <h4 className="text-[12px] font-semibold text-[var(--color-secondary)]">最近调用</h4>
             <DataTable
               headers={['时间', '状态', '用户', 'sessionId', 'promptId', 'interactionId']}
-              rows={(usageQuery.data ?? []).map(toUsageRow)}
+              rows={(usageQuery.data?.items ?? []).map(toUsageRow)}
               emptyText="暂无调用"
             />
           </div>
@@ -601,7 +610,7 @@ function percentWidth(value: number | null): string {
   return `${Math.max(0, Math.min(value ?? 0, 1)) * 100}%`;
 }
 
-function toUsageRow(item: SddUsageItem): DataTableRow {
+function toUsageRow(item: ProfileCapabilityUsageItem): DataTableRow {
   return {
     key: item.id,
     cells: [
@@ -615,20 +624,20 @@ function toUsageRow(item: SddUsageItem): DataTableRow {
   };
 }
 
-function toOverviewFields(item: SddUsageSummaryItem): RowInspectorField[] {
+function toOverviewFields(item: ProfileCapabilityUsageSummaryItem): RowInspectorField[] {
   return [
     { label: '调用', value: formatInteger(item.usageCount), mono: true },
     { label: '用户', value: formatInteger(item.activeUserCount), mono: true },
     { label: '会话', value: formatInteger(item.sessionCount), mono: true },
-    { label: '覆盖需求', value: formatInteger(item.workItemCount), mono: true },
+    { label: '覆盖需求', value: formatInteger(item.deliveryUnitCount), mono: true },
   ];
 }
 
-function toDetailFields(item: SddUsageSummaryItem): RowInspectorField[] {
+function toDetailFields(item: ProfileCapabilityUsageSummaryItem): RowInspectorField[] {
   return [
-    { label: '语义名称', value: item.semanticDisplayName ?? '—' },
-    { label: '语义代码', value: item.semanticCode ?? '—', copyValue: item.semanticCode, mono: true },
-    { label: '原始技能名', value: item.rawSkillName, copyValue: item.rawSkillName, mono: true },
+    { label: '语义名称', value: item.capabilityDisplayName ?? '—' },
+    { label: '语义代码', value: item.capabilityCode ?? '—', copyValue: item.capabilityCode, mono: true },
+    { label: '原始技能名', value: item.rawCapabilityName, copyValue: item.rawCapabilityName, mono: true },
     { label: '最近调用', value: formatDateTime(item.lastSeenAt), mono: true },
     { label: '首次出现', value: formatDateTime(item.firstSeenAt), mono: true },
   ];

@@ -1,8 +1,8 @@
-import type { SddSkillTimeseries } from '@sdd-telemetry/api';
+import type { ProfileCapabilityTimeseries } from '@sdd-telemetry/api';
 import { formatInteger } from '@/lib/format';
 
 interface TrendChartProps {
-  points: SddSkillTimeseries['points'];
+  points: ProfileCapabilityTimeseries['points'];
 }
 
 const WIDTH = 760;
