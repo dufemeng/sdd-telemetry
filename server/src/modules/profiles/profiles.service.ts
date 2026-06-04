@@ -1,4 +1,4 @@
-import { Inject, Provide } from '@midwayjs/core';
+import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
   ProfileCapabilityManifest,
   ProfileOverview,
@@ -12,11 +12,20 @@ import {
   listProfileConfigs,
   type WorkflowProfileConfig,
 } from './profile-config';
+import { ProfileProjectionRepository } from './profile-projection.repository';
+
+type ReadSource = 'legacy_sdd' | 'profile_projection';
 
 @Provide('profilesService')
 export class ProfilesService {
   @Inject('sddQueryService')
   sddQueryService!: SddQueryService;
+
+  @Inject('profileProjectionRepository')
+  profileProjectionRepository!: ProfileProjectionRepository;
+
+  @Config('profileDashboard')
+  profileDashboard!: { readSource: ReadSource };
 
   listProfiles(): ProfileSummary[] {
     return listProfileConfigs().map(toSummary);
@@ -27,14 +36,25 @@ export class ProfilesService {
   }
 
   /**
-   * MVP-1 读源：legacy_sdd。复用 SddQueryService.getOverview，把 SDD 口径映射到通用 contract。
-   * knowledgeRecallCount / code* 暂返回 0，待 PR-5（knowledge projection）/ PR-6 接入后填充。
+   * 读源策略（Task 17）：
+   * - profile_projection：从 profile_* current run 读（含真实 knowledgeRecallCount）。
+   *   无 current pointer 时自动回退 legacy，保证不破。
+   * - legacy_sdd：复用 SddQueryService.getOverview，把 SDD 口径映射到通用 contract。
    */
   async getOverview(
     profileId: string,
     query: ProfileOverviewQuery,
   ): Promise<ProfileOverview> {
     this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getOverview(profileId, runId, query);
+      }
+      // 无 current pointer：回退 legacy。
+    }
+
     const sdd = await this.sddQueryService.getOverview(query);
     return {
       activeUserCount: sdd.activeUserCount,

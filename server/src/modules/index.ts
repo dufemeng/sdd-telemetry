@@ -20,6 +20,7 @@ import './sdd/sdd-query.service';
 import './sdd/sdd-write.repository';
 import './profiles/profiles.controller';
 import './profiles/profiles.service';
+import './profiles/profile-projection.repository';
 import './reports/daily-report.repository';
 import './reports/daily-report.service';
 import './reports/daily-report.controller';
