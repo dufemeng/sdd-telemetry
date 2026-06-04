@@ -1081,3 +1081,27 @@ MVP-1 完成必须同时满足：
 7. PR-7：Profile Switcher + 四大看板逐步接入。
 
 每个 PR 都必须能独立通过 `pnpm typecheck` 和 `pnpm build`。涉及 migration/worker 的 PR 额外跑数据库验证。
+
+## 16. 实施记录（2026-06-04）
+
+### 16.1 已完成并在真实库验证
+
+- **PR-1~6 后端全闭环**：source_references 抽取 + 重建（幂等、duplicates=0）、profile_* 9 表 + current-pointer 框架（失败不切 pointer 实测）、桥接 projection（对账 0 差异）、knowledge 非自证投影（`profile:diff` gate PASS：`old_not_in_new=0`、`orphan_source_ref=0`）、读源开关 + overview 读 projection（parity 一致）。
+- **PR-7 前端**：全站 Profile Switcher + ShellContext.profileId（localStorage 持久化）；overview headline KPI（技能调用/活跃用户/覆盖需求）接入 Profile Contract；manifest 降级机制（`useProfileManifest` + `FeatureGate`）。
+- **Task 13** code activity 算子 + overview code 概况（read/write 计数，不参与对账）。
+- **Task 15** `profile:link-check` 抽样链路对账（gate PASS）。
+
+### 16.2 实现决策 / 与本文的偏差（已确认）
+
+1. **profile 命令挂 worker**（`profile:rebuild-source-references` / `rebuild` / `diff` / `link-check`），不是 Task 6.5 的「全部 server」。理由：source reference 抽取与 projection 属清洗域，高内聚低耦合，避免 server→worker 反向依赖；worker 写 profile_*、server 读 profile_*。根 `package.json` 仍提供转发脚本，§12 验收命令照常可用。
+2. **桥接算子幂等 key 复用上游 sdd 稳定 key**（`usage_key` / `work_item_key` / `artifact_key` / `write_key` / `turn_key`，加 profile 前缀 sha256），不是 §10.3 的事实层 composite key。桥接从 sdd_* 映射，sdd 自身 key 更直接、稳定性等价；事实层 key 留待下沉到 raw facts 时使用。
+3. **source reference 抽取数据源**：`tool_input` 实际在 `tool_result` 事件的 `attributes_json` 上（非 tool_decision），且为 double-encoded JSON string。抽取从完整 `attributes_json` 读、受控解码，不依赖 4096 preview。
+4. **knowledge 对账 scope**：限「pipeline 数据」（`tool_call_id ∈ source_references` 的 wiki recall）。seed/demo 用户（无底层 tool calls / source_references，约 4106 条）不属 pipeline，可解释排除，不计入 `old_not_in_new`。
+5. **code 口径**（Task 13）：sdd-default 第一版 = 本地 path 且不在 `wiki_root_path` / `requirements_root_path` 下；只在有 `source_reference_key` 时写 `profile_code_activities`。
+6. **读源默认值**：`PROFILE_DASHBOARD_READ_SOURCE` 默认 `legacy_sdd`（安全回退，非 §13.3 的 dev=projection）；切 `profile_projection` 后若无 current pointer 自动回退 legacy。
+7. **upsert 计数**：mysql2 连接带 `CLIENT_FOUND_ROWS`，`affectedRows` 对 no-op upsert 也返回 1；source-references rebuild 改用全表行数差算 inserted，幂等以 duplicates=0 + 行数稳定佐证。
+
+### 16.3 未完成（增量，不阻塞主干）
+
+- **Task 19 深化 / Task 20 四大看板取数**：当前总览仅 headline KPI 走 contract；产出/知识库/能力/用户四大看板从 profile contract 取数尚未做，需新增 `/api/profiles/:id/{users,capabilities/analytics,demands,knowledge/coverage}` 端点（各自读 profile_* current run）+ 逐页改造 + manifest 降级落点。属较大增量，按文档「逐步接入」推进。
+- **§13 完成定义**：第 1–9、11 项已满足；第 10 项部分（后端可提供、前端仅 headline 接入）；第 12 项已补（code 概况展示）。
