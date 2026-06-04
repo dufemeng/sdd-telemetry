@@ -6,11 +6,11 @@
 
 ## 1. 结论先行
 
-按实施文档的验收口径，**MVP-1 已完成**：
-- §13 完成定义 13 条 **全部满足**。
-- Task 20 验收 3 条（页面不退化 / 下钻不断 / manifest 降级逻辑存在）**满足**。
+**后端管线 MVP 完成；全站/四大看板换源未完成，属增量。**
+- §13 完成定义按**字面**满足（第 10 项「总览可通过 contract 展示」已做 headline + 知识库/代码卡片；但四大看板尚未真正换源——这是 §13 字面与意图的差距）。
+- Task 20 验收 3 条（页面不退化 / 下钻不断 / manifest 降级逻辑存在）满足，但「看板从 contract 取数」的意图仅产出分析 `/demands` 端点就位，前端未换源。
 
-后端数据管线 + 读 API + 前端 shell 全贯通，最高风险的「非自证链路」在真实数据上 gate PASS。
+后端数据管线 + 读 API + 前端 shell 全贯通，最高风险的「非自证链路」在真实数据上对账 **PASS（key/locator 级）**。
 
 ## 2. 做了什么（按 commit）
 
@@ -47,8 +47,9 @@
 | source_references 重建 | 2054 条，`duplicates=0`；重复跑 reused=2050/inserted=4（仅新事实入库）= 幂等 |
 | 双解码 | 真实 `tool_result.attributes_json.tool_input` 解码成功（验证公司电脑那条结论） |
 | current-pointer 失败语义 | 注入失败算子 → run=failed，**current pointer 不变**（Task 7） |
-| 桥接对账（`profile:diff`） | capability 70 / delivery 17 / artifact 2 / writes 10 / turns 0，**全 0 差异** |
-| knowledge 非自证（gate） | **PASS**：new=23、`old_not_in_new=0`、`orphan_source_ref=0`；seed 4106 可解释排除 |
+| 桥接对账（`profile:diff`，**key-set 级**） | rebuild→diff 背靠背：五域 `oldNotInNew/newNotInOld` 全 0（含 capability/delivery/artifact/writes/turns） |
+| knowledge 非自证（gate，**(tool_call_id, locator) 级**） | **PASS**：new=23、`old_not_in_new=0`、`new_not_in_old=0`、`orphan_source_ref=0`；seed 4106 可解释排除 |
+| 对账时效 | diff 比对 live `sdd_*`；run 后有新数据入库会如实 FAIL（提示重建），需 rebuild→diff 背靠背 |
 | 抽样链路（`profile:link-check`） | **PASS**：真实需求 artifact/writes/turns 链路新旧一致 |
 | overview 读源 parity | 4 个重叠字段 legacy==projection；knowledge 真实 23 |
 | code 概况 | read 1241 / write 786 |
