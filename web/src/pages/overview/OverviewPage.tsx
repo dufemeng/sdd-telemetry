@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import {
+  BookOpen,
+  Code2,
+  FilePen,
   FileText,
   GitBranch,
   Layers3,
@@ -7,6 +10,7 @@ import {
   UserRound,
   Zap,
 } from 'lucide-react';
+import { FeatureGate } from '@/components/profiles/FeatureGate';
 import { useShellContext } from '@/components/layout/useShellContext';
 import { timeRangeToFromIso } from '@/lib/timeRange';
 import { useProfileOverview } from '@/pages/profiles/useProfiles';
@@ -169,6 +173,40 @@ export default function OverviewPage() {
             hint="覆盖 ≥ 3 个 SDD 阶段"
             loading={analyticsQuery.isLoading}
           />
+        </div>
+
+        {/* ── 知识库 / 代码概况（Profile Contract 指标，按 manifest 降级）── */}
+        <div className="grid grid-cols-3 gap-3">
+          <FeatureGate capability="knowledgeRecalls">
+            <KpiCard
+              icon={<BookOpen size={18} />}
+              label="知识库读取"
+              value={profileOverview?.knowledgeRecallCount ?? null}
+              metric={undefined}
+              hint="本 profile 累计"
+              loading={false}
+            />
+          </FeatureGate>
+          <FeatureGate capability="codeChanges">
+            <KpiCard
+              icon={<Code2 size={18} />}
+              label="代码读取"
+              value={profileOverview?.codeReadCount ?? null}
+              metric={undefined}
+              hint="本 profile 累计"
+              loading={false}
+            />
+          </FeatureGate>
+          <FeatureGate capability="codeChanges">
+            <KpiCard
+              icon={<FilePen size={18} />}
+              label="代码写入"
+              value={profileOverview?.codeWriteCount ?? null}
+              metric={undefined}
+              hint="本 profile 累计"
+              loading={false}
+            />
+          </FeatureGate>
         </div>
 
         {/* ── Section 2: 成员概况 + SDD 漏斗 ── */}
