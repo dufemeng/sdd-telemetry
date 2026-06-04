@@ -83,6 +83,22 @@ describe('extractSourceReferences', () => {
     expect(glob[0]).toMatchObject({ actionType: 'glob', locatorType: 'path' });
   });
 
+  it('tags a glob/grep wildcard pattern as locator_type=pattern (not path)', () => {
+    const glob = extractSourceReferences(
+      baseFact({ toolName: 'Glob', toolInput: { pattern: '**/*.ts' } }),
+    );
+    expect(glob[0]).toMatchObject({ actionType: 'glob', locatorType: 'pattern' });
+    const grep = extractSourceReferences(
+      baseFact({ toolName: 'Grep', toolInput: { glob: '**/*.md' } }),
+    );
+    expect(grep[0]).toMatchObject({ actionType: 'grep', locatorType: 'pattern' });
+    // 有真实 path 时仍是 path
+    const globPath = extractSourceReferences(
+      baseFact({ toolName: 'Glob', toolInput: { path: '/repo/wiki', pattern: '**/*.md' } }),
+    );
+    expect(globPath[0]).toMatchObject({ locatorType: 'path' });
+  });
+
   it('extracts an MCP online-doc URL from a double-encoded string input', () => {
     const refs = extractSourceReferences(
       baseFact({

@@ -16,7 +16,7 @@ import path from 'node:path';
 
 export const SOURCE_REFERENCE_RULE_VERSION = 'src-ref-v1';
 
-export type SourceLocatorType = 'path' | 'url' | 'mcp_doc' | 'unknown';
+export type SourceLocatorType = 'path' | 'pattern' | 'url' | 'mcp_doc' | 'unknown';
 export type SourceDirection = 'input' | 'result' | 'event';
 
 export interface ToolCallFact {
@@ -116,41 +116,51 @@ function extractPaths(
 ): SourceReferenceInput[] {
   const candidates = collectPathCandidates(fact.toolName, input);
   const refs: SourceReferenceInput[] = [];
-  for (const raw of candidates) {
-    const normalized = normalizePath(raw);
+  for (const cand of candidates) {
+    // glob/grep 的 pattern（如 **/*.ts）不是真实路径，标 locator_type=pattern；
+    // 下游 knowledge/code 算子只取 path，pattern 自然不进核心 KPI（进证据/下钻）。
+    const isPattern = cand.kind === 'pattern';
     refs.push(
       buildReference(fact, stableEvidenceId, {
         actionType,
-        locatorType: 'path',
-        rawLocator: raw,
-        normalizedLocator: normalized,
-        evidence: { toolName: fact.toolName, field: 'path' },
+        locatorType: isPattern ? 'pattern' : 'path',
+        rawLocator: cand.value,
+        normalizedLocator: isPattern ? cand.value : normalizePath(cand.value),
+        evidence: { toolName: fact.toolName, field: cand.kind },
       }),
     );
   }
   return refs;
 }
 
-function collectPathCandidates(toolName: string, input: Record<string, unknown>): string[] {
-  const out: string[] = [];
-  const pushIfString = (value: unknown) => {
-    if (typeof value === 'string' && value.trim() !== '') out.push(value);
+interface PathCandidate {
+  value: string;
+  kind: 'path' | 'pattern';
+}
+
+function collectPathCandidates(toolName: string, input: Record<string, unknown>): PathCandidate[] {
+  const out: PathCandidate[] = [];
+  const push = (value: unknown, kind: 'path' | 'pattern') => {
+    if (typeof value === 'string' && value.trim() !== '') out.push({ value, kind });
   };
 
   switch (toolName) {
     case 'Glob':
-      pushIfString(input.path ?? input.pattern);
+      // path 是搜索目录（真实路径）；只有 pattern 时才是通配模式
+      if (typeof input.path === 'string') push(input.path, 'path');
+      else push(input.pattern, 'pattern');
       break;
     case 'Grep':
-      pushIfString(input.path ?? input.glob);
+      if (typeof input.path === 'string') push(input.path, 'path');
+      else push(input.glob, 'pattern');
       break;
     default: {
       // Read / Write / Edit / MultiEdit：file_path 可能是字符串或数组
       const fp = input.file_path ?? input.path;
       if (Array.isArray(fp)) {
-        for (const item of fp) pushIfString(item);
+        for (const item of fp) push(item, 'path');
       } else {
-        pushIfString(fp);
+        push(fp, 'path');
       }
     }
   }
