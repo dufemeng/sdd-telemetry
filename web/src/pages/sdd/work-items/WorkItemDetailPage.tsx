@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, GitBranch } from 'lucide-react';
-import { useSddWorkItemDetail } from './useSddWorkItems';
-import { useArtifactWrites } from './useArtifactWrites';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfileDemandDetail, useProfileArtifactTimeline } from '@/pages/profiles/useProfiles';
 import { ArtifactList } from './components/ArtifactList';
 import { ArtifactWriteTimeline } from './components/ArtifactWriteTimeline';
 import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
@@ -12,8 +12,9 @@ const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(-
 
 export default function WorkItemDetailPage() {
   const { id = '' } = useParams();
+  const { profileId } = useShellContext();
   const navigate = useNavigate();
-  const detailQuery = useSddWorkItemDetail(id);
+  const detailQuery = useProfileDemandDetail(profileId, id || null);
   const detail = detailQuery.data;
 
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function WorkItemDetailPage() {
     }
   }, [detail, selectedArtifactId]);
 
-  const writesQuery = useArtifactWrites(id, selectedArtifactId);
+  const writesQuery = useProfileArtifactTimeline(profileId, id || null, selectedArtifactId);
 
   if (detailQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
@@ -43,7 +44,7 @@ export default function WorkItemDetailPage() {
         <div className="flex items-center gap-2">
           <GitBranch size={18} style={{ color: 'var(--color-primary)' }} />
           <h2 className="text-[16px] font-semibold text-[#f5f5f5]">
-            {detail.businessDomain ? `${detail.businessDomain} / ` : ''}{detail.workItemTitle ?? detail.workItemSlug}
+            {detail.businessDomain ? `${detail.businessDomain} / ` : ''}{detail.title ?? detail.unitSlug}
           </h2>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -51,7 +52,7 @@ export default function WorkItemDetailPage() {
           <span>参与 {formatInteger(detail.contributorCount)} 人</span>
           <span>{formatInteger(detail.turnCount)} turns</span>
           <span>跨 {formatInteger(detail.sessionCount)} session</span>
-          <span>wiki 读取 {formatInteger(detail.wikiRecallCount)} 次</span>
+          <span>wiki 读取 {formatInteger(detail.knowledgeRecallCount)} 次</span>
         </div>
       </section>
 

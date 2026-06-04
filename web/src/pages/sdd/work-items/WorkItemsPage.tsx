@@ -9,12 +9,13 @@ import {
   Zap,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useSddWorkItems } from './useSddWorkItems';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfileDemands } from '@/pages/profiles/useProfiles';
 import { BarList } from '@/components/ui/BarList';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import type { SddWorkItem } from '@sdd-telemetry/api';
+import type { ProfileDemand } from '@sdd-telemetry/api';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ type StatusFilter = 'all' | WorkItemStatus;
 
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
-function getStatus(item: SddWorkItem, now: number): WorkItemStatus {
+function getStatus(item: ProfileDemand, now: number): WorkItemStatus {
   if (item.errorCount > 0) return 'error';
   if (item.lastSeenAt && now - new Date(item.lastSeenAt).getTime() <= SILENT_MS) return 'active';
   return 'silent';
@@ -141,7 +142,8 @@ const STATUS_BORDER: Record<WorkItemStatus, string> = {
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
 export default function WorkItemsPage() {
-  const { data = [], isLoading } = useSddWorkItems();
+  const { profileId } = useShellContext();
+  const { data = [], isLoading } = useProfileDemands(profileId);
   const navigate = useNavigate();
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -207,8 +209,8 @@ export default function WorkItemsPage() {
       if (!search) return true;
       const q = search.toLowerCase();
       return (
-        (item.workItemTitle ?? '').toLowerCase().includes(q) ||
-        item.workItemSlug.toLowerCase().includes(q) ||
+        (item.title ?? '').toLowerCase().includes(q) ||
+        (item.unitSlug ?? '').toLowerCase().includes(q) ||
         (item.businessDomain ?? '').toLowerCase().includes(q)
       );
     });
@@ -385,8 +387,8 @@ export default function WorkItemsPage() {
                     # {i + 1}
                   </div>
                   <div className="pl-[10px] pr-6">
-                    <div className="text-[13px] font-medium text-[#f5f5f5] truncate" title={item.workItemTitle ?? item.workItemSlug}>
-                      {item.workItemTitle ?? item.workItemSlug}
+                    <div className="text-[13px] font-medium text-[#f5f5f5] truncate" title={item.title ?? item.unitSlug ?? undefined}>
+                      {item.title ?? item.unitSlug}
                     </div>
                     {item.businessDomain && (
                       <span
@@ -429,7 +431,7 @@ export default function WorkItemsPage() {
                       style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}
                     >
                       <Zap size={10} />
-                      {formatInteger(item.usageCount)} 次
+                      {formatInteger(item.capabilityUsageCount)} 次
                     </span>
                   </div>
                   <div className="pl-[10px] text-[11px] text-[var(--color-muted)]">
@@ -520,11 +522,11 @@ export default function WorkItemsPage() {
                         />
                         <div className="flex flex-col gap-[2px]">
                           <span className="text-[13px] font-medium text-[#f5f5f5] truncate max-w-[220px]">
-                            {item.workItemTitle ?? item.workItemSlug}
+                            {item.title ?? item.unitSlug}
                           </span>
-                          {item.workItemTitle && (
+                          {item.title && (
                             <span className="text-[10px] text-[var(--color-muted)] truncate max-w-[220px]" style={{ fontFamily: 'var(--font-mono)' }}>
-                              {item.workItemSlug}
+                              {item.unitSlug}
                             </span>
                           )}
                         </div>
@@ -558,9 +560,9 @@ export default function WorkItemsPage() {
                       </td>
                       {/* 调用次数 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors text-right">
-                        {item.usageCount > 0 ? (
+                        {item.capabilityUsageCount > 0 ? (
                           <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                            {formatInteger(item.usageCount)}
+                            {formatInteger(item.capabilityUsageCount)}
                           </span>
                         ) : (
                           <span className="text-[12px] text-[var(--color-muted)]">—</span>

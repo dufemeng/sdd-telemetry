@@ -1,7 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type {
+  ProfileArtifactTimelineItem,
   ProfileCapabilityManifest,
   ProfileDemand,
+  ProfileDemandDetail,
   ProfileOverview,
   ProfileSummary,
 } from '@sdd-telemetry/api';
@@ -15,13 +17,11 @@ export function useProfiles() {
   });
 }
 
-/** 当前 profile 的能力 manifest，用于看板按能力降级（Task 20）。 */
 export function useProfileManifest(profileId: string): ProfileCapabilityManifest | undefined {
   const { data } = useProfiles();
   return data?.find((p) => p.profileId === profileId)?.manifest;
 }
 
-/** 产出分析列表（delivery unit / 需求，Task 20）。 */
 export function useProfileDemands(profileId: string, fromIso?: string) {
   const query = fromIso ? `?from=${fromIso}` : '';
   return useQuery({
@@ -31,6 +31,32 @@ export function useProfileDemands(profileId: string, fromIso?: string) {
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileDemandDetail(profileId: string, demandId: string | null) {
+  return useQuery({
+    queryKey: ['profile-demand-detail', profileId, demandId],
+    queryFn: () =>
+      requestData<ProfileDemandDetail>(`/api/profiles/${profileId}/demands/${demandId}`),
+    staleTime: 30_000,
+    enabled: Boolean(profileId) && Boolean(demandId),
+  });
+}
+
+export function useProfileArtifactTimeline(
+  profileId: string,
+  demandId: string | null,
+  artifactId: string | null,
+) {
+  return useQuery({
+    queryKey: ['profile-artifact-timeline', profileId, demandId, artifactId],
+    queryFn: () =>
+      requestData<{ items: ProfileArtifactTimelineItem[] }>(
+        `/api/profiles/${profileId}/demands/${demandId}/artifacts/${artifactId}/timeline`,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(profileId) && Boolean(demandId) && Boolean(artifactId),
   });
 }
 

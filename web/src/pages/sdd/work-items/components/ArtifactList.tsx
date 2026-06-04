@@ -1,7 +1,5 @@
-import type { SddWorkItemDetail } from '@sdd-telemetry/api';
+import type { ProfileDemandArtifact } from '@sdd-telemetry/api';
 import { FileText } from 'lucide-react';
-
-type Artifact = SddWorkItemDetail['artifacts'][number];
 
 const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
 
@@ -10,7 +8,7 @@ export function ArtifactList({
   selectedId,
   onSelect,
 }: {
-  artifacts: Artifact[];
+  artifacts: ProfileDemandArtifact[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -38,8 +36,8 @@ export function ArtifactList({
                 }}
               >
                 <span className="text-[10px]" style={{ color: 'var(--color-primary)' }}>{a.artifactType}</span>
-                <span className="text-[12px] text-[var(--color-secondary)] truncate" style={{ fontFamily: 'var(--font-mono)' }} title={a.artifactRelativePath}>
-                  {a.artifactRelativePath}
+                <span className="text-[12px] text-[var(--color-secondary)] truncate" style={{ fontFamily: 'var(--font-mono)' }} title={a.artifactLocator ?? undefined}>
+                  {a.artifactLocator}
                 </span>
               </button>
             );

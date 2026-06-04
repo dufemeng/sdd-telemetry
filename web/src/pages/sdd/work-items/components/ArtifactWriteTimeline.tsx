@@ -1,4 +1,4 @@
-import type { SddArtifactWrite } from '@sdd-telemetry/api';
+import type { ProfileArtifactTimelineItem } from '@sdd-telemetry/api';
 import { BookOpen, GitCommit, MessageSquare } from 'lucide-react';
 import { formatTime } from '@/lib/format';
 
@@ -9,7 +9,7 @@ export function ArtifactWriteTimeline({
   isLoading,
   onOpenTurn,
 }: {
-  writes: SddArtifactWrite[];
+  writes: ProfileArtifactTimelineItem[];
   isLoading: boolean;
   onOpenTurn: (interactionId: string) => void;
 }) {
@@ -44,9 +44,9 @@ export function ArtifactWriteTimeline({
                   ) : (
                     <span className="px-[6px] py-[1px] rounded-[3px] text-[10px]" style={{ color: 'var(--color-secondary)', background: 'rgba(255,255,255,0.06)' }}>{w.writeKind}</span>
                   )}
-                  <span className="text-[var(--color-secondary)]">{w.skillDisplayName ?? w.rawSkillName ?? '无 skill'}</span>
+                  <span className="text-[var(--color-secondary)]">{w.capabilityDisplayName ?? w.rawCapabilityName ?? '无 skill'}</span>
                   <span className="inline-flex items-center gap-1 text-[var(--color-muted)]">
-                    <BookOpen size={11} /> wiki×{w.wikiRecallCount}
+                    <BookOpen size={11} /> wiki×{w.knowledgeRecallCount}
                   </span>
                 </div>
                 {w.promptPreview ? (
