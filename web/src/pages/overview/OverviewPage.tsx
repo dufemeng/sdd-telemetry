@@ -13,10 +13,12 @@ import {
 import { FeatureGate } from '@/components/profiles/FeatureGate';
 import { useShellContext } from '@/components/layout/useShellContext';
 import { timeRangeToFromIso } from '@/lib/timeRange';
-import { useProfileOverview } from '@/pages/profiles/useProfiles';
-import { useSkillAnalytics } from '@/pages/sdd/skills/hooks/useSkillAnalytics';
-import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
-import { useSddWorkItems } from '@/pages/sdd/work-items/useSddWorkItems';
+import {
+  useProfileOverview,
+  useProfileCapabilityAnalytics,
+  useProfileUsers,
+  useProfileDemands,
+} from '@/pages/profiles/useProfiles';
 import { formatInteger, formatPercent, formatRelativeTime } from '@/lib/format';
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -76,23 +78,21 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
 
 export default function OverviewPage() {
   const { timeRange, profileId } = useShellContext();
-  const analyticsQuery  = useSkillAnalytics(timeRange);
-  const usersQuery      = useSddUsers();
-  const workItemsQuery  = useSddWorkItems();
-  // Task 19：headline KPI 取值走 Profile Contract（受 PROFILE_DASHBOARD_READ_SOURCE 开关影响）；
-  // 页面其余分区（漏斗/列表/环比）仍由 sdd hooks 提供，后续逐步下沉。
-  const profileOverview = useProfileOverview(profileId, timeRangeToFromIso(timeRange)).data;
+  const fromIso = timeRangeToFromIso(timeRange);
+  const analyticsQuery  = useProfileCapabilityAnalytics(profileId, fromIso);
+  const usersQuery      = useProfileUsers(profileId, { fromIso, pageSize: 200 });
+  const demandsQuery    = useProfileDemands(profileId, fromIso);
+  const profileOverview = useProfileOverview(profileId, fromIso).data;
 
   const analytics   = analyticsQuery.data;
   const kpis        = analytics?.kpis;
-  const topSkills   = analytics?.topSemantics.slice(0, 8) ?? [];
+  const topSkills   = analytics?.topCapabilities.slice(0, 8) ?? [];
   const skillsMax   = Math.max(topSkills[0]?.usageCount ?? 1, 1);
 
   const now = Date.now();
-  const users     = usersQuery.data     ?? [];
-  const workItems = workItemsQuery.data ?? [];
+  const users     = usersQuery.data?.items ?? [];
+  const demands   = demandsQuery.data ?? [];
 
-  // 成员概况 – sorted by last activity, top 8
   const recentUsers = useMemo(
     () =>
       [...users]
@@ -101,28 +101,25 @@ export default function OverviewPage() {
     [users],
   );
 
-  // SDD 链路漏斗 – per stage: how many work items have that stage
   const funnel = useMemo(
     () => WI_STAGES.map((s) => ({
       stage: s,
       label: WI_STAGE_LABEL[s],
-      count: workItems.filter((i) => i.coverageStages.includes(s)).length,
+      count: demands.filter((i) => i.coverageStages.includes(s)).length,
     })),
-    [workItems],
+    [demands],
   );
   const funnelMax = Math.max(funnel[0]?.count ?? 0, 1);
 
-  // 最近活跃需求 – sorted by last activity, top 8
   const recentWorkItems = useMemo(
     () =>
-      [...workItems]
+      [...demands]
         .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))
         .slice(0, 8),
-    [workItems],
+    [demands],
   );
 
-  // total docs
-  const totalDocs = useMemo(() => workItems.reduce((s, i) => s + i.artifactCount, 0), [workItems]);
+  const totalDocs = useMemo(() => demands.reduce((s, i) => s + i.artifactCount, 0), [demands]);
 
   return (
     <>
@@ -147,8 +144,8 @@ export default function OverviewPage() {
           <KpiCard
             icon={<Zap size={18} />}
             label="技能调用量"
-            value={profileOverview?.capabilityUsageCount ?? kpis?.skillUsageCount.current ?? null}
-            metric={kpis?.skillUsageCount}
+            value={profileOverview?.capabilityUsageCount ?? kpis?.capabilityUsageCount.current ?? null}
+            metric={kpis?.capabilityUsageCount}
             loading={analyticsQuery.isLoading}
           />
           <KpiCard
@@ -161,15 +158,15 @@ export default function OverviewPage() {
           <KpiCard
             icon={<GitBranch size={18} />}
             label="覆盖需求"
-            value={profileOverview?.deliveryUnitCount ?? kpis?.coveredWorkItemCount.current ?? null}
-            metric={kpis?.coveredWorkItemCount}
+            value={profileOverview?.deliveryUnitCount ?? kpis?.coveredDeliveryUnitCount.current ?? null}
+            metric={kpis?.coveredDeliveryUnitCount}
             loading={analyticsQuery.isLoading}
           />
           <KpiCard
             icon={<FileText size={18} />}
             label="全链路需求"
-            value={kpis?.multiStageWorkItemCount.current ?? null}
-            metric={kpis?.multiStageWorkItemCount}
+            value={kpis?.multiStageDeliveryUnitCount.current ?? null}
+            metric={kpis?.multiStageDeliveryUnitCount}
             hint="覆盖 ≥ 3 个 SDD 阶段"
             loading={analyticsQuery.isLoading}
           />
@@ -254,7 +251,7 @@ export default function OverviewPage() {
                     const active = u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS;
                     const isNew  = u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS;
                     const borderColor = isNew ? '#60a5fa' : active ? 'var(--color-good-text)' : 'rgba(255,255,255,0.08)';
-                    const depth = ['proposal','design','task','codereview'].filter((s) => u.semanticStages.includes(s)).length;
+                    const depth = ['proposal','design','task','codereview'].filter((s) => u.capabilityStages.includes(s)).length;
                     return (
                       <tr
                         key={u.id}
@@ -276,10 +273,10 @@ export default function OverviewPage() {
                             }}
                           />
                           <div className="flex items-center gap-2">
-                            <UserAvatar name={u.userName} size={26} />
+                            <UserAvatar name={u.displayName} size={26} />
                             <div className="flex flex-col gap-[1px] min-w-0">
                               <span className="text-[12px] font-medium text-[#f5f5f5] truncate max-w-[130px]">
-                                {u.userName ?? u.userKey}
+                                {u.displayName ?? u.userKey}
                               </span>
                               {isNew && (
                                 <span
@@ -297,10 +294,10 @@ export default function OverviewPage() {
                           className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
                           style={{ paddingTop: 9, paddingBottom: 9, width: 80 }}
                         >
-                          {u.workItemCount > 0 ? (
+                          {u.deliveryUnitCount > 0 ? (
                             <div className="flex flex-col gap-[2px]">
                               <span className="text-[13px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                                {u.workItemCount}
+                                {u.deliveryUnitCount}
                               </span>
                               <div
                                 className="h-[2px] rounded-full overflow-hidden"
@@ -309,7 +306,7 @@ export default function OverviewPage() {
                                 <div
                                   style={{
                                     height: '100%',
-                                    width: `${Math.min((u.workItemCount / Math.max(...recentUsers.map((x) => x.workItemCount), 1)) * 100, 100)}%`,
+                                    width: `${Math.min((u.deliveryUnitCount / Math.max(...recentUsers.map((x) => x.deliveryUnitCount), 1)) * 100, 100)}%`,
                                     background: 'var(--color-primary)',
                                     borderRadius: 2,
                                   }}
@@ -367,7 +364,7 @@ export default function OverviewPage() {
               <span className="text-[11px] text-[var(--color-muted)]">
                 文档总产出&ensp;
                 <strong className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {workItemsQuery.isLoading ? '—' : formatInteger(totalDocs)}
+                  {demandsQuery.isLoading ? '—' : formatInteger(totalDocs)}
                 </strong>
                 &ensp;篇
               </span>
@@ -389,7 +386,7 @@ export default function OverviewPage() {
 
             <div className="flex items-end gap-[10px] mt-4" style={{ height: 100 }}>
               {funnel.map((item, i) => {
-                const barH = workItemsQuery.isLoading || item.count === 0
+                const barH = demandsQuery.isLoading || item.count === 0
                   ? 3
                   : Math.max((item.count / funnelMax) * 76, 4);
                 return (
@@ -398,7 +395,7 @@ export default function OverviewPage() {
                       className="text-[13px] font-semibold text-[#f5f5f5]"
                       style={{ fontFamily: 'var(--font-mono)' }}
                     >
-                      {workItemsQuery.isLoading ? '—' : item.count}
+                      {demandsQuery.isLoading ? '—' : item.count}
                     </span>
                     <div className="w-full flex flex-col justify-end" style={{ height: 76 }}>
                       <div
@@ -406,7 +403,7 @@ export default function OverviewPage() {
                           height: barH,
                           background: `rgba(250,255,105,${1 - i * 0.22})`,
                           borderRadius: 3,
-                          animation: workItemsQuery.data
+                          animation: demandsQuery.data
                             ? `ov-bar-h 0.55s cubic-bezier(.22,.68,0,1.2) ${i * 0.09}s both`
                             : 'none',
                         }}
@@ -428,15 +425,15 @@ export default function OverviewPage() {
               style={{ borderTop: '1px solid var(--color-border)' }}
             >
               {[
-                { label: '总需求数', value: workItems.length },
-                { label: '活跃需求', value: workItems.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
-                { label: '全阶段覆盖', value: workItems.filter((i) => WI_STAGES.every((s) => i.coverageStages.includes(s))).length },
-                { label: '有错误', value: workItems.filter((i) => i.errorCount > 0).length },
+                { label: '总需求数', value: demands.length },
+                { label: '活跃需求', value: demands.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
+                { label: '全阶段覆盖', value: demands.filter((i) => WI_STAGES.every((s) => i.coverageStages.includes(s))).length },
+                { label: '有错误', value: demands.filter((i) => i.errorCount > 0).length },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-[11px] text-[var(--color-muted)]">{label}</span>
                   <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                    {workItemsQuery.isLoading ? '—' : value}
+                    {demandsQuery.isLoading ? '—' : value}
                   </span>
                 </div>
               ))}
@@ -463,7 +460,7 @@ export default function OverviewPage() {
                   const barPct = (skill.usageCount / skillsMax) * 100;
                   return (
                     <div
-                      key={skill.semanticCode}
+                      key={skill.capabilityCode}
                       className="flex items-center gap-[10px]"
                       style={{ animation: `ov-fade-up 0.2s ease-out ${idx * 0.045}s both` }}
                     >
@@ -543,7 +540,7 @@ export default function OverviewPage() {
                 {recentWorkItems.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
-                      {workItemsQuery.isLoading ? '加载中…' : '暂无数据'}
+                      {demandsQuery.isLoading ? '加载中…' : '暂无数据'}
                     </td>
                   </tr>
                 ) : (
@@ -580,9 +577,9 @@ export default function OverviewPage() {
                             <span
                               className="text-[12px] font-medium text-[#f5f5f5] truncate"
                               style={{ maxWidth: 160 }}
-                              title={item.workItemTitle ?? item.workItemSlug}
+                              title={item.title ?? item.unitSlug ?? undefined}
                             >
-                              {item.workItemTitle ?? item.workItemSlug}
+                              {item.title ?? item.unitSlug}
                             </span>
                             {item.businessDomain && (
                               <span
