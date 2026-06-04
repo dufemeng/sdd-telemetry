@@ -47,17 +47,20 @@ export class ProfileProjectionRepository {
       )) as CountRow[];
     };
 
-    const [usageRows, deliveryRows, artifactRows, knowledgeRows] = await Promise.all([
-      count('profile_capability_usages', 'event_time', [], [], 'COUNT(DISTINCT user_id) AS active, COUNT(*) AS v'),
-      count('profile_delivery_units', 'last_seen_at'),
-      count(
-        'profile_artifacts',
-        'COALESCE(first_seen_at, last_seen_at)',
-        [`artifact_type IN (${OVERVIEW_DOCUMENT_TYPES.map(() => '?').join(',')})`],
-        [...OVERVIEW_DOCUMENT_TYPES],
-      ),
-      count('profile_knowledge_recalls', 'event_time'),
-    ]);
+    const [usageRows, deliveryRows, artifactRows, knowledgeRows, codeReadRows, codeWriteRows] =
+      await Promise.all([
+        count('profile_capability_usages', 'event_time', [], [], 'COUNT(DISTINCT user_id) AS active, COUNT(*) AS v'),
+        count('profile_delivery_units', 'last_seen_at'),
+        count(
+          'profile_artifacts',
+          'COALESCE(first_seen_at, last_seen_at)',
+          [`artifact_type IN (${OVERVIEW_DOCUMENT_TYPES.map(() => '?').join(',')})`],
+          [...OVERVIEW_DOCUMENT_TYPES],
+        ),
+        count('profile_knowledge_recalls', 'event_time'),
+        count('profile_code_activities', 'event_time', ["action_type IN ('read','grep','glob')"]),
+        count('profile_code_activities', 'event_time', ["action_type IN ('write','edit','update')"]),
+      ]);
 
     const usageRow = usageRows[0] as (CountRow & { active?: number | string | null }) | undefined;
 
@@ -67,9 +70,9 @@ export class ProfileProjectionRepository {
       deliveryUnitCount: toNumber(deliveryRows[0]?.v),
       artifactCount: toNumber(artifactRows[0]?.v),
       knowledgeRecallCount: toNumber(knowledgeRows[0]?.v),
-      // code 概况待 code adapter 接入（Task 13，不参与对账）。
-      codeWriteCount: 0,
-      codeReadCount: 0,
+      // codeChanges：轻量概况，已知口径差异项，不参与强一致对账。
+      codeWriteCount: toNumber(codeWriteRows[0]?.v),
+      codeReadCount: toNumber(codeReadRows[0]?.v),
     };
   }
 }
