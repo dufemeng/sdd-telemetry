@@ -8,6 +8,10 @@ import type {
   ProfileCapabilityUsageSummaryItem,
   ProfileDemand,
   ProfileDemandDetail,
+  ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeDeliveryUnitRankingResponse,
+  ProfileKnowledgeRecallListResponse,
+  ProfileKnowledgeTimelineResponse,
   ProfileOverview,
   ProfileSummary,
   ProfileUserDetail,
@@ -197,5 +201,83 @@ export function useProfileUserDetail(profileId: string, userId: string | null) {
       requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
     staleTime: 30_000,
     enabled: Boolean(profileId) && Boolean(userId),
+  });
+}
+
+export function useProfileKnowledgeCoverage(profileId: string) {
+  return useQuery({
+    queryKey: ['profile-knowledge-coverage', profileId],
+    queryFn: () =>
+      requestData<ProfileKnowledgeCoverageResponse>(
+        `/api/profiles/${profileId}/knowledge/coverage`,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileKnowledgeTimeline(
+  profileId: string,
+  range: string,
+  granularity?: string,
+  groupBy?: string,
+  wikiDomain?: string | null,
+) {
+  const qs = new URLSearchParams();
+  if (range) qs.set('range', range);
+  if (granularity) qs.set('granularity', granularity);
+  if (groupBy) qs.set('groupBy', groupBy);
+  if (wikiDomain) qs.set('wikiDomain', wikiDomain);
+  return useQuery({
+    queryKey: ['profile-knowledge-timeline', profileId, range, granularity, groupBy, wikiDomain ?? null],
+    queryFn: () =>
+      requestData<ProfileKnowledgeTimelineResponse>(
+        `/api/profiles/${profileId}/knowledge/timeline?${qs}`,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileKnowledgeDeliveryUnits(profileId: string, wikiDomain?: string | null) {
+  const qs = new URLSearchParams();
+  if (wikiDomain) qs.set('wikiDomain', wikiDomain);
+  return useQuery({
+    queryKey: ['profile-knowledge-delivery-units', profileId, wikiDomain ?? null],
+    queryFn: () =>
+      requestData<ProfileKnowledgeDeliveryUnitRankingResponse>(
+        `/api/profiles/${profileId}/knowledge/delivery-units${wikiDomain ? `?${qs}` : ''}`,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileKnowledgeRecalls(
+  profileId: string,
+  params: {
+    range?: string;
+    deliveryUnitId?: string;
+    userId?: string;
+    capabilityUsageId?: string;
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params.range) qs.set('range', params.range);
+  if (params.deliveryUnitId) qs.set('deliveryUnitId', params.deliveryUnitId);
+  if (params.userId) qs.set('userId', params.userId);
+  if (params.capabilityUsageId) qs.set('capabilityUsageId', params.capabilityUsageId);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  return useQuery({
+    queryKey: ['profile-knowledge-recalls', profileId, params],
+    queryFn: () =>
+      requestData<ProfileKnowledgeRecallListResponse>(
+        `/api/profiles/${profileId}/knowledge/recalls?${qs}`,
+      ),
+    staleTime: 30_000,
+    enabled: Boolean(profileId),
   });
 }
