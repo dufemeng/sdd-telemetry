@@ -1106,3 +1106,11 @@ MVP-1 完成必须同时满足：
 
 - **Task 20 四大看板取数（进行中）**：产出分析 `/demands` 端点 + hook 已就位（上面）；但 WorkItemsPage 全量接入需「调用次数」按 delivery_unit 聚合，依赖 **capability→delivery 链路**（桥接当前 `profile_capability_usages.delivery_unit_id` 为空），属前置增量。知识库/能力/用户三大看板端点（`/knowledge/coverage`、`/capabilities/analytics`、`/users`）尚未做。需求详情 + artifact timeline 下钻端点（§11.5）尚未做。按「逐步接入」推进。
 - **§13 完成定义**：第 1–9、11 项已满足；第 10 项部分（后端可提供、前端仅 headline 接入）；第 12 项已补（code 概况展示）。
+
+### 16.4 评审反馈处理（codex review）
+
+- **P1 对账升级**：`profile:diff` 从 count 级升到 **key-set 级**（桥接用 `SHA2(profileId:prefix:上游key)` 双向集合差）+ knowledge **(tool_call_id, locator) 级**；rebuild→diff 背靠背 gate PASS。报告口径同步从「强一致」改为「key/locator 级」。对账比对 live `sdd_*`，run 后有入库会如实 FAIL（提示需重建）。
+- **P2b**：`profile:rebuild` 对未知/未配置 profile（无算子）直接 fail，不建 run、不切 pointer。
+- **P2a**：读侧 `getCurrentRunId` join `profile_projection_runs status='completed'`，指针指向非 completed 时回退 legacy（defense-in-depth）。
+- **P3**：glob/grep 通配模式标 `locator_type='pattern'`，下游只取 `path`，不进核心 KPI（当前真实数据无 grep/glob，计数不变；knowledge parity 不破）。
+- **报告口径**：纠正「13/13 全部满足」高估，改为「后端管线 MVP 完成；四大看板换源属增量」。
