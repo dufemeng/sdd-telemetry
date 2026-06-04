@@ -10,6 +10,8 @@ import type {
   ProfileDemandDetail,
   ProfileOverview,
   ProfileSummary,
+  ProfileUserDetail,
+  ProfileUserItem,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
 
@@ -157,5 +159,43 @@ export function useProfileCapabilityUsages(
       ),
     staleTime: 15_000,
     enabled: Boolean(profileId) && Boolean(params.rawCapabilityName),
+  });
+}
+
+export function useProfileUsers(
+  profileId: string,
+  params: {
+    fromIso?: string;
+    status?: string;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params.fromIso) qs.set('from', params.fromIso);
+  if (params.status) qs.set('status', params.status);
+  if (params.keyword?.trim()) qs.set('keyword', params.keyword.trim());
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  return useQuery({
+    queryKey: ['profile-users', profileId, params],
+    queryFn: () =>
+      requestData<{ items: ProfileUserItem[]; total: number; page: number; pageSize: number }>(
+        `/api/profiles/${profileId}/users?${qs}`,
+      ),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileUserDetail(profileId: string, userId: string | null) {
+  return useQuery({
+    queryKey: ['profile-user-detail', profileId, userId],
+    queryFn: () =>
+      requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
+    staleTime: 30_000,
+    enabled: Boolean(profileId) && Boolean(userId),
   });
 }

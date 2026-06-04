@@ -1,5 +1,5 @@
 import { formatRelativeTime, formatTime } from '@/lib/format';
-import type { SddUserWorkItem } from '@sdd-telemetry/api';
+import type { ProfileUserDeliveryUnit } from '@sdd-telemetry/api';
 
 const SDD_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
 type SddStage = (typeof SDD_STAGES)[number];
@@ -16,7 +16,7 @@ export function UserWorkItemList({
   selectedId,
   onSelect,
 }: {
-  workItems: SddUserWorkItem[];
+  workItems: ProfileUserDeliveryUnit[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }) {
@@ -33,18 +33,18 @@ export function UserWorkItemList({
 
       {workItems.length === 0 ? (
         <div className="p-3 text-[12px] text-[var(--color-muted)]">
-          暂无关联需求（用户未配置 requirements_root_path 或无 skill_usage 记录）
+          暂无关联需求
         </div>
       ) : (
         <ul className="flex flex-col">
           {workItems.map((wi) => {
-            const isSelected = selectedId === wi.workItemId;
+            const isSelected = selectedId === wi.deliveryUnitId;
             return (
               <li
-                key={wi.workItemId}
+                key={wi.deliveryUnitId}
                 className="px-3 py-[8px] cursor-pointer hover:bg-[var(--color-hover)] transition-colors"
                 style={{ borderBottom: '1px solid var(--color-border)', background: isSelected ? 'var(--color-active)' : 'transparent' }}
-                onClick={() => onSelect(isSelected ? null : wi.workItemId)}
+                onClick={() => onSelect(isSelected ? null : wi.deliveryUnitId)}
               >
                 <span className="text-[12px] text-[#f5f5f5] truncate">{wi.title}</span>
                 <div className="flex items-center gap-[6px] mt-[4px]">

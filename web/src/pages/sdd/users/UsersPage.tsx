@@ -11,12 +11,13 @@ import {
   Users,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSddUsers } from './useSddUsers';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfileUsers } from '@/pages/profiles/useProfiles';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import type { SddUserItem } from '@sdd-telemetry/api';
+import type { ProfileUserItem } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;
 const DAY_MS = 86_400_000;
@@ -45,8 +46,8 @@ function getSddDepth(stages: string[]): number {
   return SDD_STAGES.filter((s) => stages.includes(s)).length;
 }
 
-function maturityReached(u: SddUserItem): number {
-  return SDD_STAGES.filter((s) => u.semanticStages.includes(s)).length;
+function maturityReached(u: ProfileUserItem): number {
+  return SDD_STAGES.filter((s) => u.capabilityStages.includes(s)).length;
 }
 
 // ---- Avatar ----
@@ -190,7 +191,10 @@ function daysSince(ts: string | null, now: number): number | null {
 }
 
 export default function UsersPage() {
-  const { data: rawData = [], isLoading } = useSddUsers();
+  const { profileId } = useShellContext();
+  const usersQuery = useProfileUsers(profileId, {});
+  const rawData: ProfileUserItem[] = usersQuery.data?.items ?? [];
+  const isLoading = usersQuery.isLoading;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -216,7 +220,7 @@ export default function UsersPage() {
       key: stage as string,
       label: STAGE_LABELS[stage],
       code: stage as string | null,
-      count: rawData.filter((u) => u.semanticStages.includes(stage)).length,
+      count: rawData.filter((u) => u.capabilityStages.includes(stage)).length,
     })),
   ];
   const funnelMax = Math.max(...funnelRows.map((d) => d.count), 1);
@@ -229,7 +233,7 @@ export default function UsersPage() {
 
   // 转冷预警：cold（7~30 天无活动）且曾有活动，是挽回的早期信号，区别于已流失
   const coolingMembers = rawData
-    .filter((u) => u.status === 'cold' && (u.skillUsageCount > 0 || u.interactionCount > 0))
+    .filter((u) => u.status === 'cold' && (u.capabilityUsageCount > 0 || u.interactionCount > 0))
     .sort((a, b) => {
       const aDays = daysSince(a.lastSeenAt, now) ?? -1;
       const bDays = daysSince(b.lastSeenAt, now) ?? -1;
@@ -240,8 +244,8 @@ export default function UsersPage() {
   const topContributors = useMemo(() => (
     [...rawData]
       .sort((a, b) => {
-        const aScore = b.artifactCount * 2 + b.workItemCount + (b.codeWriteCount > 0 ? 1 : 0);
-        const bScore = a.artifactCount * 2 + a.workItemCount + (a.codeWriteCount > 0 ? 1 : 0);
+        const aScore = b.artifactCount * 2 + b.deliveryUnitCount + (b.codeWriteCount > 0 ? 1 : 0);
+        const bScore = a.artifactCount * 2 + a.deliveryUnitCount + (a.codeWriteCount > 0 ? 1 : 0);
         return aScore - bScore;
       })
       .slice(0, 3)
@@ -261,7 +265,7 @@ export default function UsersPage() {
     if (!debouncedSearch) return true;
     const q = debouncedSearch.toLowerCase();
     return (
-      (u.userName ?? '').toLowerCase().includes(q) ||
+      (u.displayName ?? '').toLowerCase().includes(q) ||
       (u.installId ?? '').toLowerCase().includes(q) ||
       (u.machineName ?? '').toLowerCase().includes(q)
     );
@@ -497,8 +501,8 @@ export default function UsersPage() {
                     className="grid items-center gap-2 px-[14px] py-[8px] text-left hover:bg-[#171717] transition-colors"
                     style={{ gridTemplateColumns: '24px 1fr auto 14px', borderBottom: '1px solid var(--color-border)' }}
                   >
-                    <UserAvatar name={u.userName} size={24} />
-                    <span className="text-[12px] text-[#f5f5f5] truncate">{u.userName ?? '未知用户'}</span>
+                    <UserAvatar name={u.displayName} size={24} />
+                    <span className="text-[12px] text-[#f5f5f5] truncate">{u.displayName ?? '未知用户'}</span>
                     <span className="text-[11px] text-[var(--color-muted)] whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }}>
                       {days !== null ? `${days} 天前` : '—'}
                     </span>
@@ -546,7 +550,7 @@ export default function UsersPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="relative flex-none">
-                      <UserAvatar name={u.userName} size={40} />
+                      <UserAvatar name={u.displayName} size={40} />
                       <span
                         className="absolute -top-1 -right-1 w-[16px] h-[16px] rounded-full flex items-center justify-center text-[9px] font-bold"
                         style={{
@@ -560,7 +564,7 @@ export default function UsersPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-[3px]">
                         <span className="text-[13px] font-medium text-[#f5f5f5] truncate">
-                          {u.userName ?? '未知用户'}
+                          {u.displayName ?? '未知用户'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -574,7 +578,7 @@ export default function UsersPage() {
                   <div className="flex flex-wrap gap-[6px]">
                     <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
                       <GitBranch size={10} />
-                      {u.workItemCount} 需求
+                      {u.deliveryUnitCount} 需求
                     </span>
                     <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
                       <Layers size={10} />
@@ -668,10 +672,10 @@ export default function UsersPage() {
                       {/* 成员 */}
                       <td className="py-[10px] group-hover:bg-[#171717] transition-colors relative" style={{ paddingLeft: 20, paddingRight: 12 }}>
                         <div className="flex items-center gap-2">
-                          <UserAvatar name={u.userName} size={26} />
+                          <UserAvatar name={u.displayName} size={26} />
                           <div className="flex flex-col gap-[2px]">
-                            {u.userName ? (
-                              <span className="text-[13px] font-medium text-[#f5f5f5]">{u.userName}</span>
+                            {u.displayName ? (
+                              <span className="text-[13px] font-medium text-[#f5f5f5]">{u.displayName}</span>
                             ) : (
                               <span className="text-[12px] italic text-[var(--color-muted)]">未知用户</span>
                             )}
@@ -687,13 +691,13 @@ export default function UsersPage() {
                       </td>
                       {/* SDD 成熟度 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        <DepthDots stages={u.semanticStages} />
+                        <DepthDots stages={u.capabilityStages} />
                       </td>
                       {/* 工作项 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        {u.workItemCount > 0 ? (
+                        {u.deliveryUnitCount > 0 ? (
                           <span className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                            {formatInteger(u.workItemCount)}
+                            {formatInteger(u.deliveryUnitCount)}
                           </span>
                         ) : (
                           <span className="text-[12px] text-[var(--color-muted)]">—</span>

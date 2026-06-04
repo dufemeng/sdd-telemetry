@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Zap } from 'lucide-react';
-import { useUserProfile } from './useUserProfile';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfileUserDetail } from '@/pages/profiles/useProfiles';
 import { useUserActivity } from './useUserActivity';
 import { UserWorkItemList } from './components/UserWorkItemList';
 import { UserActivityTimeline } from './components/UserActivityTimeline';
@@ -57,8 +58,9 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
 
 export default function UserProfilePage() {
   const { id: userId = '' } = useParams();
+  const { profileId } = useShellContext();
   const navigate = useNavigate();
-  const profileQuery = useUserProfile(userId);
+  const profileQuery = useProfileUserDetail(profileId, userId || null);
   const profile = profileQuery.data;
 
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
@@ -82,13 +84,14 @@ export default function UserProfilePage() {
     );
   }
 
-  const { user, summary, workItems } = profile;
+  const { user, summary, deliveryUnits } = profile;
+  const workItems = deliveryUnits;
   const joinDays = user.firstSeenAt
     ? Math.floor((Date.now() - new Date(user.firstSeenAt).getTime()) / DAY_MS)
     : null;
 
   const selectedTitle = selectedWorkItemId
-    ? workItems.find((wi) => wi.workItemId === selectedWorkItemId)?.title ?? '选中需求'
+    ? workItems.find((wi) => wi.deliveryUnitId === selectedWorkItemId)?.title ?? '选中需求'
     : null;
 
   return (
@@ -108,11 +111,11 @@ export default function UserProfilePage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <UserAvatar name={user.userName} size={48} />
+          <UserAvatar name={user.displayName} size={48} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-[4px]">
               <h2 className="text-[18px] font-semibold text-[#f5f5f5]">
-                {user.userName ?? '未知用户'}
+                {user.displayName ?? '未知用户'}
               </h2>
               <StatusBadge status={user.status} isNew={user.isNew} />
               {joinDays !== null ? (
@@ -121,31 +124,17 @@ export default function UserProfilePage() {
                 </span>
               ) : null}
               <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                {user.skillUsageCount} 次 skill
+                {user.capabilityUsageCount} 次 skill
               </span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-              <span><GitBranch size={11} className="inline mr-[3px]" />需求 {summary.workItemCount}</span>
+              <span><GitBranch size={11} className="inline mr-[3px]" />需求 {summary.deliveryUnitCount}</span>
               <span><Layers size={11} className="inline mr-[3px]" />文档 {summary.artifactCount}</span>
               <span><MessageSquare size={11} className="inline mr-[3px]" />{formatInteger(summary.turnCount)} 轮对话</span>
               <span>跨 {formatInteger(summary.sessionCount)} session</span>
-              <span><BookOpen size={11} className="inline mr-[3px]" />知识库 {summary.wikiRecallCount} 次</span>
+              <span><BookOpen size={11} className="inline mr-[3px]" />知识库 {summary.knowledgeRecallCount} 次</span>
               <span><Zap size={11} className="inline mr-[3px]" />{summary.codeWriteCount} 次编码</span>
             </div>
-            {(user.requirementsRootPath || user.wikiRootPath) ? (
-              <div className="flex flex-col gap-[2px] mt-[4px]" style={{ fontFamily: 'var(--font-mono)' }}>
-                {user.requirementsRootPath ? (
-                  <div className="text-[10px] text-[var(--color-muted)]" title={user.requirementsRootPath}>
-                    requirements: {user.requirementsRootPath}
-                  </div>
-                ) : null}
-                {user.wikiRootPath ? (
-                  <div className="text-[10px] text-[var(--color-muted)]" title={user.wikiRootPath}>
-                    wiki: {user.wikiRootPath}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       </section>

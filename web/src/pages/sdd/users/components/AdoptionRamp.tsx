@@ -1,4 +1,4 @@
-import type { SddUserMaturityStage } from '@sdd-telemetry/api';
+import type { ProfileUserMaturityStage } from '@sdd-telemetry/api';
 
 const SDD_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
 type SddStage = (typeof SDD_STAGES)[number];
@@ -22,7 +22,7 @@ export function AdoptionRamp({
   firstSeenAt,
   rampDays,
 }: {
-  stages: SddUserMaturityStage[];
+  stages: ProfileUserMaturityStage[];
   firstSeenAt: string | null;
   rampDays: number | null;
 }) {
