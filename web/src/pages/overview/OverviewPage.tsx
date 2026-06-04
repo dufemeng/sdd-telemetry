@@ -8,6 +8,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
+import { timeRangeToFromIso } from '@/lib/timeRange';
+import { useProfileOverview } from '@/pages/profiles/useProfiles';
 import { useSkillAnalytics } from '@/pages/sdd/skills/hooks/useSkillAnalytics';
 import { useSddUsers } from '@/pages/sdd/users/useSddUsers';
 import { useSddWorkItems } from '@/pages/sdd/work-items/useSddWorkItems';
@@ -69,10 +71,13 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage() {
-  const { timeRange } = useShellContext();
+  const { timeRange, profileId } = useShellContext();
   const analyticsQuery  = useSkillAnalytics(timeRange);
   const usersQuery      = useSddUsers();
   const workItemsQuery  = useSddWorkItems();
+  // Task 19：headline KPI 取值走 Profile Contract（受 PROFILE_DASHBOARD_READ_SOURCE 开关影响）；
+  // 页面其余分区（漏斗/列表/环比）仍由 sdd hooks 提供，后续逐步下沉。
+  const profileOverview = useProfileOverview(profileId, timeRangeToFromIso(timeRange)).data;
 
   const analytics   = analyticsQuery.data;
   const kpis        = analytics?.kpis;
@@ -138,21 +143,21 @@ export default function OverviewPage() {
           <KpiCard
             icon={<Zap size={18} />}
             label="技能调用量"
-            value={kpis?.skillUsageCount.current ?? null}
+            value={profileOverview?.capabilityUsageCount ?? kpis?.skillUsageCount.current ?? null}
             metric={kpis?.skillUsageCount}
             loading={analyticsQuery.isLoading}
           />
           <KpiCard
             icon={<UserRound size={18} />}
             label="活跃用户"
-            value={kpis?.activeUserCount.current ?? null}
+            value={profileOverview?.activeUserCount ?? kpis?.activeUserCount.current ?? null}
             metric={kpis?.activeUserCount}
             loading={analyticsQuery.isLoading}
           />
           <KpiCard
             icon={<GitBranch size={18} />}
             label="覆盖需求"
-            value={kpis?.coveredWorkItemCount.current ?? null}
+            value={profileOverview?.deliveryUnitCount ?? kpis?.coveredWorkItemCount.current ?? null}
             metric={kpis?.coveredWorkItemCount}
             loading={analyticsQuery.isLoading}
           />
