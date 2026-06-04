@@ -1,7 +1,9 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
+  ProfileArtifactTimelineItem,
   ProfileCapabilityManifest,
   ProfileDemand,
+  ProfileDemandDetail,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileSummary,
@@ -99,6 +101,88 @@ export class ProfilesService {
       capabilityUsageCount: w.usageCount,
       errorCount: w.errorCount,
       coverageStages: w.coverageStages,
+    }));
+  }
+
+  async getDemandDetail(
+    profileId: string,
+    demandId: string,
+  ): Promise<ProfileDemandDetail> {
+    this.requireProfile(profileId);
+    const manifest = getProfileConfig(profileId)!.manifest;
+    if (!manifest.deliveryUnits) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'deliveryUnits not supported for this profile');
+    }
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const detail = await this.profileProjectionRepository.getDemandDetail(profileId, runId, demandId);
+        if (detail) return detail;
+      }
+    }
+
+    const sdd = await this.sddQueryService.getWorkItemDetail(demandId);
+    if (!sdd) throw new ApiHttpError(404, 'DEMAND_NOT_FOUND', `demand not found: ${demandId}`);
+    return {
+      id: sdd.id,
+      deliveryUnitKey: sdd.workItemKey,
+      businessDomain: sdd.businessDomain,
+      unitSlug: sdd.workItemSlug,
+      title: sdd.workItemTitle,
+      locator: sdd.relativeDir,
+      firstSeenAt: sdd.firstSeenAt,
+      lastSeenAt: sdd.lastSeenAt,
+      artifactCount: sdd.artifactCount,
+      capabilityUsageCount: sdd.usageCount,
+      errorCount: sdd.errorCount,
+      coverageStages: sdd.coverageStages,
+      artifacts: sdd.artifacts.map((a) => ({
+        id: a.id,
+        artifactType: a.artifactType,
+        artifactLocator: a.artifactRelativePath,
+        systemModule: a.systemModule,
+        lastSeenAt: a.lastSeenAt,
+      })),
+      turnCount: sdd.turnCount,
+      sessionCount: sdd.sessionCount,
+      contributorCount: sdd.contributorCount,
+      knowledgeRecallCount: sdd.wikiRecallCount,
+    };
+  }
+
+  async getArtifactTimeline(
+    profileId: string,
+    demandId: string,
+    artifactId: string,
+  ): Promise<ProfileArtifactTimelineItem[]> {
+    this.requireProfile(profileId);
+    const manifest = getProfileConfig(profileId)!.manifest;
+    if (!manifest.artifactTimeline) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'artifactTimeline not supported for this profile');
+    }
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getArtifactTimeline(profileId, runId, demandId, artifactId);
+      }
+    }
+
+    const sdd = await this.sddQueryService.listArtifactWrites(demandId, artifactId);
+    return sdd.items.map((w) => ({
+      id: w.id,
+      nodeKind: w.nodeKind,
+      writeKind: w.writeKind,
+      eventTime: w.eventTime,
+      eventSequence: w.eventSequence,
+      interactionId: w.interactionId,
+      capabilityCode: w.skillSemanticCode,
+      capabilityDisplayName: w.skillDisplayName,
+      rawCapabilityName: w.rawSkillName,
+      knowledgeRecallCount: w.wikiRecallCount,
+      promptPreview: w.promptPreview,
+      contentPreview: w.contentPreview,
     }));
   }
 

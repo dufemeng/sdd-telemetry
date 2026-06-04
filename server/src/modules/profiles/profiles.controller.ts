@@ -1,14 +1,18 @@
 import { Controller, Get, Inject } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import {
+  ProfileArtifactTimelineResponseSchema,
   ProfileCapabilityManifestSchema,
+  ProfileDemandDetailSchema,
   ProfileDemandListSchema,
   ProfileDemandQuerySchema,
   ProfileOverviewQuerySchema,
   ProfileOverviewSchema,
   ProfileSummaryListSchema,
+  type ProfileArtifactTimelineItem,
   type ProfileCapabilityManifest,
   type ProfileDemand,
+  type ProfileDemandDetail,
   type ProfileOverview,
   type ProfileSummary,
 } from '@sdd-telemetry/api';
@@ -51,5 +55,24 @@ export class ProfilesController {
     const query = parseWithSchema(ProfileDemandQuerySchema, this.ctx.query);
     const data: ProfileDemand[] = await this.profilesService.listDemands(profileId, query);
     return ok(parseWithSchema(ProfileDemandListSchema, data));
+  }
+
+  @Get('/:profileId/demands/:demandId')
+  async demandDetail() {
+    const profileId = this.ctx.params.profileId as string;
+    const demandId = this.ctx.params.demandId as string;
+    const data: ProfileDemandDetail = await this.profilesService.getDemandDetail(profileId, demandId);
+    return ok(parseWithSchema(ProfileDemandDetailSchema, data));
+  }
+
+  @Get('/:profileId/demands/:demandId/artifacts/:artifactId/timeline')
+  async artifactTimeline() {
+    const profileId = this.ctx.params.profileId as string;
+    const demandId = this.ctx.params.demandId as string;
+    const artifactId = this.ctx.params.artifactId as string;
+    const items: ProfileArtifactTimelineItem[] = await this.profilesService.getArtifactTimeline(
+      profileId, demandId, artifactId,
+    );
+    return ok(parseWithSchema(ProfileArtifactTimelineResponseSchema, { items }));
   }
 }
