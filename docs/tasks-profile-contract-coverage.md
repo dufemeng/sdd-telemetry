@@ -131,6 +131,11 @@
 - 知识库
 - 需求撰写 / 系统设计 / 任务拆分 / 代码评审
 
+命名分层规则：
+
+- URL 路径和面向产品的外部类型名可以使用产品侧命名，例如 `/demands`、`ProfileDemand`，因为页面展示仍叫“需求”。
+- Contract 内部字段、聚合字段和服务端查询语义使用架构侧命名，例如 `deliveryUnitKey`、`deliveryUnitCount`、`capabilityUsageCount`。
+
 如果为了降低前端改造成本需要做字段适配，适配层只能放在页面本地 hook / adapter 中，不能把 `Sdd*` 类型继续扩散到 profile contract。
 
 ### 5.2 读源回退在服务端完成
@@ -191,7 +196,7 @@ GET /api/sdd/work-items/:id
 | PR-5 | 知识库分析换源 | knowledge coverage/timeline/list/docs/detail/content API + Wiki 页面 | 是 |
 | PR-6 | 总览收口 + canary | overview 剩余模块、全站切源验收、文档报告 | 是 |
 
-PR-2 到 PR-5 可以并行开发，但合并顺序建议保持不变，避免前端页面依赖未发布的 contract。
+PR-1 必须先合，PR-6 必须最后合。PR-2 到 PR-5 彼此之间可以并行开发，也可以按任意顺序合并；每个 PR 自己补齐所需 contract、API、页面和验收。
 
 ## 7. PR-1：Contract、链路和对账基础
 
@@ -257,6 +262,10 @@ capabilityUsageCount
 errorCount
 coverageStages
 ```
+
+`errorCount` 口径必须钉死：`sdd-default` 下对齐旧产出分析，来自 `sdd_errors` 按旧 `work_item_id` 聚合后映射到 `delivery_unit_id`。不得把 `profile_capability_usages.status`、tool error 或 interaction error 临时替代为 `errorCount`，否则会改变旧看板统计口径。
+
+实施前需确认 `sdd_errors` 表存在且有 `work_item_id` 列。如果当前旧产出分析并没有 error 统计，或该表不存在，则 `errorCount` 应标为"后续补齐"而不是本阶段强制 gate；`ProfileDemand.errorCount` 字段可先返回 0。
 
 `ProfileDemandDetail` 最少补齐：
 
@@ -343,7 +352,7 @@ deliveryUnit -> capability -> artifact -> artifactWrite -> artifactTurn
 理由：
 
 - deliveryUnit 先建立 `ctx.registry.deliveryUnitByWorkItemId`。
-- capability 插入时直接写 `delivery_unit_id`。
+- capability 查询必须显式 select `sdd_skill_usages.work_item_id`，插入时用 `ctx.registry.deliveryUnitByWorkItemId.get(work_item_id)` 写 `delivery_unit_id`。
 - artifact/writes/turns 原有依赖不受影响。
 
 验收 SQL：
@@ -351,16 +360,19 @@ deliveryUnit -> capability -> artifact -> artifactWrite -> artifactTurn
 ```sql
 SELECT COUNT(*) AS missing
 FROM profile_capability_usages p
-JOIN profile_projection_runs r ON r.id = p.projection_run_id
+JOIN profile_current_projection_runs c
+  ON c.profile_id = p.profile_id
+ AND c.current_projection_run_id = p.projection_run_id
 JOIN sdd_skill_usages s
   ON p.usage_key = SHA2(CONCAT(p.profile_id, ':capability:', s.usage_key), 256)
-WHERE r.profile_id = 'sdd-default'
-  AND r.status = 'completed'
+WHERE p.profile_id = 'sdd-default'
   AND s.work_item_id IS NOT NULL
   AND p.delivery_unit_id IS NULL;
 ```
 
 `missing` 必须为 0。
+
+说明：验收 SQL 必须只查 current run，不能扫全部 `completed` run。旧 completed run 可能来自本次改造前，历史行的 `delivery_unit_id` 为空会造成误报。脚本实现时也可以直接使用 `projection_run_id = ?` 传参。
 
 ### Task 1.3 补齐 knowledge/code -> delivery 链路
 
@@ -380,7 +392,14 @@ source_references.tool_call_id
 
 写入 `profile_knowledge_recalls.delivery_unit_id`。
 
+实现决策：
+
+- 推荐在 `knowledge-operator.ts` / `code-operator.ts` 的查询里直接 `LEFT JOIN sdd_skill_usages su ON su.id = tc.skill_usage_id`，取 `su.work_item_id` 后用 `ctx.registry.deliveryUnitByWorkItemId` 映射。
+- 不推荐为本阶段新增 `workItemBySkillUsageId` registry map，除非后续多个 operator 都需要复用；当前直接 join 更局部、更少状态。
+
 `profile_code_activities.delivery_unit_id` 可按同样链路写入；代码活动仍不做强一致 gate，但字段应尽量补齐，方便 Boss A 后续做“有没有进入代码实施”的需求维度聚合。
+
+当前 `sdd-default` knowledge operator 只覆盖 `locator_type = 'path'` 的本地知识库读取。Boss B 的 URL / MCP 文档型知识库接入不属于本阶段，后续必须扩展该 filter，不能误认为本阶段已经覆盖在线知识库。
 
 验收 SQL：
 
@@ -434,17 +453,12 @@ profile_artifact_turns(profile_id, projection_run_id, delivery_unit_id, event_ti
 - `worker/package.json`
 - 根 `package.json` 如新增脚本需同步。
 
-在现有 `profile:diff -- --profile sdd-default` 中新增 linkage / contract gate：
+在现有 `profile:diff -- --profile sdd-default` 中新增 PR-1 linkage gate：
 
 ```text
 capabilityDeliveryMissing
 knowledgeDeliveryMissing
 codeDeliveryResolvable / codeDeliveryMissing（只报告，不阻塞）
-demandCapabilityCountDiff
-demandArtifactCountDiff
-demandKnowledgeCountDiff
-userCapabilityCountDiff
-userArtifactCountDiff
 knowledgeOldNotInNew
 ```
 
@@ -454,13 +468,14 @@ knowledgeOldNotInNew
 - knowledge pipeline scope 有旧 `work_item_id` 但新 `delivery_unit_id` 为空：阻塞。
 - bridge 域 key-set 差异非 0：阻塞。
 - knowledge `old_not_in_new` 非 0：阻塞。
-- 旧 API 和新 contract 的核心 count 不一致且没有写入 `stats_json` 解释：阻塞。
 
 非阻塞但必须报告：
 
 - code activity 无法映射 delivery unit 的数量。
 - knowledge `new_not_in_old`，只要可归因到完整 source reference 或规则差异。
 - seed/demo 数据排除数量。
+
+页面 contract 的 count 级对账不要提前塞进 PR-1。`demandCapabilityCountDiff`、`userArtifactCountDiff`、knowledge coverage 差异等查询逻辑与对应 API 高度重合，必须放到 PR-2~PR-5 各自验收中实现和复用，避免 PR-1 先写一套孤立查询、后续页面再重写一套。
 
 验收命令：
 
@@ -472,6 +487,24 @@ pnpm profile:link-check -- --profile sdd-default
 ```
 
 全部通过。
+
+### Task 1.6 补关键映射测试
+
+新增或扩展 worker 测试，覆盖本阶段最容易出错的链路：
+
+- capability bridge：旧 `sdd_skill_usages.work_item_id` 非空时，新 `profile_capability_usages.delivery_unit_id` 必须非空，并指向同 run 的 `profile_delivery_units.id`。
+- capability bridge：旧 `work_item_id` 为空时，不得误填 delivery unit。
+- knowledge operator：`source_reference -> tool_call -> skill_usage -> work_item` 三跳链路完整时，新 `profile_knowledge_recalls.delivery_unit_id` 必须非空。
+- knowledge operator：无 tool call、无 skill usage、或 skill usage 无 work item 时，不阻塞 projection，但 diff 必须能报告 unmapped 数量。
+- code operator：能取到同样三跳链路时尽量写入 `delivery_unit_id`，但 code unmapped 只报告不阻塞。
+
+验收：
+
+```bash
+pnpm --filter @sdd-telemetry/worker test
+```
+
+新增测试必须是 fixture/纯数据驱动，不依赖开发者本机真实库。
 
 ## 8. PR-2：产出分析换源
 
@@ -526,6 +559,18 @@ contentPreview
 
 legacy adapter 可继续复用 `SddQueryService`，但 controller 对外必须是 `/api/profiles/:profileId/*`。
 
+查询实现要求：
+
+- `/demands` 不要继续叠加 correlated subquery。当前实现已有 artifact count / stages 两个相关子查询，本阶段再加 `capabilityUsageCount`、`errorCount`、`knowledgeRecallCount` 后，必须优先使用预聚合子查询或 `JOIN + GROUP BY`。
+- 数据量很小时 correlated subquery 可能也能跑，但不要把它作为新实现默认路径。需求数超过几百后，该模式会明显拖慢列表页。
+- PR-2 的 demand count 对账逻辑应复用同一套 repository 聚合口径，避免 API 查询和 diff 查询各写一套。
+
+manifest 降级：
+
+- `manifest.deliveryUnits === false` 时，产出分析入口降级，不请求 `/demands`。
+- `manifest.artifactTimeline === false` 时，隐藏 artifact timeline 入口；服务端 timeline endpoint 应返回明确的 unsupported 错误或空降级响应，不得假装成功返回不完整 timeline。
+- `sdd-default` 当前应保持 `deliveryUnits=true`、`artifactTimeline=true`。
+
 ### Task 2.2 前端 WorkItems 页面换源
 
 修改：
@@ -551,6 +596,7 @@ legacy adapter 可继续复用 `SddQueryService`，但 controller 对外必须�
 - `PROFILE_DASHBOARD_READ_SOURCE=profile_projection` 下产出分析列表、详情、timeline 可用。
 - `PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd` 下仍可用。
 - 旧 `profile:link-check` 仍 PASS。
+- 产出分析页面级对账通过：需求数、artifact count、capability usage count、error count、coverage stages 与旧 `/api/sdd/work-items` 口径一致；差异必须逐条解释。
 
 ## 9. PR-3：技能分析换源
 
@@ -611,6 +657,7 @@ profile_projection 读法：
 - `rg "/api/sdd/(skill-analytics|skill-timeseries|usage-summary|usages)" web/src/pages/sdd/skills web/src/pages/overview` 无主数据调用。
 - 技能分析 KPI、趋势、调用质量、标杆技能、列表、drawer 都可渲染。
 - `profile:diff` 中 capability bridge key-set 仍 0 差异。
+- 技能分析页面级对账通过：capability usage、active users、covered delivery units、top capabilities、usage summary 的核心 count 与旧 skill analytics / usage summary 口径一致；差异必须逐条解释。
 
 ## 10. PR-4：用户分析换源
 
@@ -640,7 +687,13 @@ profile_projection 读法：
 - `artifactCount` 来自用户关联的 `profile_artifact_writes` / artifact。
 - `knowledgeRecallCount` 来自 `profile_knowledge_recalls`。
 - `codeReadCount` / `codeWriteCount` 来自 `profile_code_activities`。
-- `status`、`isNew`、`rampDays` 复用当前 SDD 阈值，避免产品口径变化。
+- `status`、`isNew`、`rampDays` 复用当前 `userAnalysis` 配置，避免产品口径变化。默认阈值来自 `server/src/config/config.default.ts`：`USER_COLD_DAYS=7`、`USER_CHURN_DAYS=30`、`USER_NEW_DAYS=14`。
+- 本阶段不要把这些阈值硬编码进 profile repository。服务端应继续从统一配置读取；后续接 Boss A/B 时，再评估是否迁入 profile config 的 activity / attribution policy。
+
+查询实现要求：
+
+- 用户全集来自 4 张 `profile_*` 表的 UNION，每人 7+ 个 COUNT 指标。不要对每个用户 N+1 查询，必须优先使用 `UNION ALL + GROUP BY user_id` 一次拿齐用户全集和聚合指标，再用第二条查询补充用户展示名和机器信息。
+- 如果用户量很大（超过数百），应考虑分页 UNION 查询或预聚合物化视图，但第一阶段数据量有限，单条 UNION 查询即可。
 
 ### Task 4.2 前端 Users 页面换源
 
@@ -664,6 +717,7 @@ profile_projection 读法：
 - `rg "/api/sdd/users|/api/sdd/usages|/api/sdd/wiki-recalls/list|/api/sdd/work-items" web/src/pages/sdd/users` 无主数据调用。
 - 用户列表总数、状态分布、成熟度、代码读写数与旧口径对账一致或有解释。
 - 用户详情打开无 404、无空白页。
+- 用户页面级对账通过：user count、status/isNew/rampDays、capability usage、delivery unit count、artifact count、knowledge recall count、code read/write 与旧用户分析口径一致；差异必须逐条解释。
 
 ## 11. PR-5：知识库分析换源
 
@@ -701,6 +755,12 @@ profile_projection 读法：
 - 不能用 `source_references.id` 作为公开内容读取 key。
 - 公开 key 优先使用 `source_reference_key` 或 locator query。
 
+manifest 降级：
+
+- `manifest.knowledgeRecalls === false` 时，知识库分析入口降级，不请求 knowledge endpoints。
+- `manifest.artifactTimeline === false` 时，知识库文档详情里与 artifact timeline 相关的交叉下钻必须隐藏或降级。
+- 服务端如果 profile 不支持 knowledge content，应返回明确 unsupported，而不是返回空内容伪装成功。
+
 ### Task 5.2 前端 WikiRecalls 页面换源
 
 修改：
@@ -722,6 +782,7 @@ profile_projection 读法：
 - 知识库首页 KPI、业务线对比、趋势、Top domains、资产表可用。
 - 领域详情、文档详情、内容弹层可用。
 - `profile:diff` knowledge gate 仍 PASS：`old_not_in_new=0`、`orphan_source_ref=0`。
+- 知识库页面级对账通过：recall totals、timeline、domain/docs、delivery-unit ranking 与旧 wiki recalls 口径一致；coverage 分母若受服务器当前快照影响，必须解释。
 
 ## 12. PR-6：总览收口、全站 canary 和文档
 
@@ -824,12 +885,15 @@ GET /api/profiles/:profileId/knowledge/content/:referenceKey
 - capability 有旧 work item 时，新 `delivery_unit_id` 不得为空。
 - knowledge pipeline scope：old `(tool_call_id, locator)` 不得在 new 缺失。
 - knowledge recall 不得有 orphan `source_reference_key`。
-- demand 列表核心 count 与旧工作项一致：
+- PR-2 demand 列表核心 count 与旧工作项一致：
   - delivery unit 数
   - artifact count
   - capability usage count
   - error count
   - coverage stages
+- PR-3 capability 核心 count 与旧技能分析一致。
+- PR-4 user 核心 count 与旧用户分析一致。
+- PR-5 knowledge 核心 count 与旧知识库分析一致；coverage 分母受当前文件系统快照影响的差异必须解释。
 
 ### 14.2 非对称 gate
 
@@ -994,19 +1058,20 @@ PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd
 
 1. `profile:diff -- --profile sdd-default` PASS，包含 linkage / contract gate。
 2. `profile:link-check -- --profile sdd-default` PASS。
-3. `pnpm typecheck` PASS。
-4. `pnpm build` PASS。
-5. 总览和四大看板主数据都请求 `/api/profiles/sdd-default/*`。
-6. `PROFILE_DASHBOARD_READ_SOURCE=profile_projection` 下页面可完整演示。
-7. `PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd` 下页面仍可用。
-8. 需求列表、需求详情、artifact timeline 不断链。
-9. 用户列表、用户详情不白屏。
-10. 技能分析 KPI、趋势、汇总、明细可用。
-11. 知识库 coverage、趋势、文档列表、文档详情可用。
-12. Profile Switcher 的 `profileId` 进入所有新 queryKey。
-13. `packages/api/src/contracts/profile.contract.ts` 不引入新的 `Sdd*` contract 类型。
-14. 实施报告写入 `docs/tasks-profile-contract-coverage-report.md`。
-15. 未完成项均明确标注，并确认不影响老板演示。
+3. `pnpm --filter @sdd-telemetry/worker test` PASS，且包含 delivery link 映射测试。
+4. `pnpm typecheck` PASS。
+5. `pnpm build` PASS。
+6. 总览和四大看板主数据都请求 `/api/profiles/sdd-default/*`。
+7. `PROFILE_DASHBOARD_READ_SOURCE=profile_projection` 下页面可完整演示。
+8. `PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd` 下页面仍可用。
+9. 需求列表、需求详情、artifact timeline 不断链。
+10. 用户列表、用户详情不白屏。
+11. 技能分析 KPI、趋势、汇总、明细可用。
+12. 知识库 coverage、趋势、文档列表、文档详情可用。
+13. Profile Switcher 的 `profileId` 进入所有新 queryKey。
+14. `packages/api/src/contracts/profile.contract.ts` 不引入新的 `Sdd*` contract 类型。
+15. 实施报告写入 `docs/tasks-profile-contract-coverage-report.md`。
+16. 未完成项均明确标注，并确认不影响老板演示。
 
 ## 19. 常见误区
 
