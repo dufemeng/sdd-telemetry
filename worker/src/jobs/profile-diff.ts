@@ -137,6 +137,49 @@ async function main(): Promise<void> {
     if (orphanSourceRef !== 0) gateFailures.push(`knowledge orphan_source_ref=${orphanSourceRef} (必须 0)`);
     if (oldNotInNew !== 0) gateFailures.push(`knowledge old_not_in_new=${oldNotInNew} (必须 0：真实 recall 被漏掉)`);
 
+    // ── linkage gate（Task 1.5）─────────────────────────────────────────────
+    const capDeliveryMissing = await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_capability_usages p
+       JOIN profile_current_projection_runs c ON c.profile_id = p.profile_id AND c.current_projection_run_id = p.projection_run_id
+       JOIN sdd_skill_usages s ON p.usage_key = SHA2(CONCAT(p.profile_id, ':capability:', s.usage_key), 256)
+       WHERE p.profile_id = ?
+         AND s.work_item_id IS NOT NULL
+         AND p.delivery_unit_id IS NULL`,
+      [profileId],
+    );
+    report.capabilityDeliveryMissing = capDeliveryMissing;
+    if (capDeliveryMissing !== 0) gateFailures.push(`capability delivery_unit_id missing=${capDeliveryMissing} (有旧 work_item_id 但新 delivery_unit_id 为空)`);
+
+    const knowDeliveryMissing = await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_knowledge_recalls k
+       JOIN sdd_interaction_tool_calls tc ON tc.id = k.tool_call_id
+       JOIN sdd_skill_usages su ON su.id = tc.skill_usage_id
+       WHERE k.projection_run_id = ?
+         AND su.work_item_id IS NOT NULL
+         AND k.delivery_unit_id IS NULL`,
+      [runId],
+    );
+    report.knowledgeDeliveryMissing = knowDeliveryMissing;
+    if (knowDeliveryMissing !== 0) gateFailures.push(`knowledge delivery_unit_id missing=${knowDeliveryMissing} (pipeline scope 有旧 work_item_id 但新 delivery_unit_id 为空)`);
+
+    const codeDeliveryMissing = await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_code_activities ca
+       JOIN sdd_interaction_tool_calls tc ON tc.id = ca.tool_call_id
+       JOIN sdd_skill_usages su ON su.id = tc.skill_usage_id
+       WHERE ca.projection_run_id = ?
+         AND su.work_item_id IS NOT NULL
+         AND ca.delivery_unit_id IS NULL`,
+      [runId],
+    );
+    report.codeDeliveryMissing = codeDeliveryMissing;
+    report.codeDeliveryNote = 'code delivery_unit_id mapping 只报告不阻塞';
+
     report.gate = gateFailures.length === 0 ? 'PASS' : 'FAIL';
     report.gateFailures = gateFailures;
     console.info(JSON.stringify(report, null, 2));
