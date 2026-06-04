@@ -23,12 +23,19 @@ export class ProfileProjectionRepository {
   @Inject('mysqlDataSourceManager')
   mysqlDataSourceManager!: MysqlDataSourceManager;
 
-  /** 当前可读 run id；无指针返回 null（调用方回退 legacy）。 */
+  /**
+   * 当前可读 run id；无指针、或指针指向的 run 非 completed 时返回 null（调用方回退 legacy）。
+   * runner 只在 completed 同事务里切 pointer，正常不会指向非 completed；这里 join runs 表
+   * 多一道读侧硬防线，防手工改表 / 未来新写入路径。
+   */
   async getCurrentRunId(profileId: string): Promise<number | null> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
-      `SELECT current_projection_run_id AS v
-       FROM profile_current_projection_runs WHERE profile_id = ?`,
+      `SELECT c.current_projection_run_id AS v
+       FROM profile_current_projection_runs c
+       JOIN profile_projection_runs r
+         ON r.id = c.current_projection_run_id AND r.status = 'completed'
+       WHERE c.profile_id = ?`,
       [profileId],
     )) as CountRow[];
     const value = rows[0]?.v;

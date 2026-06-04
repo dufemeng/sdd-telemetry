@@ -15,16 +15,17 @@ function parseProfileArg(): string {
 }
 
 async function main(): Promise<void> {
+  const profileId = parseProfileArg();
+  const operators = getProfileOperators(profileId);
+  // 未知 / 未配置 profile 直接失败，避免建出「成功但无数据」的 run 并误切 pointer。
+  if (operators.length === 0) {
+    throw new Error(`unknown or unconfigured profile: ${profileId}（无 projection 算子）`);
+  }
+
   const pool = createMysqlPool();
   const logger = createLogger('profile-rebuild');
-  const profileId = parseProfileArg();
   try {
-    const result = await runProfileProjection({
-      pool,
-      logger,
-      profileId,
-      operators: getProfileOperators(profileId),
-    });
+    const result = await runProfileProjection({ pool, logger, profileId, operators });
     console.info(JSON.stringify(result));
   } finally {
     await pool.end();
