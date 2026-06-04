@@ -111,6 +111,31 @@ export default function DatabasePage() {
 
   const hasNext = Boolean(rows.data?.nextCursor);
 
+  // 本次 Profile 化实施新建的表：source_references + profile_*。其余为原有表。
+  const { newTables, oldTables } = useMemo(() => {
+    const isNew = (name: string) => name === 'source_references' || name.startsWith('profile_');
+    return {
+      newTables: tables.filter((t) => isNew(t.tableName)),
+      oldTables: tables.filter((t) => !isNew(t.tableName)),
+    };
+  }, [tables]);
+
+  const renderTableButton = (t: (typeof tables)[number]) => (
+    <button
+      key={t.tableName}
+      onClick={() => switchTable(t.tableName)}
+      className={[
+        'flex justify-between items-center w-full min-h-8 px-2 rounded-[4px] text-[12px] border-0 cursor-pointer text-left transition-colors',
+        t.tableName === activeName
+          ? 'text-[var(--color-primary)] bg-[#202016]'
+          : 'text-[var(--color-secondary)] bg-transparent hover:text-[var(--color-primary)] hover:bg-[#202016]',
+      ].join(' ')}
+    >
+      <span className="truncate">{t.tableName}</span>
+      <em className="not-italic text-[var(--color-muted)]">{formatInteger(t.estimatedRows)}</em>
+    </button>
+  );
+
   return (
     <div
       className="grid h-full min-h-0 gap-3 overflow-hidden"
@@ -123,21 +148,20 @@ export default function DatabasePage() {
       >
         <div className="min-h-0 flex-1 overflow-auto">
           <div className="grid gap-1">
-            {tables.map((t) => (
-              <button
-                key={t.tableName}
-                onClick={() => switchTable(t.tableName)}
-                className={[
-                  'flex justify-between items-center w-full min-h-8 px-2 rounded-[4px] text-[12px] border-0 cursor-pointer text-left transition-colors',
-                  t.tableName === activeName
-                    ? 'text-[var(--color-primary)] bg-[#202016]'
-                    : 'text-[var(--color-secondary)] bg-transparent hover:text-[var(--color-primary)] hover:bg-[#202016]',
-                ].join(' ')}
-              >
-                <span className="truncate">{t.tableName}</span>
-                <em className="not-italic text-[var(--color-muted)]">{formatInteger(t.estimatedRows)}</em>
-              </button>
-            ))}
+            {newTables.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2 pt-1 pb-0.5 text-[10px] uppercase tracking-wide text-[var(--color-primary)]">
+                本次新增 · Profile 化
+                <span className="text-[var(--color-muted)] normal-case">({newTables.length})</span>
+              </div>
+            )}
+            {newTables.map(renderTableButton)}
+            {oldTables.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2 pt-2 pb-0.5 text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+                原有表
+                <span className="normal-case">({oldTables.length})</span>
+              </div>
+            )}
+            {oldTables.map(renderTableButton)}
           </div>
         </div>
       </Panel>
