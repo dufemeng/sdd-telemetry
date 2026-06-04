@@ -1,5 +1,6 @@
 import { createMysqlPool } from '../infrastructure/mysql/client';
 import { createLogger } from '../support/logger';
+import { getProfileOperators } from './profile-projection/operators';
 import { runProfileProjection } from './profile-projection/runner';
 
 /**
@@ -16,11 +17,13 @@ function parseProfileArg(): string {
 async function main(): Promise<void> {
   const pool = createMysqlPool();
   const logger = createLogger('profile-rebuild');
+  const profileId = parseProfileArg();
   try {
     const result = await runProfileProjection({
       pool,
       logger,
-      profileId: parseProfileArg(),
+      profileId,
+      operators: getProfileOperators(profileId),
     });
     console.info(JSON.stringify(result));
   } finally {

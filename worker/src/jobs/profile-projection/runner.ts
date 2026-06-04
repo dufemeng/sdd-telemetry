@@ -14,16 +14,36 @@ import { withTransaction } from '../../infrastructure/mysql/client';
  * 算子集合在 PR-4/PR-5 注册；PR-3 是空框架（可注入算子用于测试）。
  */
 
+/**
+ * 运行内共享的 id 映射：把上游（sdd_* 或 source_references）的 id 映射到本 run 新插入的
+ * profile_* 行 id，供后续算子做跨表 linkage。算子按依赖顺序执行，前序算子填充、后序消费。
+ */
+export interface ProjectionIdRegistry {
+  capabilityUsageBySkillUsageId: Map<number, number>;
+  deliveryUnitByWorkItemId: Map<number, number>;
+  artifactByArtifactId: Map<number, number>;
+}
+
+export function createIdRegistry(): ProjectionIdRegistry {
+  return {
+    capabilityUsageBySkillUsageId: new Map(),
+    deliveryUnitByWorkItemId: new Map(),
+    artifactByArtifactId: new Map(),
+  };
+}
+
 export interface ProjectionContext {
   pool: Pool;
   profileId: string;
   projectionRunId: number;
   logger: Logger;
+  registry: ProjectionIdRegistry;
 }
 
 export interface ProjectionOperator {
   name: string;
-  run(ctx: ProjectionContext): Promise<Record<string, unknown>>;
+  /** 返回算子自定义的统计对象，框架原样收进 stats_json，不解释其结构。 */
+  run(ctx: ProjectionContext): Promise<unknown>;
 }
 
 /** PR-3 空算子集；后续 PR 注册 capability / delivery / artifact / knowledge / code 算子。 */
@@ -54,12 +74,14 @@ export async function runProfileProjection(opts: {
     const runId = await insertRun(pool, profileId);
     try {
       const stats: Record<string, unknown> = {};
+      const registry = createIdRegistry();
       for (const operator of operators) {
         stats[operator.name] = await operator.run({
           pool,
           profileId,
           projectionRunId: runId,
           logger,
+          registry,
         });
       }
 
