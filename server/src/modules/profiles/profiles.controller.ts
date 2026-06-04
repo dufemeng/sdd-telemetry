@@ -2,10 +2,13 @@ import { Controller, Get, Inject } from '@midwayjs/core';
 import type { Context } from '@midwayjs/koa';
 import {
   ProfileCapabilityManifestSchema,
+  ProfileDemandListSchema,
+  ProfileDemandQuerySchema,
   ProfileOverviewQuerySchema,
   ProfileOverviewSchema,
   ProfileSummaryListSchema,
   type ProfileCapabilityManifest,
+  type ProfileDemand,
   type ProfileOverview,
   type ProfileSummary,
 } from '@sdd-telemetry/api';
@@ -40,5 +43,13 @@ export class ProfilesController {
     const query = parseWithSchema(ProfileOverviewQuerySchema, this.ctx.query);
     const data: ProfileOverview = await this.profilesService.getOverview(profileId, query);
     return ok(parseWithSchema(ProfileOverviewSchema, data));
+  }
+
+  @Get('/:profileId/demands')
+  async demands() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileDemandQuerySchema, this.ctx.query);
+    const data: ProfileDemand[] = await this.profilesService.listDemands(profileId, query);
+    return ok(parseWithSchema(ProfileDemandListSchema, data));
   }
 }

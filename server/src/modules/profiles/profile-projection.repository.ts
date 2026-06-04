@@ -1,7 +1,11 @@
 import { Inject, Provide } from '@midwayjs/core';
-import type { ProfileOverview, ProfileOverviewQuery } from '@sdd-telemetry/api';
+import type {
+  ProfileDemand,
+  ProfileOverview,
+  ProfileOverviewQuery,
+} from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import { addTimeRangeWhere, toNumber, whereSql } from '../query-utils';
+import { addTimeRangeWhere, toIsoDate, toNumber, whereSql } from '../query-utils';
 
 /**
  * profile_projection 读路径（MVP-1，Task 17）。
@@ -74,5 +78,43 @@ export class ProfileProjectionRepository {
       codeWriteCount: toNumber(codeWriteRows[0]?.v),
       codeReadCount: toNumber(codeReadRows[0]?.v),
     };
+  }
+
+  /** 产出分析列表：delivery unit + 文档数 + 覆盖阶段（current run）。 */
+  async listDemands(
+    profileId: string,
+    runId: number,
+    query: ProfileOverviewQuery,
+  ): Promise<ProfileDemand[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['du.profile_id = ?', 'du.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+    addTimeRangeWhere(clauses, params, 'du.last_seen_at', query);
+
+    const rows = (await dataSource.query(
+      `SELECT du.id, du.delivery_unit_key, du.business_domain, du.unit_slug, du.title,
+              du.relative_dir_or_locator AS locator, du.first_seen_at, du.last_seen_at,
+              (SELECT COUNT(*) FROM profile_artifacts a
+                WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS artifact_count,
+              (SELECT GROUP_CONCAT(DISTINCT a.artifact_type) FROM profile_artifacts a
+                WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages
+       FROM profile_delivery_units du
+       ${whereSql(clauses)}
+       ORDER BY du.last_seen_at DESC, du.id DESC`,
+      params,
+    )) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      deliveryUnitKey: String(row.delivery_unit_key),
+      businessDomain: (row.business_domain as string | null) ?? null,
+      unitSlug: (row.unit_slug as string | null) ?? null,
+      title: (row.title as string | null) ?? null,
+      locator: (row.locator as string | null) ?? null,
+      firstSeenAt: toIsoDate(row.first_seen_at),
+      lastSeenAt: toIsoDate(row.last_seen_at),
+      artifactCount: toNumber(row.artifact_count),
+      coverageStages: row.stages ? String(row.stages).split(',').filter(Boolean) : [],
+    }));
   }
 }

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type {
   ProfileCapabilityManifest,
+  ProfileDemand,
   ProfileOverview,
   ProfileSummary,
 } from '@sdd-telemetry/api';
@@ -18,6 +19,19 @@ export function useProfiles() {
 export function useProfileManifest(profileId: string): ProfileCapabilityManifest | undefined {
   const { data } = useProfiles();
   return data?.find((p) => p.profileId === profileId)?.manifest;
+}
+
+/** 产出分析列表（delivery unit / 需求，Task 20）。 */
+export function useProfileDemands(profileId: string, fromIso?: string) {
+  const query = fromIso ? `?from=${fromIso}` : '';
+  return useQuery({
+    queryKey: ['profile-demands', profileId, fromIso],
+    queryFn: () =>
+      requestData<ProfileDemand[]>(`/api/profiles/${profileId}/demands${query}`),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    enabled: Boolean(profileId),
+  });
 }
 
 export function useProfileOverview(profileId: string, fromIso?: string) {

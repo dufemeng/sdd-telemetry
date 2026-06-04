@@ -1,6 +1,7 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
   ProfileCapabilityManifest,
+  ProfileDemand,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileSummary,
@@ -65,6 +66,38 @@ export class ProfilesService {
       codeWriteCount: 0,
       codeReadCount: 0,
     };
+  }
+
+  /**
+   * 产出分析列表（Task 20）。profile_projection 有 current pointer 时读 projection，
+   * 否则回退 legacy（sdd work items 映射成 delivery unit）。
+   */
+  async listDemands(
+    profileId: string,
+    query: ProfileOverviewQuery,
+  ): Promise<ProfileDemand[]> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.listDemands(profileId, runId, query);
+      }
+    }
+
+    const workItems = await this.sddQueryService.listWorkItems({ ...query, limit: 500 });
+    return workItems.map((w) => ({
+      id: w.id,
+      deliveryUnitKey: w.workItemKey,
+      businessDomain: w.businessDomain,
+      unitSlug: w.workItemSlug,
+      title: w.workItemTitle,
+      locator: w.relativeDir,
+      firstSeenAt: w.firstSeenAt,
+      lastSeenAt: w.lastSeenAt,
+      artifactCount: w.artifactCount,
+      coverageStages: w.coverageStages,
+    }));
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {
