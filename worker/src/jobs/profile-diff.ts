@@ -35,28 +35,48 @@ async function main(): Promise<void> {
       throw new Error(`no current projection run for profile ${profileId}; run profile:rebuild first`);
     }
 
-    // 桥接域：old(sdd_*) vs new(profile_*, 当前 run)。
-    const bridges: Array<{ name: string; oldSql: string; newTable: string }> = [
-      { name: 'capability', oldSql: 'sdd_skill_usages', newTable: 'profile_capability_usages' },
-      { name: 'deliveryUnit', oldSql: 'sdd_work_items', newTable: 'profile_delivery_units' },
-      { name: 'artifact', oldSql: 'sdd_work_item_artifacts', newTable: 'profile_artifacts' },
-      { name: 'artifactWrite', oldSql: 'sdd_work_item_artifact_writes', newTable: 'profile_artifact_writes' },
-      { name: 'artifactTurn', oldSql: 'sdd_work_item_artifact_turns', newTable: 'profile_artifact_turns' },
+    // 桥接域：key-set 级对账。桥接 key = sha256(profileId:prefix:上游稳定 key)，
+    // 用 SHA2 在 SQL 里现算上游 key 与 profile_* 做集合差，count 相同但映射串行也能抓到。
+    const bridges: Array<{
+      name: string;
+      oldTable: string;
+      oldKey: string;
+      prefix: string;
+      newTable: string;
+      newKey: string;
+    }> = [
+      { name: 'capability', oldTable: 'sdd_skill_usages', oldKey: 'usage_key', prefix: 'capability', newTable: 'profile_capability_usages', newKey: 'usage_key' },
+      { name: 'deliveryUnit', oldTable: 'sdd_work_items', oldKey: 'work_item_key', prefix: 'du', newTable: 'profile_delivery_units', newKey: 'delivery_unit_key' },
+      { name: 'artifact', oldTable: 'sdd_work_item_artifacts', oldKey: 'artifact_key', prefix: 'artifact', newTable: 'profile_artifacts', newKey: 'artifact_key' },
+      { name: 'artifactWrite', oldTable: 'sdd_work_item_artifact_writes', oldKey: 'write_key', prefix: 'artifact_write', newTable: 'profile_artifact_writes', newKey: 'write_key' },
+      { name: 'artifactTurn', oldTable: 'sdd_work_item_artifact_turns', oldKey: 'turn_key', prefix: 'artifact_turn', newTable: 'profile_artifact_turns', newKey: 'turn_key' },
     ];
 
     const report: Record<string, unknown> = { profileId, runId };
     const gateFailures: string[] = [];
 
     for (const b of bridges) {
-      const oldCount = await scalar(pool, `SELECT COUNT(*) AS v FROM \`${b.oldSql}\``);
-      const newCount = await scalar(
+      const oldCount = await scalar(pool, `SELECT COUNT(*) AS v FROM \`${b.oldTable}\``);
+      const newCount = await scalar(pool, `SELECT COUNT(*) AS v FROM \`${b.newTable}\` WHERE projection_run_id=?`, [runId]);
+      // 上游每行的期望 profile key 是否在 new key-set 中。
+      const expectedKey = `SHA2(CONCAT(?, ':', ?, ':', o.\`${b.oldKey}\`), 256)`;
+      const oldNotInNew = await scalar(
         pool,
-        `SELECT COUNT(*) AS v FROM \`${b.newTable}\` WHERE projection_run_id=?`,
-        [runId],
+        `SELECT COUNT(*) AS v FROM \`${b.oldTable}\` o
+         WHERE ${expectedKey} NOT IN (SELECT \`${b.newKey}\` FROM \`${b.newTable}\` WHERE projection_run_id=?)`,
+        [profileId, b.prefix, runId],
       );
-      const diff = newCount - oldCount;
-      report[b.name] = { old: oldCount, new: newCount, diff };
-      if (diff !== 0) gateFailures.push(`${b.name} diff=${diff} (桥接域必须 0 差异)`);
+      const newNotInOld = await scalar(
+        pool,
+        `SELECT COUNT(*) AS v FROM \`${b.newTable}\` n
+         WHERE n.projection_run_id=? AND n.\`${b.newKey}\` NOT IN
+           (SELECT ${expectedKey} FROM \`${b.oldTable}\` o)`,
+        [runId, profileId, b.prefix],
+      );
+      report[b.name] = { old: oldCount, new: newCount, oldNotInNew, newNotInOld };
+      if (oldNotInNew !== 0 || newNotInOld !== 0) {
+        gateFailures.push(`${b.name} key-set 不一致 (oldNotInNew=${oldNotInNew}, newNotInOld=${newNotInOld})`);
+      }
     }
 
     // knowledge：非自证、非对称门槛。
@@ -77,24 +97,25 @@ async function main(): Promise<void> {
       `SELECT COUNT(DISTINCT w.tool_call_id) AS v FROM sdd_wiki_recalls w
        WHERE w.tool_call_id IN (SELECT tool_call_id FROM source_references WHERE tool_call_id IS NOT NULL)`,
     );
+    // (tool_call_id, locator) 级：比 tool_call 级更强，能抓「同 tool call 但 locator 不同」。
+    // old=sdd_wiki_recalls.raw_path，new=profile_knowledge_recalls.knowledge_locator。
     const oldNotInNew = await scalar(
       pool,
-      `SELECT COUNT(*) AS v FROM (
-         SELECT DISTINCT w.tool_call_id FROM sdd_wiki_recalls w
-         WHERE w.tool_call_id IN (SELECT tool_call_id FROM source_references WHERE tool_call_id IS NOT NULL)
-           AND w.tool_call_id NOT IN (
-             SELECT tool_call_id FROM profile_knowledge_recalls
-             WHERE projection_run_id=? AND tool_call_id IS NOT NULL)
-       ) t`,
+      `SELECT COUNT(*) AS v FROM sdd_wiki_recalls w
+       WHERE w.tool_call_id IN (SELECT tool_call_id FROM source_references WHERE tool_call_id IS NOT NULL)
+         AND NOT EXISTS (
+           SELECT 1 FROM profile_knowledge_recalls k
+           WHERE k.projection_run_id=? AND k.tool_call_id = w.tool_call_id
+             AND k.knowledge_locator = w.raw_path)`,
       [runId],
     );
     const newNotInOld = await scalar(
       pool,
-      `SELECT COUNT(*) AS v FROM (
-         SELECT DISTINCT k.tool_call_id FROM profile_knowledge_recalls k
-         WHERE k.projection_run_id=? AND k.tool_call_id IS NOT NULL
-           AND k.tool_call_id NOT IN (SELECT tool_call_id FROM sdd_wiki_recalls WHERE tool_call_id IS NOT NULL)
-       ) t`,
+      `SELECT COUNT(*) AS v FROM profile_knowledge_recalls k
+       WHERE k.projection_run_id=? AND k.tool_call_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM sdd_wiki_recalls w
+           WHERE w.tool_call_id = k.tool_call_id AND w.raw_path = k.knowledge_locator)`,
       [runId],
     );
     const oldSeedExcluded = await scalar(
@@ -110,6 +131,7 @@ async function main(): Promise<void> {
       oldNotInNew,
       newNotInOld,
       oldSeedExcluded,
+      level: '(tool_call_id, locator) 级',
       note: 'oldSeedExcluded = 无 source_references 的 seed/demo 数据，不属 pipeline，可解释排除',
     };
     if (orphanSourceRef !== 0) gateFailures.push(`knowledge orphan_source_ref=${orphanSourceRef} (必须 0)`);
