@@ -11,6 +11,11 @@ import type {
   ProfileDemand,
   ProfileDemandArtifact,
   ProfileDemandDetail,
+  ProfileKnowledgeCoverageDomain,
+  ProfileKnowledgeCoverageRepo,
+  ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeRecallItem,
+  ProfileKnowledgeTimelinePoint,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileUserDeliveryUnit,
@@ -918,5 +923,206 @@ export class ProfileProjectionRepository {
     if (user.knowledgeRecallCount > 0) reached++;
     if (user.codeWriteCount > 0) reached++;
     return reached / total;
+  }
+
+  // ── Knowledge ───────────────────────────────────────────────────────────────
+
+  async getKnowledgeCoverage(
+    profileId: string,
+    runId: number,
+  ): Promise<ProfileKnowledgeCoverageResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+
+    const totalsRows = (await dataSource.query(
+      `SELECT
+         COUNT(*) AS total_docs,
+         COUNT(DISTINCT CASE WHEN kr.id IS NOT NULL THEN kr.knowledge_relative_path END) AS recalled_docs,
+         COUNT(*) AS recalls,
+         COUNT(DISTINCT CASE WHEN kr.knowledge_relative_path IS NOT NULL THEN kr.knowledge_relative_path END) AS distinct_recalled,
+         0 AS cold_docs,
+         0 AS dead_docs,
+         0 AS new_unread_docs,
+         0 AS orphan_paths
+       FROM profile_knowledge_recalls kr
+       WHERE kr.profile_id = ? AND kr.projection_run_id = ?`,
+      [profileId, runId],
+    )) as Array<Record<string, unknown>>;
+
+    const t = totalsRows[0] ?? {};
+    const totalDocs = toNumber(t.total_docs);
+    const recalledDocs = toNumber(t.distinct_recalled);
+    const coverageRate = totalDocs > 0 ? recalledDocs / totalDocs : 0;
+
+    const domainRows = (await dataSource.query(
+      `SELECT
+         COALESCE(kr.knowledge_domain, 'unknown') AS domain,
+         COUNT(*) AS total_docs,
+         COUNT(DISTINCT kr.knowledge_relative_path) AS recalled_docs,
+         COUNT(*) AS recalls,
+         0 AS dead_docs,
+         0 AS new_unread_docs,
+         COUNT(DISTINCT kr.user_id) AS distinct_users,
+         MAX(kr.event_time) AS last_recall_at
+       FROM profile_knowledge_recalls kr
+       WHERE kr.profile_id = ? AND kr.projection_run_id = ?
+       GROUP BY COALESCE(kr.knowledge_domain, 'unknown')
+       ORDER BY recalls DESC`,
+      [profileId, runId],
+    )) as Array<Record<string, unknown>>;
+
+    const domains: ProfileKnowledgeCoverageDomain[] = domainRows.map((row) => ({
+      sourceNamespace: '',
+      domain: String(row.domain ?? ''),
+      totalDocs: toNumber(row.total_docs),
+      recalledDocs: toNumber(row.recalled_docs),
+      recalls: toNumber(row.recalls),
+      deadDocs: 0,
+      newUnreadDocs: 0,
+      distinctUsers: toNumber(row.distinct_users),
+      lastRecallAt: toIsoDate(row.last_recall_at),
+    }));
+
+    return {
+      scan: { configured: false, repos: [] },
+      totals: {
+        totalDocs,
+        recalledDocs,
+        coverageRate,
+        recalls: toNumber(t.recalls),
+        coldDocs: 0,
+        deadDocs: 0,
+        newUnreadDocs: 0,
+        orphanPaths: 0,
+      },
+      repos: [],
+      domains,
+    };
+  }
+
+  async getKnowledgeTimeline(
+    profileId: string,
+    runId: number,
+    bucketSeconds: number,
+  ): Promise<{ points: ProfileKnowledgeTimelinePoint[] }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+
+    const rows = (await dataSource.query(
+      `SELECT
+         FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(kr.event_time) / ?) * ?) AS bucket_ts,
+         COALESCE(kr.knowledge_domain, 'unknown') AS \`group\`,
+         COUNT(*) AS count
+       FROM profile_knowledge_recalls kr
+       WHERE kr.profile_id = ? AND kr.projection_run_id = ?
+       GROUP BY bucket_ts, \`group\`
+       ORDER BY bucket_ts ASC`,
+      [bucketSeconds, bucketSeconds, profileId, runId],
+    )) as Array<Record<string, unknown>>;
+
+    return {
+      points: rows.map((row) => ({
+        t: toIsoDate(row.bucket_ts) ?? '',
+        group: (row.group as string | null) ?? null,
+        count: toNumber(row.count),
+      })),
+    };
+  }
+
+  async listKnowledgeRecalls(
+    profileId: string,
+    runId: number,
+    query: { page: number; pageSize: number; deliveryUnitId?: string; userId?: string },
+  ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const clauses = ['kr.profile_id = ?', 'kr.projection_run_id = ?'];
+    const params: unknown[] = [profileId, runId];
+
+    if (query.deliveryUnitId) {
+      clauses.push('kr.delivery_unit_id = ?');
+      params.push(query.deliveryUnitId);
+    }
+    if (query.userId) {
+      clauses.push('kr.user_id = ?');
+      params.push(query.userId);
+    }
+
+    const offset = (query.page - 1) * query.pageSize;
+
+    const countRows = (await dataSource.query(
+      `SELECT COUNT(*) AS v FROM profile_knowledge_recalls kr ${whereSql(clauses)}`,
+      params,
+    )) as Array<Record<string, unknown>>;
+
+    const rows = (await dataSource.query(
+      `SELECT kr.id, kr.tool_call_id, kr.interaction_id, kr.capability_usage_id,
+              kr.delivery_unit_id, kr.user_id,
+              u.display_name AS user_name,
+              kr.action_type, kr.raw_locator,
+              kr.knowledge_relative_path, kr.knowledge_domain,
+              kr.knowledge_axis, kr.knowledge_system,
+              kr.event_sequence, kr.event_time
+       FROM profile_knowledge_recalls kr
+       LEFT JOIN profile_users u ON u.id = kr.user_id AND u.projection_run_id = kr.projection_run_id
+       ${whereSql(clauses)}
+       ORDER BY kr.event_time DESC, kr.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, query.pageSize, offset],
+    )) as Array<Record<string, unknown>>;
+
+    const items: ProfileKnowledgeRecallItem[] = rows.map((row) => ({
+      id: toStringId(row.id),
+      toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
+      interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
+      capabilityUsageId: row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
+      deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
+      userId: row.user_id == null ? null : toStringId(row.user_id),
+      userName: (row.user_name as string | null) ?? null,
+      actionType: String(row.action_type ?? ''),
+      rawLocator: (row.raw_locator as string | null) ?? null,
+      knowledgeRelativePath: (row.knowledge_relative_path as string | null) ?? null,
+      knowledgeDomain: (row.knowledge_domain as string | null) ?? null,
+      knowledgeAxis: (row.knowledge_axis as string | null) ?? null,
+      knowledgeSystem: (row.knowledge_system as string | null) ?? null,
+      eventSequence: row.event_sequence == null ? null : toNumber(row.event_sequence),
+      eventTime: toIsoDate(row.event_time),
+    }));
+
+    return { items, total: toNumber(countRows[0]?.v) };
+  }
+
+  async getKnowledgeDeliveryUnitRanking(
+    profileId: string,
+    runId: number,
+  ): Promise<{ items: Array<{ deliveryUnitId: string; unitSlug: string | null; businessDomain: string | null; totalRecalls: number; distinctDomains: number; distinctSystems: number; userCount: number }>; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+
+    const rows = (await dataSource.query(
+      `SELECT
+         kr.delivery_unit_id,
+         du.unit_slug,
+         du.business_domain,
+         COUNT(*) AS total_recalls,
+         COUNT(DISTINCT kr.knowledge_domain) AS distinct_domains,
+         COUNT(DISTINCT kr.knowledge_system) AS distinct_systems,
+         COUNT(DISTINCT kr.user_id) AS user_count
+       FROM profile_knowledge_recalls kr
+       LEFT JOIN profile_delivery_units du ON du.id = kr.delivery_unit_id AND du.projection_run_id = kr.projection_run_id
+       WHERE kr.profile_id = ? AND kr.projection_run_id = ? AND kr.delivery_unit_id IS NOT NULL
+       GROUP BY kr.delivery_unit_id, du.unit_slug, du.business_domain
+       ORDER BY total_recalls DESC`,
+      [profileId, runId],
+    )) as Array<Record<string, unknown>>;
+
+    return {
+      items: rows.map((row) => ({
+        deliveryUnitId: toStringId(row.delivery_unit_id),
+        unitSlug: (row.unit_slug as string | null) ?? null,
+        businessDomain: (row.business_domain as string | null) ?? null,
+        totalRecalls: toNumber(row.total_recalls),
+        distinctDomains: toNumber(row.distinct_domains),
+        distinctSystems: toNumber(row.distinct_systems),
+        userCount: toNumber(row.user_count),
+      })),
+      total: rows.length,
+    };
   }
 }

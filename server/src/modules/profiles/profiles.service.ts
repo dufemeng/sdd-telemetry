@@ -11,6 +11,8 @@ import type {
   ProfileCapabilityUsageSummaryQuery,
   ProfileDemand,
   ProfileDemandDetail,
+  ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeRecallItem,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileSummary,
@@ -369,6 +371,142 @@ export class ProfilesService {
     }
 
     throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
+  }
+
+  async getKnowledgeCoverage(
+    profileId: string,
+  ): Promise<ProfileKnowledgeCoverageResponse> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getKnowledgeCoverage(profileId, runId);
+      }
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallCoverage();
+    return {
+      scan: { configured: sdd.scan.configured, repos: sdd.scan.repos.map((r) => ({ sourceNamespace: r.repo, label: r.label, gitRef: r.gitRef, scannedAt: r.scannedAt })) },
+      totals: sdd.totals,
+      repos: sdd.repos.map((r) => ({
+        sourceNamespace: r.repo,
+        label: r.label,
+        totalDocs: r.totalDocs,
+        recalledDocs: r.recalledDocs,
+        coverageRate: r.coverageRate,
+        recalls: r.recalls,
+        deadDocs: r.deadDocs,
+        newUnreadDocs: r.newUnreadDocs,
+        distinctUsers: r.distinctUsers,
+      })),
+      domains: sdd.domains.map((d) => ({
+        sourceNamespace: d.repo,
+        domain: d.domain,
+        totalDocs: d.totalDocs,
+        recalledDocs: d.recalledDocs,
+        recalls: d.recalls,
+        deadDocs: d.deadDocs,
+        newUnreadDocs: d.newUnreadDocs,
+        distinctUsers: d.distinctUsers,
+        lastRecallAt: d.lastRecallAt,
+      })),
+    };
+  }
+
+  async getKnowledgeTimeline(
+    profileId: string,
+    range: string,
+  ): Promise<{ points: Array<{ t: string; group: string | null; count: number }> }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        const bucketSeconds = range === '24h' ? 3600 : range === '90d' ? 86400 : range === '30d' ? 3600 * 3 : 86400;
+        return this.profileProjectionRepository.getKnowledgeTimeline(profileId, runId, bucketSeconds);
+      }
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallTimeline(range as '24h' | '7d' | '30d' | '90d' | 'all', 'day', 'domain');
+    return {
+      points: sdd.points.map((p) => ({
+        t: p.t,
+        group: p.group,
+        count: p.count,
+      })),
+    };
+  }
+
+  async listKnowledgeRecalls(
+    profileId: string,
+    params: { page: number; pageSize: number; deliveryUnitId?: string; userId?: string },
+  ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.listKnowledgeRecalls(profileId, runId, params);
+      }
+    }
+
+    const filters: { workItemId?: string; userId?: string; skillUsageId?: string } = {};
+    if (params.deliveryUnitId) filters.workItemId = params.deliveryUnitId;
+    if (params.userId) filters.userId = params.userId;
+    const sdd = await this.sddQueryService.listWikiRecalls(
+      '7d',
+      filters,
+      params.page,
+      params.pageSize,
+    );
+    return {
+      items: sdd.items.map((w) => ({
+        id: String(w.id),
+        toolCallId: w.toolCallId,
+        interactionId: w.interactionId,
+        capabilityUsageId: w.skillUsageId,
+        deliveryUnitId: w.workItemId,
+        userId: w.userId,
+        userName: w.userName,
+        actionType: w.actionType,
+        rawLocator: w.rawPath,
+        knowledgeRelativePath: w.wikiRelativePath,
+        knowledgeDomain: w.wikiDomain,
+        knowledgeAxis: w.wikiAxis,
+        knowledgeSystem: w.wikiSystem,
+        eventSequence: w.eventSequence,
+        eventTime: w.eventTime,
+      })),
+      total: sdd.total,
+    };
+  }
+
+  async getKnowledgeDeliveryUnitRanking(
+    profileId: string,
+  ): Promise<{ items: Array<{ deliveryUnitId: string; unitSlug: string | null; businessDomain: string | null; totalRecalls: number; distinctDomains: number; distinctSystems: number; userCount: number }>; total: number }> {
+    this.requireProfile(profileId);
+
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) {
+        return this.profileProjectionRepository.getKnowledgeDeliveryUnitRanking(profileId, runId);
+      }
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallWorkItemRanking('7d', null, null);
+    return {
+      items: sdd.items.map((w) => ({
+        deliveryUnitId: String(w.workItemId),
+        unitSlug: w.workItemSlug,
+        businessDomain: w.businessDomain,
+        totalRecalls: w.totalRecalls,
+        distinctDomains: w.distinctDomains,
+        distinctSystems: w.distinctSystems,
+        userCount: w.userCount,
+      })),
+      total: sdd.total,
+    };
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {

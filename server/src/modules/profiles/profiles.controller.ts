@@ -14,6 +14,13 @@ import {
   ProfileDemandDetailSchema,
   ProfileDemandListSchema,
   ProfileDemandQuerySchema,
+  ProfileKnowledgeCoverageQuerySchema,
+  ProfileKnowledgeCoverageResponseSchema,
+  ProfileKnowledgeDeliveryUnitRankingResponseSchema,
+  ProfileKnowledgeListQuerySchema,
+  ProfileKnowledgeRecallListResponseSchema,
+  ProfileKnowledgeTimelineQuerySchema,
+  ProfileKnowledgeTimelineResponseSchema,
   ProfileOverviewQuerySchema,
   ProfileOverviewSchema,
   ProfileSummaryListSchema,
@@ -29,7 +36,6 @@ import {
   type ProfileOverview,
   type ProfileSummary,
   type ProfileUserDetail,
-  type ProfileUserItem,
 } from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
@@ -137,5 +143,38 @@ export class ProfilesController {
     const userId = this.ctx.params.userId as string;
     const data: ProfileUserDetail = await this.profilesService.getUserDetail(profileId, userId);
     return ok(parseWithSchema(ProfileUserDetailSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/coverage')
+  async knowledgeCoverage() {
+    const profileId = this.ctx.params.profileId as string;
+    const data = await this.profilesService.getKnowledgeCoverage(profileId);
+    return ok(parseWithSchema(ProfileKnowledgeCoverageResponseSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/timeline')
+  async knowledgeTimeline() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileKnowledgeTimelineQuerySchema, this.ctx.query);
+    const data = await this.profilesService.getKnowledgeTimeline(profileId, query.range);
+    return ok(parseWithSchema(ProfileKnowledgeTimelineResponseSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/recalls')
+  async knowledgeRecalls() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileKnowledgeListQuerySchema, this.ctx.query);
+    const data = await this.profilesService.listKnowledgeRecalls(profileId, {
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    return ok(parseWithSchema(ProfileKnowledgeRecallListResponseSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/delivery-units')
+  async knowledgeDeliveryUnits() {
+    const profileId = this.ctx.params.profileId as string;
+    const data = await this.profilesService.getKnowledgeDeliveryUnitRanking(profileId);
+    return ok(parseWithSchema(ProfileKnowledgeDeliveryUnitRankingResponseSchema, data));
   }
 }
