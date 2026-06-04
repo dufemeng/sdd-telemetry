@@ -248,14 +248,13 @@ interaction
 
 ## 7. Profile 配置模型
 
-profile 配置第一期使用版本化 JSON/TS 配置文件，配合 schema 校验和 seed 数据。不做完整后台配置 UI。
+profile 配置第一期使用代码仓库中的 JSON/TS 配置文件，配合 schema 校验和 seed 数据。不做完整后台配置 UI，也不做多版本 profile 管理。
 
 建议结构：
 
 ```ts
 type WorkflowProfileConfig = {
   profileId: string;
-  version: string;
   displayName: string;
   status: 'active' | 'disabled';
   manifest: ProfileCapabilityManifest;
@@ -285,14 +284,16 @@ type ProfileRuleBase = {
 
 ```text
 profile_id
-profile_version
+projection_run_id
 matched_rule_id
 confidence
 evidence_json
 rule_version
 ```
 
-这些字段用于对账、重跑、排查和解释“指标变化是用户行为变化还是规则变化”。
+第一期只有“当前 profile 配置”这一版。`projection_run_id` 用于追溯本行由哪次全量投影生成；`rule_version` 表示 source extraction / projection 算子的实现版本，不表示 profile 多版本。dashboard 读路径永远读取当前 profile 的 projection 结果，不按配置版本选择数据。
+
+幂等 key 不包含 profile 版本。重跑同一个 profile 时，必须按 profile 清理旧 projection 后重建，或通过等价的 current run 机制确保旧行不会参与读路径，避免同一事实被多版规则重复计数。
 
 ### 7.1 Capability Manifest
 
@@ -425,6 +426,78 @@ actions: read
 
 在源日志确认前，架构假设 B 的 requirements 在线文档也有稳定 locator；MVP 实施文档应把该项列为启动前验收。
 
+#### 8.3.1 公司电脑最小验证流程
+
+在公司电脑上跑一组受控流程，目标不是验证业务正确性，而是验证 source reference 的数据可得性。
+
+最少执行四个动作：
+
+1. 通过 MCP 读取一篇知识库文档，URL 命中 `{host}/creditdoc/frontedndoc/<hash>`。
+2. 通过同一个 MCP 读取一篇非知识库文档，例如 PRD 或其它普通在线文档，作为负样本。
+3. 通过 MCP 创建一篇 requirements / 过程文档。
+4. 对第 3 步创建的同一篇 requirements / 过程文档再更新一次。
+
+执行时记录：
+
+- 大致开始/结束时间。
+- 相关 session 是否同一个。
+- 每一步对应的文档 URL/docId，如果页面或 MCP 返回里能看到。
+
+导出证据优先级：
+
+1. `otel_raw_payloads.payload_json` 原始 payload，优先级最高。
+2. 对应时间段的 `otel_log_events` 行，至少包含 `event_name / event_time / event_sequence / session_id / prompt_id / attributes_json / body_json / body_text`。
+3. 对应 interaction 的 `sdd_interaction_tool_calls` 行，至少包含 `tool_name / tool_input_preview / evidence_json / sequence`。
+
+如果只能拿到页面截图或模型自然语言 response，不能作为通过依据。
+
+#### 8.3.2 需要确认的字段位置
+
+对四个动作分别确认：
+
+| 动作 | 必须确认 |
+| --- | --- |
+| 知识库 read | URL/hash 是否在 tool input 或结构化 tool result 中；是否命中知识库 urlPrefix |
+| 非知识库 read | 同 MCP 下 locator 是否不会命中知识库或过程文档规则 |
+| requirements create | 新文档的稳定 locator 在哪里：tool input、tool result、body_json、body_text 还是 response 文本 |
+| requirements update | 是否和 create 命中同一个 docId/url/collectionId；是否能区分 update 动作 |
+
+尤其要验证 tool result。知识库 read 的 URL 往往在 tool input 里；但 create 新文档时，稳定 docId/url 可能只出现在 tool result 里。如果 tool result 没有被当前 OTel 保留下来，B profile 的过程文档 artifact 归因会被阻塞。
+
+#### 8.3.3 编码层数要求
+
+source reference 抽取算子必须支持 double-encoded JSON。OTel 里复杂 tool input/result 可能不是对象，而是“内容本身又是 JSON 的字符串”。
+
+验证时需要判断：
+
+- `tool_input` 是否是一层 JSON 对象，还是 JSON string 里再包一层对象。
+- `tool_result` 是否也是同样结构。
+- MCP result 是否存在更深层包装，例如 `content: [{ type: "text", text: "<JSON string>" }]`。
+
+架构要求：
+
+- extractor 可以连续解码受控层数，例如最多 2-3 层。
+- 解码失败不能中断整次 projection run，只能把该 source reference 标为 unknown / parse_failed。
+- extractor 应优先从完整 raw/event 字段读取，不应依赖可能被截断的 preview 字段。
+
+#### 8.3.4 通过标准
+
+B source reference 数据可得性通过条件：
+
+1. 知识库 read 能抽出稳定 URL/hash，并高置信命中 `{host}/creditdoc/frontedndoc/`。
+2. 同 MCP 的 PRD/其它文档不会误判为知识库或过程文档。
+3. requirements create 能抽出稳定 locator，例如 docId、URL 或 collectionId。
+4. requirements update 能命中和 create 相同的 locator，证明 delivery unit / artifact 可以稳定 upsert。
+5. create/update 的 locator 来自结构化 tool input/result/raw event，而不是只能靠模型自然语言 response 猜。
+6. 每条 source reference 能回连到 tool call、interaction、session 和 event_time。
+
+阻塞条件：
+
+- create/update 没有稳定 locator。
+- locator 只出现在自然语言 response，raw/event/tool result 中没有结构化保留。
+- tool result 被截断，无法稳定解析 docId/url。
+- 同 MCP 的非知识库文档无法通过 URL/docId/collection/docType 与知识库区分。
+
 ## 9. 可复用投影算子
 
 “算子”指 worker/server 侧的领域清洗函数，形态接近纯函数：
@@ -550,6 +623,26 @@ for (const profile of profiles) {
 | `evidence_json` | 抽取证据 |
 | `rule_version` | source reference 抽取规则版本 |
 
+`reference_key` 生成建议。`tool_call_id` 不存在时，用 `event_id` 或其它稳定 evidence id 兜底：
+
+```text
+sha256(
+  stable_evidence_id + ":" +
+  direction(input|result|event) + ":" +
+  action_type + ":" +
+  locator_type + ":" +
+  normalized_locator
+)
+```
+
+一条 tool call 可以产生多条 source reference。例如：
+
+- tool input 里有一个待读取 URL。
+- tool result 里返回一个新建在线文档 docId。
+- grep/glob result 如果能结构化解析出多个文件，可按每个 normalized locator 生成多行；如果只能拿到查询路径或 pattern，则只生成查询级 source reference。
+
+重复 projection 时，同一个 source reference 必须按 `reference_key` 幂等 upsert，不允许重复插入。
+
 ### 10.3 第一期 profile projection 表
 
 只建 dashboard + 链路下钻必需表，不提前建 alert/evaluation 专用表。
@@ -569,13 +662,12 @@ profile_code_activities
 
 #### profile_projection_runs
 
-记录每次全量或增量投影：
+记录每次投影运行。第一期只实现全量投影，增量和回填只是字段预留：
 
 | 字段 | 说明 |
 | --- | --- |
 | `profile_id` | profile |
-| `profile_version` | profile 配置版本 |
-| `run_type` | full / incremental / backfill |
+| `run_type` | full / incremental / backfill；第一期只实现 full，其余预留 |
 | `status` | running / completed / failed |
 | `started_at` / `completed_at` | 运行时间 |
 | `source_range_json` | 本次扫描范围 |
@@ -588,7 +680,8 @@ profile_code_activities
 
 | 字段 | 说明 |
 | --- | --- |
-| `profile_id` / `profile_version` | profile 版本 |
+| `profile_id` | profile |
+| `projection_run_id` | 来源 projection run |
 | `usage_key` | 幂等 key |
 | `interaction_id` | interaction |
 | `delivery_unit_id` | 可空，后续归因 |
@@ -607,7 +700,8 @@ profile_code_activities
 
 | 字段 | 说明 |
 | --- | --- |
-| `profile_id` / `profile_version` | profile 版本 |
+| `profile_id` | profile |
+| `projection_run_id` | 来源 projection run |
 | `delivery_unit_key` | 幂等 key |
 | `source_reference_id` | 主锚点，可空 |
 | `unit_type` | local_plan / online_doc / requirements_dir / inferred |
@@ -624,7 +718,8 @@ profile_code_activities
 
 | 字段 | 说明 |
 | --- | --- |
-| `profile_id` / `profile_version` | profile 版本 |
+| `profile_id` | profile |
+| `projection_run_id` | 来源 projection run |
 | `artifact_key` | 幂等 key |
 | `delivery_unit_id` | 需求 |
 | `source_reference_id` | 过程文档引用 |
@@ -642,7 +737,7 @@ profile_code_activities
 - `profile_artifact_writes`：一次写入/更新节点。
 - `profile_artifact_turns`：写入前讨论 turn，按 session/time window 归因。
 
-字段对齐当前 `sdd_work_item_artifact_writes` 和 `sdd_work_item_artifact_turns`，增加 `profile_id / profile_version / matched_rule_id / confidence / evidence_json`。
+字段对齐当前 `sdd_work_item_artifact_writes` 和 `sdd_work_item_artifact_turns`，增加 `profile_id / projection_run_id / matched_rule_id / confidence / evidence_json`。
 
 #### profile_knowledge_recalls
 
@@ -650,7 +745,8 @@ profile_code_activities
 
 | 字段 | 说明 |
 | --- | --- |
-| `profile_id` / `profile_version` | profile 版本 |
+| `profile_id` | profile |
+| `projection_run_id` | 来源 projection run |
 | `recall_key` | 幂等 key |
 | `source_reference_id` | 知识库 source |
 | `tool_call_id` / `interaction_id` / `capability_usage_id` / `delivery_unit_id` | 链路 |
@@ -669,7 +765,8 @@ profile_code_activities
 
 | 字段 | 说明 |
 | --- | --- |
-| `profile_id` / `profile_version` | profile 版本 |
+| `profile_id` | profile |
+| `projection_run_id` | 来源 projection run |
 | `activity_key` | 幂等 key |
 | `source_reference_id` | 代码路径引用 |
 | `tool_call_id` / `interaction_id` / `capability_usage_id` | 链路 |
@@ -715,7 +812,6 @@ GET /api/profiles/:profileId/manifest
 type ProfileSummary = {
   profileId: string;
   displayName: string;
-  version: string;
   status: 'active' | 'disabled';
   manifest: ProfileCapabilityManifest;
 };
@@ -841,7 +937,7 @@ GET /api/profiles/:profileId/code/by-repository
 - artifact patterns 由现有 `artifact_filename_patterns` 转换。
 - process_doc source 对应 `requirements_root_path`。
 - knowledge source 对应 `wiki_root_path`。
-- code source 第一版可沿用现有“排除 requirements/wiki 后的业务代码”口径，但最好逐步改成显式代码 root 规则。
+- codeChanges 第一版是已知口径差异项：`sdd-default` 可先复用现有 code impact adapter 支撑展示，但不参与 `sdd-default` projection 强一致对账；后续拿到显式代码 root 后，再切到 profile code source rules。
 
 保护策略：
 
@@ -915,6 +1011,15 @@ profile 规则：
 
 这样避免“部分历史走旧表、部分新数据走新表”导致筛选和分组混乱。
 
+第一期 projection 明细表按当前态设计，不保留 profile 多版本明细。每次 full rebuild 必须满足：
+
+- 以 `profile_id` 为单位清理旧 projection 后重建，或使用等价 current run 机制保证读路径只看本轮结果。
+- 幂等 key 不包含配置版本。
+- dashboard 不提供按版本读数能力。
+- `profile_projection_runs.stats_json` 可以保存本轮与旧 `sdd_*` 的对账摘要，用于解释变化。
+
+`incremental`、`backfill` 只是 `run_type` 预留值，第一期不实现增量投影。
+
 ### 13.2 对账目标
 
 核心链路强一致，非核心统计允许有解释差异。
@@ -927,6 +1032,8 @@ profile 规则：
 - knowledge recall 数量、路径/URL。
 - artifact timeline 的 write/discussion 节点。
 - wiki recall 和 interaction/tool call 的链路。
+
+`codeChanges` 不纳入强一致目标。它在第一期只作为轻量代码实施概况，且 `sdd-default` 可能先走现有 code impact 口径；切换时必须标注为已知口径差异项。
 
 允许解释差异：
 
