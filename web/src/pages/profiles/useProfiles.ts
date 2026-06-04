@@ -1,5 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { ProfileOverview, ProfileSummary } from '@sdd-telemetry/api';
+import type {
+  ProfileCapabilityManifest,
+  ProfileOverview,
+  ProfileSummary,
+} from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
 
 export function useProfiles() {
@@ -8,6 +12,12 @@ export function useProfiles() {
     queryFn: () => requestData<ProfileSummary[]>('/api/profiles'),
     staleTime: 5 * 60_000,
   });
+}
+
+/** 当前 profile 的能力 manifest，用于看板按能力降级（Task 20）。 */
+export function useProfileManifest(profileId: string): ProfileCapabilityManifest | undefined {
+  const { data } = useProfiles();
+  return data?.find((p) => p.profileId === profileId)?.manifest;
 }
 
 export function useProfileOverview(profileId: string, fromIso?: string) {
