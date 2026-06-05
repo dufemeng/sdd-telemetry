@@ -34,22 +34,31 @@ interface OperatorStats {
   unmappedContext?: number;
 }
 
-interface AttributionResult {
+export interface AttributionResult {
   deliveryUnitId: number | null;
   method: string | null;
   ambiguous: boolean;
 }
 
-interface Anchor {
+export interface AttributionAnchor {
   sourceReferenceId: number;
   interactionId: number | null;
   userId: number | null;
   sessionId: string | null;
   eventTime: Date | null;
   deliveryUnitId: number;
+  isWrite: boolean;
 }
 
-const SESSION_WINDOW_MINUTES = 120;
+export interface AttributionTarget {
+  sourceReferenceId: number;
+  interactionId: number | null;
+  userId: number | null;
+  sessionId: string | null;
+  eventTime: Date | null;
+}
+
+const DEFAULT_SESSION_WINDOW_MINUTES = 120;
 
 export const bossAPlanDeliveryArtifactOperator: ProjectionOperator = {
   name: 'bossAPlanDeliveryArtifact',
@@ -367,8 +376,10 @@ async function createAttributor(
   rows: SourceRefRow[],
   rules: ReturnType<typeof resolveBossARules>,
 ): Promise<(row: SourceRefRow) => AttributionResult> {
+  const windowRaw = getBossAProfileConfig().attributionPolicy.sessionWindowMinutes;
+  const windowMinutes = typeof windowRaw === 'number' && windowRaw > 0 ? windowRaw : DEFAULT_SESSION_WINDOW_MINUTES;
   const deliveryIds = await loadDeliveryUnitIds(ctx.pool, ctx.projectionRunId);
-  const anchors: Anchor[] = [];
+  const anchors: AttributionAnchor[] = [];
   for (const row of rows) {
     const match = matchBossASource(row.normalized_locator, row.action_type, ctx.profileId, rules);
     if (!match?.deliveryUnit || match.sourceCategory !== 'process_doc') continue;
@@ -381,37 +392,72 @@ async function createAttributor(
       sessionId: row.session_id,
       eventTime: row.event_time,
       deliveryUnitId,
+      isWrite: isBossAWriteAction(row.action_type),
     });
   }
-  return (row: SourceRefRow) => {
-    const sameInteraction = anchors
-      .filter((anchor) =>
-        anchor.interactionId != null &&
-        anchor.interactionId === row.interaction_id &&
-        anchor.sourceReferenceId <= row.source_reference_id,
-      )
-      .sort(compareAnchorDesc);
-    if (sameInteraction.length > 0) {
-      return { deliveryUnitId: sameInteraction[0]!.deliveryUnitId, method: 'same_interaction_anchor', ambiguous: false };
-    }
+  return (row: SourceRefRow) =>
+    selectAttributionAnchor(
+      anchors,
+      {
+        sourceReferenceId: row.source_reference_id,
+        interactionId: row.interaction_id,
+        userId: row.user_id,
+        sessionId: row.session_id,
+        eventTime: row.event_time,
+      },
+      windowMinutes,
+    );
+}
 
-    const sessionCandidates = anchors
-      .filter((anchor) => {
-        if (anchor.userId == null || row.user_id == null || anchor.userId !== row.user_id) return false;
-        if (!anchor.sessionId || !row.session_id || anchor.sessionId !== row.session_id) return false;
-        if (anchor.sourceReferenceId > row.source_reference_id) return false;
-        if (!anchor.eventTime || !row.event_time) return false;
-        const diffMs = row.event_time.getTime() - anchor.eventTime.getTime();
-        return diffMs >= 0 && diffMs <= SESSION_WINDOW_MINUTES * 60_000;
-      })
-      .sort(compareAnchorDesc);
-    const distinct = new Set(sessionCandidates.map((anchor) => anchor.deliveryUnitId));
-    if (distinct.size === 1) {
-      return { deliveryUnitId: sessionCandidates[0]!.deliveryUnitId, method: 'same_session_unique_anchor', ambiguous: false };
-    }
-    if (distinct.size > 1) return { deliveryUnitId: null, method: 'ambiguous_session_anchor', ambiguous: true };
-    return { deliveryUnitId: null, method: null, ambiguous: false };
-  };
+/**
+ * 纯函数：在已建好的 plan delivery unit anchor 集合里为目标事件选归因（§5.2 / §5.3）。
+ * - 同 interaction：anchor 优先级 write/edit plan doc > read plan doc，同档取事件时间最近且不晚于目标。
+ * - 同 session 窗口：先取 write 档；窗口内唯一 delivery unit 才归因，多个不同 unit 记为 ambiguous。
+ */
+export function selectAttributionAnchor(
+  anchors: AttributionAnchor[],
+  target: AttributionTarget,
+  sessionWindowMinutes: number,
+): AttributionResult {
+  const sameInteraction = anchors.filter(
+    (anchor) =>
+      anchor.interactionId != null &&
+      anchor.interactionId === target.interactionId &&
+      anchor.sourceReferenceId <= target.sourceReferenceId,
+  );
+  const interactionPick = pickPreferredAnchor(sameInteraction);
+  if (interactionPick) {
+    return { deliveryUnitId: interactionPick.deliveryUnitId, method: 'same_interaction_anchor', ambiguous: false };
+  }
+
+  const sessionCandidates = anchors.filter((anchor) => {
+    if (anchor.userId == null || target.userId == null || anchor.userId !== target.userId) return false;
+    if (!anchor.sessionId || !target.sessionId || anchor.sessionId !== target.sessionId) return false;
+    if (anchor.sourceReferenceId > target.sourceReferenceId) return false;
+    if (!anchor.eventTime || !target.eventTime) return false;
+    const diffMs = target.eventTime.getTime() - anchor.eventTime.getTime();
+    return diffMs >= 0 && diffMs <= sessionWindowMinutes * 60_000;
+  });
+  const sessionTier = preferWrites(sessionCandidates);
+  const distinct = new Set(sessionTier.map((anchor) => anchor.deliveryUnitId));
+  if (distinct.size === 1) {
+    const pick = [...sessionTier].sort(compareAnchorDesc)[0]!;
+    return { deliveryUnitId: pick.deliveryUnitId, method: 'same_session_unique_anchor', ambiguous: false };
+  }
+  if (distinct.size > 1) return { deliveryUnitId: null, method: 'ambiguous_session_anchor', ambiguous: true };
+  return { deliveryUnitId: null, method: null, ambiguous: false };
+}
+
+/** write/edit anchor 优先；没有 write 时才退回全部候选（read anchor）。 */
+function preferWrites(candidates: AttributionAnchor[]): AttributionAnchor[] {
+  const writes = candidates.filter((anchor) => anchor.isWrite);
+  return writes.length > 0 ? writes : candidates;
+}
+
+function pickPreferredAnchor(candidates: AttributionAnchor[]): AttributionAnchor | null {
+  const tier = preferWrites(candidates);
+  if (tier.length === 0) return null;
+  return [...tier].sort(compareAnchorDesc)[0] ?? null;
 }
 
 async function resolveDeliveryUnit(
@@ -469,7 +515,7 @@ async function selectOptionalId(
   return rows[0]?.id == null ? null : Number(rows[0].id);
 }
 
-function compareAnchorDesc(a: Anchor, b: Anchor): number {
+function compareAnchorDesc(a: AttributionAnchor, b: AttributionAnchor): number {
   const at = a.eventTime?.getTime() ?? 0;
   const bt = b.eventTime?.getTime() ?? 0;
   if (bt !== at) return bt - at;

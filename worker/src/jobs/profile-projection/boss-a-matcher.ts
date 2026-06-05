@@ -100,6 +100,8 @@ export function matchBossASource(
     if (!(resolved.rule.actions as string[]).includes(actionType)) continue;
     if (!isInside(normalizedLocator, resolved.absoluteRoot)) continue;
     const relativeLocator = stripRoot(normalizedLocator, resolved.absoluteRoot);
+    // 裸根目录本身（locator === root）不是文件级事实，跳过，避免造出 unknown 需求/伪召回。
+    if (relativeLocator === '') continue;
     const normalizedRelativeLocator = `${resolved.rule.relativeRoot}/${relativeLocator}`;
     const base = {
       rule: resolved.rule,
@@ -207,9 +209,11 @@ export function parseBossACode(
   repoKind: 'frontend' | 'backend',
 ): BossACode {
   const parts = relativeLocator.split('/').filter(Boolean);
+  // 文件直接在 repo 根下（无子目录）时 repoName 回退为根名（frontend_repo / backend_repo），
+  // 不能把文件名当成 repoName。
   return {
     repoKind,
-    repoName: parts[0] ?? rootName,
+    repoName: parts.length > 1 ? parts[0]! : rootName,
     moduleName: parts[1] ?? null,
   };
 }

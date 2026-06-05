@@ -61,4 +61,20 @@ describe('Boss A local path matcher', () => {
     const match = matchBossASource(`${root}/scripts/build.ts`, 'read', BOSS_A_MONOREPO_PROFILE_ID, rules);
     expect(match).toBeNull();
   });
+
+  it('falls back to repo root name for code files directly under the repo root', () => {
+    const match = matchBossASource(`${root}/frontend_repo/App.tsx`, 'edit', BOSS_A_MONOREPO_PROFILE_ID, rules);
+    expect(match?.sourceCategory).toBe('code');
+    expect(match?.code).toEqual({ repoKind: 'frontend', repoName: 'frontend_repo', moduleName: null });
+  });
+
+  it('does not mint a delivery unit for a bare plan directory locator', () => {
+    const match = matchBossASource(`${root}/plan`, 'write', BOSS_A_MONOREPO_PROFILE_ID, rules);
+    expect(match).toBeNull();
+  });
+
+  it('does not emit a knowledge recall for a bare docs directory locator', () => {
+    const match = matchBossASource(`${root}/docs`, 'read', BOSS_A_MONOREPO_PROFILE_ID, rules);
+    expect(match).toBeNull();
+  });
 });

@@ -340,10 +340,10 @@ async function diffBossA(
       pool,
       `SELECT SUM(v) AS v FROM (
          SELECT COUNT(*) AS v FROM profile_knowledge_recalls
-         WHERE projection_run_id=? AND JSON_EXTRACT(evidence_json, '$.ambiguous') = true
+         WHERE projection_run_id=? AND evidence_json->>'$.ambiguous' = 'true'
          UNION ALL
          SELECT COUNT(*) AS v FROM profile_code_activities
-         WHERE projection_run_id=? AND JSON_EXTRACT(evidence_json, '$.ambiguous') = true
+         WHERE projection_run_id=? AND evidence_json->>'$.ambiguous' = 'true'
        ) t`,
       [runId, runId],
     ),
