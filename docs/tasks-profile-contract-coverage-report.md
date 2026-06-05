@@ -2,7 +2,7 @@
 
 完成时间：2026-06-04
 分支：`codex/profile-observability-mvp-doc`
-基础 commit：`160c9bb` → 阶段提交：`0ce8765` / `139a6fe`；后续审查修复见 §3.1
+基础 commit：`160c9bb` → 阶段提交：`0ce8765` / `139a6fe`；后续审查修复见 §3.1 / §3.2
 
 ## 1. 变更摘要
 
@@ -105,6 +105,12 @@
 | `multiStageDeliveryUnitCount` 与旧口径不一致 | 改为 `proposal/design/task/review` 中覆盖 `>=3` 阶段，并按 artifact `first_seen_at` 应用当前时间窗口 |
 | knowledge ranking 未透传 range | `knowledge/delivery-units` contract、controller、service、web hook 全链路透传 `range` |
 
+### 3.2 重建阻断修复
+
+| 问题 | 修复 |
+|---|---|
+| `code-operator.ts` 的 `profile_code_activities` INSERT 为 22 列 / 22 参数 / 23 个占位符，导致有 code activity 时 `profile:rebuild` 失败，current pointer 不切换 | 占位符修正为 22 个。此问题修复前的 `profile:rebuild` / `profile:diff` PASS 结论不可复现；验收必须以修复后重新 rebuild 的 current run 为准 |
+
 ## 4. 页面换源证据
 
 ### 静态检查结果
@@ -135,6 +141,8 @@
 
 ## 5. typecheck / build 结果
 
+### 5.1 阶段验证记录
+
 ```text
 ./node_modules/.bin/tsc --noEmit -p packages/api/tsconfig.json ✅
 ./node_modules/.bin/tsc --noEmit -p packages/ui/tsconfig.json ✅
@@ -150,6 +158,58 @@
 pnpm typecheck / pnpm build：当前沙箱内 `turbo` 层报 `fetch failed`，未能作为根级命令完成；已用各 package 直接编译替代验证。
 ```
 
+### 5.2 重建阻断修复后复验
+
+本轮修复 `code-operator.ts` INSERT 占位符数量后，重新执行：
+
+```text
+./node_modules/.bin/tsc --noEmit -p worker/tsconfig.json ✅
+./node_modules/.bin/vitest run worker/test/delivery-link-mapping.test.ts：8 passed ✅
+./node_modules/.bin/tsc -p worker/tsconfig.json ✅
+node worker/dist/jobs/profile-rebuild.js --profile sdd-default ✅ runId=13 completed，current pointer switched
+node worker/dist/jobs/profile-diff.js --profile sdd-default ✅ gate=PASS
+```
+
+`profile:rebuild` 关键统计：
+
+```json
+{
+  "runId": 13,
+  "status": "completed",
+  "stats": {
+    "deliveryUnit": { "source": 17, "inserted": 17 },
+    "capability": { "source": 73, "inserted": 73 },
+    "artifact": { "source": 2, "inserted": 2 },
+    "artifactWrite": { "source": 14, "inserted": 14 },
+    "artifactTurn": { "source": 0, "inserted": 0 },
+    "knowledgeRecall": { "source": 1280, "projected": 23, "skippedNoWikiRoot": 0 },
+    "codeActivity": { "source": 2118, "projected": 2118 }
+  }
+}
+```
+
+`profile:diff` 关键 gate：
+
+```json
+{
+  "runId": 13,
+  "gate": "PASS",
+  "capabilityDeliveryMissing": 0,
+  "knowledgeDeliveryMissing": 0,
+  "codeDeliveryMissing": 0,
+  "knowledge": {
+    "new": 23,
+    "orphanSourceRef": 0,
+    "oldPipelineScope": 23,
+    "oldNotInNew": 0,
+    "newNotInOld": 0,
+    "oldSeedExcluded": 4106
+  }
+}
+```
+
+注意：`pnpm --filter @sdd-telemetry/worker typecheck/test` 在当前沙箱内仍报 `fetch failed`，本轮验证改用本地二进制和编译后的 Node 入口执行。该失败属于 pnpm 启动层问题，不是 TypeScript、测试或 projection 运行失败。
+
 ## 6. 未完成项
 
 | 项 | 原因 | 影响老板演示 |
@@ -158,7 +218,7 @@ pnpm typecheck / pnpm build：当前沙箱内 `turbo` 层报 `fetch failed`，�
 | User activity 下钻链路（useUserSkillUsages / useUserArtifactWrites） | 用户详情页 activity tab 的细粒度数据，profile 无对应端点 | 否 — 用户详情主卡已走 profile，activity 细节是辅助信息 |
 | Interactions 页面 | 不在本次换源范围 | 否 |
 | Semantics CRUD | 不在本次换源范围 | 否 |
-| Knowledge coverage `scan.configured=false` | profile_projection 无 filesystem scan | 否 — 表现为 degraded UI，与原有行为一致 |
+| Knowledge coverage `scan.configured=false` | profile_projection 无 filesystem scan；当前 `totalDocs` 是 recall 事实数，不是知识库文档总数 | 是 — 不应作为真实知识覆盖率演示；只可说明为“召回事实去重概况”或在 UI 上降级 |
 | User list 查询 N+1 correlated subquery | listUsers 在 `profile_capability_usages` 上 GROUP BY user_id，另有 3 个 correlated subquery 补充 artifact/knowledge/code 指标 | 数据量小时可接受（<100 用户），大量时需优化为预聚合物化视图 |
 
 ## 7. 回退方式
@@ -182,4 +242,4 @@ PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd
 
 - Repository 查询直接拼 SQL 字符串，未使用 query builder。后续需考虑用 TypeORM 或 Knex 管理查询。
 - User list 的 correlated subquery 在数据量增长后需要优化。
-- 知识库 coverage 的 `totalDocs` 来自 `COUNT(*)` on `profile_knowledge_recalls`（即 recall 事实数），不是 filesystem 扫描的文档数。SDD 旧版的 `totalDocs` 来自实际文件扫描，两者口径不同。切换 profile_projection 后，coverage 分母会偏大。
+- 知识库 coverage 的 `totalDocs` 来自 `COUNT(*)` on `profile_knowledge_recalls`（即 recall 事实数），`recalledDocs` 来自 `COUNT(DISTINCT knowledge_locator)`。这不是“文档数 / 文档数”的真实覆盖率，而是“去重召回文档 / 召回事件”的临时降级口径。SDD 旧版的 `totalDocs` 来自实际文件扫描，两者量纲不同；切换 `profile_projection` 后不要把该字段作为真实知识覆盖率对外展示。

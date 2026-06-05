@@ -86,7 +86,7 @@ export const codeOperator: ProjectionOperator = {
               tool_call_id, interaction_id, delivery_unit_id, capability_usage_id, user_id, session_id, prompt_id,
               action_type, code_locator, repo_name, module_name, repo_kind, event_time,
               matched_rule_id, confidence, evidence_json, rule_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           [
             ctx.profileId, ctx.projectionRunId, activityKey, row.source_reference_key,
             row.source_reference_id, row.tool_call_id, row.interaction_id, deliveryUnitId,
