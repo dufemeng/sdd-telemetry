@@ -29,21 +29,10 @@ import {
   type TableRow,
 } from './ops-query.repository';
 
-const allowedTables = [
-  'sdd_users',
-  'sdd_skill_semantics',
-  'sdd_skill_aliases',
-  'otel_ingest_batches',
-  'otel_raw_payloads',
-  'ingest_outbox',
-  'otel_log_events',
-  'sdd_interactions',
-  'sdd_interaction_texts',
-  'sdd_skill_usages',
-  'sdd_work_items',
-  'sdd_work_item_artifacts',
-  'sdd_errors',
-];
+const excludedTables = new Set([
+  'auth_users',
+  'ops_resource_snapshots',
+]);
 
 @Provide('opsQueryService')
 export class OpsQueryService {
@@ -51,11 +40,15 @@ export class OpsQueryService {
   opsQueryRepository!: OpsQueryRepository;
 
   async listTables(): Promise<OpsTablesResponse> {
-    const [tableRows, columnRows, countRows] = await Promise.all([
-      this.opsQueryRepository.listAllowedTablesMeta(allowedTables),
-      this.opsQueryRepository.listColumnsForTables(allowedTables),
+    const tableRows = await this.opsQueryRepository.listAllTablesMeta();
+    const tableNames = tableRows
+      .map(row => String(row.table_name ?? row.TABLE_NAME))
+      .filter(name => !excludedTables.has(name));
+
+    const [columnRows, countRows] = await Promise.all([
+      this.opsQueryRepository.listColumnsForTables(tableNames),
       Promise.all(
-        allowedTables.map(async name => ({
+        tableNames.map(async name => ({
           name,
           count: await this.opsQueryRepository.countRows(name),
         })),
@@ -65,21 +58,23 @@ export class OpsQueryService {
     const rowCountByTable = new Map(countRows.map(r => [r.name, r.count]));
     const columnsByTable = groupColumnsByTable(columnRows);
 
-    const tables: OpsTable[] = tableRows.map(row => {
-      const tableName = String(row.table_name ?? row.TABLE_NAME);
-      const dataBytes = toNullableNumber(row.data_bytes ?? row.DATA_LENGTH);
-      const indexBytes = toNullableNumber(row.index_bytes ?? row.INDEX_LENGTH);
-      return {
-        tableName,
-        estimatedRows: rowCountByTable.get(tableName) ?? 0,
-        updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
-        dataBytes,
-        indexBytes,
-        totalBytes:
-          dataBytes === null && indexBytes === null ? null : (dataBytes ?? 0) + (indexBytes ?? 0),
-        columns: columnsByTable.get(tableName) ?? [],
-      };
-    });
+    const tables: OpsTable[] = tableRows
+      .filter(row => !excludedTables.has(String(row.table_name ?? row.TABLE_NAME)))
+      .map(row => {
+        const tableName = String(row.table_name ?? row.TABLE_NAME);
+        const dataBytes = toNullableNumber(row.data_bytes ?? row.DATA_LENGTH);
+        const indexBytes = toNullableNumber(row.index_bytes ?? row.INDEX_LENGTH);
+        return {
+          tableName,
+          estimatedRows: rowCountByTable.get(tableName) ?? 0,
+          updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
+          dataBytes,
+          indexBytes,
+          totalBytes:
+            dataBytes === null && indexBytes === null ? null : (dataBytes ?? 0) + (indexBytes ?? 0),
+          columns: columnsByTable.get(tableName) ?? [],
+        };
+      });
 
     return { tables };
   }
@@ -466,8 +461,11 @@ function sumUniqueImageSizes(services: OpsResourceService[]): number | null {
 }
 
 function assertAllowedTable(tableName: string): void {
-  if (!allowedTables.includes(tableName)) {
+  if (excludedTables.has(tableName)) {
     throw new Error(`table is not allowed: ${tableName}`);
+  }
+  if (!/^[a-z_][a-z0-9_]*$/.test(tableName)) {
+    throw new Error(`invalid table name: ${tableName}`);
   }
 }
 

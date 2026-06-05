@@ -98,7 +98,7 @@ export class OpsQueryRepository {
   @Inject('mysqlDataSourceManager')
   mysqlDataSourceManager!: MysqlDataSourceManager;
 
-  async listAllowedTablesMeta(allowedTables: string[]): Promise<TableRow[]> {
+  async listAllTablesMeta(): Promise<TableRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT table_name,
@@ -108,9 +108,7 @@ export class OpsQueryRepository {
               update_time AS updated_at
        FROM information_schema.tables
        WHERE table_schema = DATABASE()
-         AND table_name IN (${allowedTables.map(() => '?').join(',')})
        ORDER BY table_name ASC`,
-      allowedTables,
     )) as TableRow[];
   }
 

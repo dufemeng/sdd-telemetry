@@ -1,10 +1,23 @@
 # 技能分析重构设计（主语=技能本身 · 方法论完整度漏斗 · 活/冷/死 · 接续/产出转化）
 
-状态：待评审
-日期：2026-06-02
+状态：2026-06-04 复核后建议采用，待确认后进入实现
+日期：2026-06-04
 产出方式：`/office-hours`（老板视角，先对齐主语再定结构）
 关联代码：`web/src/pages/sdd/skills/*`、`server/src/modules/sdd/*`、`packages/api/src/contracts/sdd.contract.ts`
 取代：`docs/design-skills-redesign.md`（2026-05-26 的旧重构，已严重不保鲜，见 §1）
+
+## 0. 本轮复核结论
+
+结合 git log 与当前实现，用户分析、知识库分析、产出分析已经形成了同一条老板视角范式：**先确定主语，再给经营判断，再把排障细节收进下钻**。当前 `/sdd/skills` 还停在调用事件视角，页面主视觉仍是调用量趋势、有效配对率、未匹配 skill 和 raw skill 列表；这些对工程排障有用，但不能回答老板的下一步决策。
+
+技能分析应该回答四个问题：
+
+1. **这套 SDD 方法论有没有被真正用起来？** 看方法论完整度、阶段断崖和活技能占比。
+2. **哪一步掉链子最严重？** 看 proposal → design → task → code landing → codereview 的相邻接续率。
+3. **哪些技能值得继续投，哪些技能应该下线或补运营？** 看活 / 冷 / 死三态、产出转化和接续去向。
+4. **下一步该推动谁、推动哪个技能、补哪段流程？** 技能行下钻到“谁在用、后面接什么、产出了什么”，用户和需求只作为出链，不在本页抢主语。
+
+本轮只确认设计与数据口径；后续实现需要新增只读 API 聚合与 contract 字段，不需要数据库迁移。
 
 ## 1. 背景与目标
 
@@ -17,7 +30,7 @@
 
 - **「有效配对率/未匹配」是埋点管线自检**（raw skill name 有没有映射到 semantic code），不是老板关心的经营结论，老板看不懂也不关心。
 - **没有主轴、不下钻到产物、没有健康度**，研究纵深远浅于另外两页。
-- **没用上**技能侧唯一独占的一张牌：这些 skill 的 `semanticCode` 就是 SDD 方法论本身的阶段（proposal→design→task→code→review…）。
+- **没用上**技能侧唯一独占的一张牌：这些 skill 的 `semanticCode` 就是 SDD 方法论本身的阶段（proposal→design→task→code landing→codereview…）。
 
 ### 1.1 关键定调：主语之争（本次重构的根）
 
@@ -42,7 +55,7 @@
 
 **做：**
 - 与用户/产出/知识库三页同构的 **4-section 重构**（页面结构方案 A）。
-- 顶部 **SDD 方法论完整度漏斗**（proposal→design→task→code→review 接续断崖），只读、不下钻需求。
+- 顶部 **SDD 方法论完整度漏斗**（proposal→design→task→code landing→codereview 接续断崖），只读、不下钻需求。
 - 下钻主轴换成**技能**：技能一览表（活/冷/死徽标 + 调用后最常接续技能 + 产出转化）→ 单技能画像抽屉。
 - **活/冷/死技能**三态（对称知识库死知识口径）：把 seeded 全集纳入分母，长期没人用的技能 = 死技能。
 - 把旧页的「语义配对率/未匹配」从主视觉**收敛进抽屉/调试角**，不再当经营指标。
@@ -61,7 +74,7 @@
 ① 经营指标（4 KPI · 累计/周期对比）
    技能调用量(带"方法论完整度"进度条) | 活跃用户 | 覆盖需求 | 死技能 N⚠
 ② 方法论完整度漏斗(hero, 左) + 调用趋势(右, 堆叠 by 阶段)
-   proposal ▮▮▮▮ 100% → design ▮▮▮ 78% → task ▮▮ 61% → code ▮▮ 55% → review ▮ 32%
+   proposal ▮▮▮▮ 100% → design ▮▮▮ 78% → task ▮▮ 61% → code landing ▮▮ 55% → codereview ▮ 32%
    断崖高亮在转化率最低的相邻台阶；漏斗只读，"看具体需求"出链产出分析
 ③ 标杆技能 Top3（沿用三页排名色条+角标）
    每卡：调用量 · 用户数 · 覆盖需求 · 产出转化(artifact/落地)
@@ -73,7 +86,7 @@
 ```
 
 - **配色语义**：技能状态 活=绿 / 冷=灰 / 死=红；漏斗各阶段沿用产出分析阶段色；断崖台阶用警示色描边。
-- **「方法论完整度」**（① KPI 进度条 + ② 漏斗）= 起步 proposal 的需求里走到 code 落地的比例，是全页一句话结论。
+- **「方法论完整度」**（① KPI 进度条 + ② 漏斗）= 起步 proposal 的需求里走到 code landing 的比例，是全页一句话结论。
 
 ## 4. 数据来源与口径（全部现有表聚合，零迁移）
 
@@ -84,7 +97,19 @@
 - `sdd_work_item_artifacts`：`work_item_id`、`artifact_type`。→ 方法论完整度漏斗（stageCodes 聚合）、产出转化分子。
 - `sdd_interaction_tool_calls`：`interaction_id`、`skill_usage_id`、`tool_name`。→ 代码落地（复用日报 `codeImpact` 口径，见 `docs/facts-daily-report.md` §3.6）。
 
-复用现有接口：`/api/sdd/skills/{analytics, timeseries}`、`/api/sdd/usage-summary`、`/api/sdd/skill-usages`。
+当前可复用接口：
+
+- `GET /api/sdd/skill-analytics`：调用规模、活跃用户、覆盖需求、Top 语义技能、当前旧页的配对质量。
+- `GET /api/sdd/skill-timeseries`：调用趋势，当前只区分 triggered / paired。
+- `GET /api/sdd/usage-summary`：按 `rawSkillName` 聚合的分页表，当前不含 seeded 全集中的零调用技能。
+- `GET /api/sdd/usages`：最近调用明细，支持 raw skill / user / work item 过滤。
+
+当前接口不能直接支撑老板视角的部分：
+
+- seeded 全集维度的活 / 冷 / 死技能，因为 `usage-summary` 只返回发生过调用的 raw skill。
+- 方法论完整度漏斗，因为旧 KPI 的 `multiStageWorkItemCount` 只给“>=3 阶段需求数”，不给相邻台阶。
+- 技能接续分布，因为需要按同一 `session_id` 内的 skill 调用序列计算 next hop。
+- 单技能画像，因为当前抽屉只展示最近调用和调试字段，不聚合用户、接续、产出。
 
 ### 4.2 活 / 冷 / 死技能（对称知识库死知识三态）
 
@@ -102,9 +127,11 @@
 
 ### 4.3 方法论完整度漏斗（只读，substrate=work item，但不下钻）
 
-- 用 `sdd_work_item_artifacts` 按 `work_item_id` 聚合 stageCodes（`codereview`→`review`，沿用日报口径），算**相邻阶段接续率**：到 design 的 / 到 proposal 的，到 task 的 / 到 design 的 …
+- 用 `sdd_work_item_artifacts` 按 `work_item_id` 聚合文档阶段（`review` / `codereview` 都归到 `codereview`，展示名叫“代码评审”），算 proposal / design / task / codereview 的相邻接续率。
+- `code landing` 不用 `artifact_type='code'` 充数。它来自 `sdd_interaction_tool_calls.skill_usage_id → sdd_skill_usages.work_item_id`，套日报 `codeImpact` 的业务代码读写过滤条件，得到“这个需求是否真的进入业务代码读写”。
+- 页面展示顺序是 `proposal → design → task → code landing → codereview`。其中 `code landing` 是生产行为，其他台阶是过程产物；UI 必须把两类证据区分清楚。
 - **与产出分析的物理隔离靠下钻边界，不靠数据源**：漏斗数据源可与产出分析同源，但本页**只给聚合比例 + 断崖位置，不可点进单个需求**；要看具体需求 → 出链 `/sdd/work-items`（带阶段过滤）。
-- **可证伪**：构造 5 个需求只有 proposal、3 个走到 design、1 个到 code → 漏斗台阶 5→3→1，断崖在 design→code。
+- **可证伪**：构造 5 个需求只有 proposal、3 个走到 design、1 个有业务代码写入 → 漏斗台阶 5→3→1，断崖在 design→code landing。
 
 ### 4.4 接续分布（技能侧独占能力，产出分析给不出）
 
@@ -116,7 +143,7 @@
 
 - 产出 artifact 数 = 该技能调用关联的 `work_item_id` 在 `sdd_work_item_artifacts` 里、`artifact_type` == 该技能对应阶段 的去重数（用 seed 的 `artifactFilenamePatterns`/阶段映射对齐）。
 - 落地代码 = 该技能调用经 `skill_usage_id → sdd_interaction_tool_calls` 命中业务代码仓库读写的工具调用数（复用日报 `codeImpact` 过滤条件，§3.6）。
-- 诚实标注：落地代码**不反推 work_item**、不计入覆盖需求（沿用日报既有局限，facts §4 第 5 条）。
+- 诚实标注：落地代码只在已有 `skill_usage_id` / `work_item_id` 归属时进入 per-skill 转化；不从文件路径反推 work item，也不计入覆盖需求（沿用日报既有局限，facts §4 第 5 条）。
 
 ### 4.6 保鲜（freshness）
 
@@ -130,8 +157,14 @@
 1. `GET /api/sdd/skills/methodology`（新增）——① 完整度 KPI + ② 漏斗
    ```ts
    {
-     funnel: Array<{ stage: 'proposal'|'design'|'task'|'code'|'review', workItems: number, fromPrevRate: number|null }>,
-     completionRate: number,        // proposal 起步 → code 落地 占比
+     funnel: Array<{
+       stage: 'proposal'|'design'|'task'|'code_landing'|'codereview',
+       label: string,
+       evidence: 'artifact'|'business_code',
+       workItems: number,
+       fromPrevRate: number|null
+     }>,
+     completionRate: number,        // proposal 起步 → code_landing 占比
      biggestDropStage: string|null, // 断崖台阶
    }
    ```
@@ -156,7 +189,7 @@
      debug: { rawSkillNames: string[], matchedBy: string },     // 配对自检收敛到这里
    }
    ```
-- **复用**：现有 `skills/analytics`（KPI 三项）、`skills/timeseries`（趋势）、`usage-summary`（已有分页表，可作 ④ 的底，扩 status/topNextSkill/转化列）、`skill-usages`（抽屉最近调用）。优先扩 `usage-summary` 行 schema 而非另起炉灶，避免重复建设。
+- **复用**：现有 `GET /api/sdd/skill-analytics`（KPI 三项）、`GET /api/sdd/skill-timeseries`（趋势）、`GET /api/sdd/usage-summary`（已有分页表，可作 ④ 的底，扩 status/topNextSkill/转化列）、`GET /api/sdd/usages`（抽屉最近调用）。优先扩 `usage-summary` 行 schema 而非另起炉灶，避免重复建设。
 
 ### 5.2 配置（config.default.ts，全部有默认）
 
@@ -208,7 +241,7 @@ web/src/pages/sdd/skills/
 ## 9. 验证清单（可证伪，dev 模式）
 
 1. **活/冷/死可证伪**：seeded 一个从没人用的技能 → `status:'dead', usageCount:0` 且计入死技能 KPI；构造一个近 3 天有调用的 → `live`；空集能区分「无数据」与「全死」。
-2. **漏斗可证伪**：构造 5 需求仅 proposal、3 到 design、1 到 code → 台阶 5/3/1、断崖 design→code、completionRate=1/5。
+2. **漏斗可证伪**：构造 5 需求仅 proposal、3 到 design、1 有业务代码写入 → 台阶 5/3/1、断崖 design→code landing、completionRate=1/5。
 3. **接续可证伪**：同 session 内 proposal→design→code 三连 → proposal 的 `topNextSkill='design'`；跨 session 不串。
 4. **产出转化可证伪**：某技能关联 work_item 有 2 篇对应阶段 artifact、3 次业务仓库写 → `artifactCount:2, codeLandingCount:3`；落地不进覆盖需求。
 5. **隔离铁律**：技能表/抽屉**无任何**直达「需求详情」的入口；需求只在出链按钮出现。
@@ -226,7 +259,7 @@ web/src/pages/sdd/skills/
 
 - 漏斗 substrate 与产出分析同源，差异仅在主语与下钻边界——靠 §1.1 铁律与 §9.5 验证守住，不靠数据隔离。
 - 接续分布依赖 `session_id` 质量；session 缺失的调用不计入接续。
-- 落地代码不反推 work_item，产出转化的「落地」与「覆盖需求」是两个口径，UI 需诚实区分。
+- 落地代码不从文件路径反推 work item，产出转化的「落地」与「覆盖需求」是两个口径，UI 需诚实区分。
 - 活/冷/死的分母依赖 seed 全集保鲜；新增 SDD 技能未 seed 时会落进 orphan 调试角而非死技能。
 
 ## 12. 文档保鲜
