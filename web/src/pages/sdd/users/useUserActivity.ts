@@ -23,10 +23,11 @@ export interface ActivityNode {
 export function useUserActivity(
   userId: string | undefined,
   selectedWorkItemId: string | null,
+  enabled = true,
 ) {
-  const skillsQuery = useUserSkillUsages(userId);
+  const skillsQuery = useUserSkillUsages(userId, 200, enabled);
   const wikiQuery = useWikiRecallList('30d', { userId });
-  const writesQuery = useUserArtifactWrites(selectedWorkItemId, userId);
+  const writesQuery = useUserArtifactWrites(selectedWorkItemId, userId, enabled);
 
   return useMemo(() => {
     const skillNodes: ActivityNode[] = (skillsQuery.data ?? [])

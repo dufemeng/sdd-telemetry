@@ -25,6 +25,7 @@ import type {
 import { ApiHttpError } from '../../common/auth/api-http-error';
 import { SddQueryService } from '../sdd/sdd-query.service';
 import {
+  SDD_DEFAULT_PROFILE_ID,
   getProfileConfig,
   listProfileConfigs,
   type WorkflowProfileConfig,
@@ -32,6 +33,10 @@ import {
 import { ProfileProjectionRepository } from './profile-projection.repository';
 
 type ReadSource = 'legacy_sdd' | 'profile_projection';
+type ProfileReadMode =
+  | { mode: 'projection'; runId: number }
+  | { mode: 'legacy' }
+  | { mode: 'empty' };
 
 @Provide('profilesService')
 export class ProfilesService {
@@ -62,15 +67,12 @@ export class ProfilesService {
     profileId: string,
     query: ProfileOverviewQuery,
   ): Promise<ProfileOverview> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getOverview(profileId, runId, query);
-      }
-      // 无 current pointer：回退 legacy。
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getOverview(profileId, read.runId, query);
     }
+    if (read.mode === 'empty') return emptyOverview();
 
     const sdd = await this.sddQueryService.getOverview(query);
     return {
@@ -92,14 +94,12 @@ export class ProfilesService {
     profileId: string,
     query: ProfileOverviewQuery,
   ): Promise<ProfileDemand[]> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.listDemands(profileId, runId, query);
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.listDemands(profileId, read.runId, query);
     }
+    if (read.mode === 'empty') return [];
 
     const workItems = await this.sddQueryService.listWorkItems({ ...query, limit: 500 });
     return workItems.map((w) => ({
@@ -122,18 +122,18 @@ export class ProfilesService {
     profileId: string,
     demandId: string,
   ): Promise<ProfileDemandDetail> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
     const manifest = getProfileConfig(profileId)!.manifest;
     if (!manifest.deliveryUnits) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'deliveryUnits not supported for this profile');
     }
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        const detail = await this.profileProjectionRepository.getDemandDetail(profileId, runId, demandId);
-        if (detail) return detail;
-      }
+    if (read.mode === 'projection') {
+      const detail = await this.profileProjectionRepository.getDemandDetail(profileId, read.runId, demandId);
+      if (detail) return detail;
+    }
+    if (read.mode === 'empty') {
+      throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
     }
 
     const sdd = await this.sddQueryService.getWorkItemDetail(demandId);
@@ -170,17 +170,17 @@ export class ProfilesService {
     demandId: string,
     artifactId: string,
   ): Promise<ProfileArtifactTimelineItem[]> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
     const manifest = getProfileConfig(profileId)!.manifest;
     if (!manifest.artifactTimeline) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'artifactTimeline not supported for this profile');
     }
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getArtifactTimeline(profileId, runId, demandId, artifactId);
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getArtifactTimeline(profileId, read.runId, demandId, artifactId);
+    }
+    if (read.mode === 'empty') {
+      throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
     }
 
     const sdd = await this.sddQueryService.listArtifactWrites(demandId, artifactId);
@@ -204,14 +204,12 @@ export class ProfilesService {
     profileId: string,
     query: ProfileOverviewQuery,
   ): Promise<ProfileCapabilityAnalytics> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getCapabilityAnalytics(profileId, runId, query);
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getCapabilityAnalytics(profileId, read.runId, query);
     }
+    if (read.mode === 'empty') return emptyCapabilityAnalytics();
 
     const sdd = await this.sddQueryService.getSkillAnalytics(query);
     return {
@@ -248,14 +246,12 @@ export class ProfilesService {
     profileId: string,
     query: ProfileCapabilityTimeseriesQuery,
   ): Promise<ProfileCapabilityTimeseries> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getCapabilityTimeseries(profileId, runId, query);
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getCapabilityTimeseries(profileId, read.runId, query);
     }
+    if (read.mode === 'empty') return emptyCapabilityTimeseries(query);
 
     return this.sddQueryService.getSkillTimeseries(query);
   }
@@ -264,15 +260,13 @@ export class ProfilesService {
     profileId: string,
     query: ProfileCapabilityUsageSummaryQuery,
   ): Promise<{ items: ProfileCapabilityUsageSummaryItem[]; total: number; page: number; pageSize: number }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        const { items, total } = await this.profileProjectionRepository.listCapabilityUsageSummary(profileId, runId, query);
-        return { items, total, page: query.page, pageSize: query.pageSize };
-      }
+    if (read.mode === 'projection') {
+      const { items, total } = await this.profileProjectionRepository.listCapabilityUsageSummary(profileId, read.runId, query);
+      return { items, total, page: query.page, pageSize: query.pageSize };
     }
+    if (read.mode === 'empty') return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
 
     const sddQuery = {
       ...query,
@@ -302,15 +296,13 @@ export class ProfilesService {
     profileId: string,
     query: ProfileCapabilityUsagesQuery,
   ): Promise<{ items: ProfileCapabilityUsageItem[]; total: number; page: number; pageSize: number }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        const { items, total } = await this.profileProjectionRepository.listCapabilityUsages(profileId, runId, query);
-        return { items, total, page: query.page, pageSize: query.pageSize };
-      }
+    if (read.mode === 'projection') {
+      const { items, total } = await this.profileProjectionRepository.listCapabilityUsages(profileId, read.runId, query);
+      return { items, total, page: query.page, pageSize: query.pageSize };
     }
+    if (read.mode === 'empty') return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
 
     const sddQuery = {
       ...query,
@@ -341,15 +333,13 @@ export class ProfilesService {
     profileId: string,
     query: ProfileUsersQuery,
   ): Promise<{ items: ProfileUserItem[]; total: number; page: number; pageSize: number }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        const { items, total } = await this.profileProjectionRepository.listUsers(profileId, runId, query);
-        return { items, total, page: query.page, pageSize: query.pageSize };
-      }
+    if (read.mode === 'projection') {
+      const { items, total } = await this.profileProjectionRepository.listUsers(profileId, read.runId, query);
+      return { items, total, page: query.page, pageSize: query.pageSize };
     }
+    if (read.mode === 'empty') return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
 
     const sddUsers = await this.sddQueryService.listUsers();
     const filteredUsers = sddUsers.filter((u) => {
@@ -393,18 +383,18 @@ export class ProfilesService {
     profileId: string,
     userId: string,
   ): Promise<ProfileUserDetail> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
     const manifest = getProfileConfig(profileId)!.manifest;
     if (!manifest.capabilityUsage) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'users not supported for this profile');
     }
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        const detail = await this.profileProjectionRepository.getUserDetail(profileId, runId, userId);
-        if (detail) return detail;
-      }
+    if (read.mode === 'projection') {
+      const detail = await this.profileProjectionRepository.getUserDetail(profileId, read.runId, userId);
+      if (detail) return detail;
+    }
+    if (read.mode === 'empty') {
+      throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
     }
 
     const sddDetail = await this.sddQueryService.getUserDetail(userId);
@@ -447,14 +437,12 @@ export class ProfilesService {
   async getKnowledgeCoverage(
     profileId: string,
   ): Promise<ProfileKnowledgeCoverageResponse> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getKnowledgeCoverage(profileId, runId);
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getKnowledgeCoverage(profileId, read.runId);
     }
+    if (read.mode === 'empty') return emptyKnowledgeCoverage();
 
     const sdd = await this.sddQueryService.getWikiRecallCoverage();
     return {
@@ -489,19 +477,17 @@ export class ProfilesService {
     profileId: string,
     query: ProfileKnowledgeTimelineQuery,
   ): Promise<{ points: Array<{ t: string; group: string | null; count: number }> }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getKnowledgeTimeline(profileId, runId, {
-          rangeSinceDate: rangeToSinceDate(query.range),
-          granularity: query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
-          groupBy: query.groupBy ?? 'domain',
-          wikiDomain: query.wikiDomain ?? null,
-        });
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getKnowledgeTimeline(profileId, read.runId, {
+        rangeSinceDate: rangeToSinceDate(query.range),
+        granularity: query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
+        groupBy: query.groupBy ?? 'domain',
+        wikiDomain: query.wikiDomain ?? null,
+      });
     }
+    if (read.mode === 'empty') return { points: [] };
 
     const sdd = await this.sddQueryService.getWikiRecallTimeline(
       query.range,
@@ -522,17 +508,15 @@ export class ProfilesService {
     profileId: string,
     params: { range: '24h' | '7d' | '30d' | '90d' | 'all'; page: number; pageSize: number; deliveryUnitId?: string; userId?: string; capabilityUsageId?: string },
   ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.listKnowledgeRecalls(profileId, runId, {
-          ...params,
-          rangeSinceDate: rangeToSinceDate(params.range),
-        });
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.listKnowledgeRecalls(profileId, read.runId, {
+        ...params,
+        rangeSinceDate: rangeToSinceDate(params.range),
+      });
     }
+    if (read.mode === 'empty') return { items: [], total: 0 };
 
     const filters: { workItemId?: string; userId?: string; skillUsageId?: string } = {};
     if (params.deliveryUnitId) filters.workItemId = params.deliveryUnitId;
@@ -570,18 +554,16 @@ export class ProfilesService {
     profileId: string,
     query: ProfileKnowledgeDeliveryUnitRankingQuery,
   ): Promise<{ items: Array<{ deliveryUnitId: string; unitSlug: string | null; businessDomain: string | null; totalRecalls: number; distinctDomains: number; distinctSystems: number; userCount: number }>; total: number }> {
-    this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
 
-    if (this.profileDashboard.readSource === 'profile_projection') {
-      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
-      if (runId != null) {
-        return this.profileProjectionRepository.getKnowledgeDeliveryUnitRanking(profileId, runId, {
-          rangeSinceDate: rangeToSinceDate(query.range),
-          wikiDomain: query.wikiDomain ?? null,
-          userId: query.userId ?? null,
-        });
-      }
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getKnowledgeDeliveryUnitRanking(profileId, read.runId, {
+        rangeSinceDate: rangeToSinceDate(query.range),
+        wikiDomain: query.wikiDomain ?? null,
+        userId: query.userId ?? null,
+      });
     }
+    if (read.mode === 'empty') return { items: [], total: 0 };
 
     const sdd = await this.sddQueryService.getWikiRecallWorkItemRanking(
       query.range,
@@ -602,6 +584,15 @@ export class ProfilesService {
     };
   }
 
+  private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
+    this.requireProfile(profileId);
+    if (this.profileDashboard.readSource === 'profile_projection') {
+      const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
+      if (runId != null) return { mode: 'projection', runId };
+    }
+    return profileId === SDD_DEFAULT_PROFILE_ID ? { mode: 'legacy' } : { mode: 'empty' };
+  }
+
   private requireProfile(profileId: string): WorkflowProfileConfig {
     const config = getProfileConfig(profileId);
     if (!config) {
@@ -615,8 +606,82 @@ function toSummary(config: WorkflowProfileConfig): ProfileSummary {
   return {
     profileId: config.profileId,
     displayName: config.displayName,
-    status: config.status,
+    status: isRuntimeConfigured(config) ? config.status : 'disabled',
     manifest: config.manifest,
+    presentation: config.presentation,
+  };
+}
+
+function isRuntimeConfigured(config: WorkflowProfileConfig): boolean {
+  return config.sourceRules.every((rule) => !rule.rootEnv || Boolean(process.env[rule.rootEnv]));
+}
+
+function emptyOverview(): ProfileOverview {
+  return {
+    activeUserCount: 0,
+    capabilityUsageCount: 0,
+    deliveryUnitCount: 0,
+    artifactCount: 0,
+    knowledgeRecallCount: 0,
+    codeWriteCount: 0,
+    codeReadCount: 0,
+  };
+}
+
+function emptyCapabilityAnalytics(): ProfileCapabilityAnalytics {
+  const metric = { current: 0, previous: null };
+  return {
+    kpis: {
+      capabilityUsageCount: metric,
+      activeUserCount: metric,
+      coveredDeliveryUnitCount: metric,
+      userTriggeredCount: metric,
+      autoTriggeredCount: metric,
+      multiStageDeliveryUnitCount: metric,
+    },
+    callQuality: {
+      triggeredCount: 0,
+      withPromptCount: 0,
+      withResponseCount: 0,
+      pairedCount: 0,
+      promptCoverageRate: null,
+      responseCoverageRate: null,
+      pairingSuccessRate: null,
+    },
+    topCapabilities: [],
+    matchHealth: {
+      matchedCount: 0,
+      unmatchedCount: 0,
+      matchRate: null,
+      topUnmatched: [],
+    },
+  };
+}
+
+function emptyCapabilityTimeseries(
+  query: ProfileCapabilityTimeseriesQuery,
+): ProfileCapabilityTimeseries {
+  return {
+    bucket: query.bucket ?? '1h',
+    points: [],
+  };
+}
+
+function emptyKnowledgeCoverage(): ProfileKnowledgeCoverageResponse {
+  return {
+    scan: { configured: false, repos: [] },
+    totals: {
+      totalDocs: 0,
+      recalledDocs: 0,
+      coverageRate: 0,
+      recalls: 0,
+      coldDocs: 0,
+      deadDocs: 0,
+      newUnreadDocs: 0,
+      orphanPaths: 0,
+    },
+    repos: [],
+    domains: [],
   };
 }
 

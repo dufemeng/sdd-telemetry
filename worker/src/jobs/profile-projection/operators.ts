@@ -1,3 +1,5 @@
+import { BOSS_A_MONOREPO_PROFILE_ID } from '@sdd-telemetry/api';
+import { BOSS_A_OPERATORS } from './boss-a-operators';
 import { codeOperator } from './code-operator';
 import { knowledgeOperator } from './knowledge-operator';
 import type { ProjectionOperator } from './runner';
@@ -11,6 +13,9 @@ import { SDD_BRIDGE_OPERATORS } from './sdd-bridge-operators';
 export function getProfileOperators(profileId: string): ProjectionOperator[] {
   if (profileId === 'sdd-default') {
     return [...SDD_BRIDGE_OPERATORS, knowledgeOperator, codeOperator];
+  }
+  if (profileId === BOSS_A_MONOREPO_PROFILE_ID) {
+    return BOSS_A_OPERATORS;
   }
   return [];
 }

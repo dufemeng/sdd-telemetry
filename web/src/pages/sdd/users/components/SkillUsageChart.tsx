@@ -1,7 +1,7 @@
 import { useUserSkillUsages } from '../useUserSkillUsages';
 
-export function SkillUsageChart({ userId }: { userId: string }) {
-  const query = useUserSkillUsages(userId, 500);
+export function SkillUsageChart({ userId, enabled = true }: { userId: string; enabled?: boolean }) {
+  const query = useUserSkillUsages(userId, 500, enabled);
   const data = query.data ?? [];
 
   const countMap = new Map<string, number>();

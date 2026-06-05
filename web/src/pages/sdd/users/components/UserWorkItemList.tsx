@@ -15,10 +15,12 @@ export function UserWorkItemList({
   workItems,
   selectedId,
   onSelect,
+  showStages = true,
 }: {
   workItems: ProfileUserDeliveryUnit[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  showStages?: boolean;
 }) {
   return (
     <div className="flex flex-col">
@@ -48,14 +50,16 @@ export function UserWorkItemList({
               >
                 <span className="text-[12px] text-[#f5f5f5] truncate">{wi.title}</span>
                 <div className="flex items-center gap-[6px] mt-[4px]">
-                  {SDD_STAGES.map((s) => (
-                    <span
-                      key={s}
-                      title={STAGE_LABELS[s]}
-                      className="w-[5px] h-[5px] rounded-full"
-                      style={{ background: wi.stageCodes.includes(s) ? 'var(--color-secondary)' : 'var(--color-border)' }}
-                    />
-                  ))}
+                  {showStages ? (
+                    SDD_STAGES.map((s) => (
+                      <span
+                        key={s}
+                        title={STAGE_LABELS[s]}
+                        className="w-[5px] h-[5px] rounded-full"
+                        style={{ background: wi.stageCodes.includes(s) ? 'var(--color-secondary)' : 'var(--color-border)' }}
+                      />
+                    ))
+                  ) : null}
                   <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
                     {formatRelativeTime(wi.lastActivityAt)} · {formatTime(wi.lastActivityAt)}
                   </span>

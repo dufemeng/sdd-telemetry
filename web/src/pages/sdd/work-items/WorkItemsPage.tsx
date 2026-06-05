@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileDemands } from '@/pages/profiles/useProfiles';
+import { useProfileDemands, useProfileHiddenMetrics } from '@/pages/profiles/useProfiles';
 import { BarList } from '@/components/ui/BarList';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
@@ -92,6 +92,28 @@ function StageDots({ coverageStages }: { coverageStages: string[] }) {
   );
 }
 
+function ArtifactStageChips({ coverageStages }: { coverageStages: string[] }) {
+  if (coverageStages.length === 0) {
+    return <span className="text-[12px] text-[var(--color-muted)]">—</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-[4px]">
+      {coverageStages.slice(0, 4).map((stage) => (
+        <span
+          key={stage}
+          className="text-[10px] px-[6px] py-[1px] rounded-[3px] text-[var(--color-secondary)]"
+          style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
+        >
+          {stage}
+        </span>
+      ))}
+      {coverageStages.length > 4 ? (
+        <span className="text-[10px] text-[var(--color-muted)]">+{coverageStages.length - 4}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function FilterTabs({
   active,
   counts,
@@ -143,6 +165,8 @@ const STATUS_BORDER: Record<WorkItemStatus, string> = {
 
 export default function WorkItemsPage() {
   const { profileId } = useShellContext();
+  const hiddenMetrics = useProfileHiddenMetrics(profileId);
+  const showSddStages = !hiddenMetrics.has('sddStageDots');
   const { data = [], isLoading } = useProfileDemands(profileId);
   const navigate = useNavigate();
   const [search, setSearch]           = useState('');
@@ -218,6 +242,10 @@ export default function WorkItemsPage() {
 
   const { pageItems, pageNumber, hasNext, hasPrev, goNext, goPrev, reset } =
     useClientPagination(filtered, PAGE_SIZE);
+  const demandTableHeaders = showSddStages
+    ? ['需求标题', '业务域', '阶段覆盖', '文档数', '调用次数', '最近更新']
+    : ['需求标题', '业务域', '产物类型', '文档数', '调用次数', '最近更新'];
+  const demandTableColumnCount = demandTableHeaders.length;
 
   const handleFilter = (v: StatusFilter) => { setStatusFilter(v); reset(); };
   const handleSearch = (v: string)       => { setSearch(v);       reset(); };
@@ -309,6 +337,7 @@ export default function WorkItemsPage() {
       <div className="grid grid-cols-3 gap-3">
 
         {/* 阶段覆盖漏斗 */}
+        {showSddStages ? (
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
@@ -342,9 +371,10 @@ export default function WorkItemsPage() {
             ))}
           </div>
         </section>
+        ) : null}
 
         {/* 业务域分布 */}
-        <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
+        <section className={`${showSddStages ? '' : 'col-span-3'} p-[14px] rounded-[6px]`} style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-3" style={{ color: 'var(--color-primary)' }}>
             <GitBranch size={18} />
             <h3 className="text-[14px] font-semibold text-[#f5f5f5]">业务域分布</h3>
@@ -399,25 +429,29 @@ export default function WorkItemsPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-[4px] pl-[10px]">
-                    {SDD_STAGES.map((s) => (
-                      <div
-                        key={s}
-                        title={STAGE_LABELS[s]}
-                        className="rounded-full"
-                        style={{
-                          width: 7,
-                          height: 7,
-                          background: item.coverageStages.includes(s)
-                            ? STAGE_DOT_COLORS[s]
-                            : 'rgba(255,255,255,0.12)',
-                        }}
-                      />
-                    ))}
-                    <span className="ml-1 text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {coreStages.length}/4
-                    </span>
-                  </div>
+                  {showSddStages ? (
+                    <div className="flex items-center gap-[4px] pl-[10px]">
+                      {SDD_STAGES.map((s) => (
+                        <div
+                          key={s}
+                          title={STAGE_LABELS[s]}
+                          className="rounded-full"
+                          style={{
+                            width: 7,
+                            height: 7,
+                            background: item.coverageStages.includes(s)
+                              ? STAGE_DOT_COLORS[s]
+                              : 'rgba(255,255,255,0.12)',
+                          }}
+                        />
+                      ))}
+                      <span className="ml-1 text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                        {coreStages.length}/4
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="pl-[10px]"><ArtifactStageChips coverageStages={item.coverageStages} /></div>
+                  )}
                   <div className="flex gap-[6px] pl-[10px]">
                     <span
                       className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]"
@@ -483,7 +517,7 @@ export default function WorkItemsPage() {
           <table className="w-full" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['需求标题', '业务域', '阶段覆盖', '文档数', '调用次数', '最近更新'].map((h) => (
+                {demandTableHeaders.map((h) => (
                   <th
                     key={h}
                     className="px-[12px] py-[8px] text-left text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)]"
@@ -497,7 +531,7 @@ export default function WorkItemsPage() {
             <tbody>
               {pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
+                  <td colSpan={demandTableColumnCount} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
                     {search ? '无匹配需求' : '暂无数据'}
                   </td>
                 </tr>
@@ -544,9 +578,13 @@ export default function WorkItemsPage() {
                           <span className="text-[12px] text-[var(--color-muted)]">—</span>
                         )}
                       </td>
-                      {/* 阶段覆盖 */}
+                      {/* 阶段覆盖 / 产物类型 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        <StageDots coverageStages={item.coverageStages} />
+                        {showSddStages ? (
+                          <StageDots coverageStages={item.coverageStages} />
+                        ) : (
+                          <ArtifactStageChips coverageStages={item.coverageStages} />
+                        )}
                       </td>
                       {/* 文档数 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors text-right">

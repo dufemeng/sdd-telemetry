@@ -32,6 +32,7 @@ import {
   useProfileCapabilityTimeseries,
   useProfileCapabilityUsageSummary,
   useProfileCapabilityUsages,
+  useProfileHiddenMetrics,
 } from '@/pages/profiles/useProfiles';
 
 type UsageMatchFilter = 'all' | 'matched' | 'unmatched';
@@ -56,6 +57,10 @@ type SkillFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
 export default function SkillsPage() {
   const { timeRange, profileId } = useShellContext();
   const fromIso = timeRangeToFromIso(timeRange);
+  const hiddenMetrics = useProfileHiddenMetrics(profileId);
+  const showCallQuality = !hiddenMetrics.has('callQuality');
+  const showMultiStage = !hiddenMetrics.has('multiStageDeliveryUnitCount');
+  const showMatchHealth = !hiddenMetrics.has('matchHealth');
   const analyticsQuery = useProfileCapabilityAnalytics(profileId, fromIso);
   const timeseriesQuery = useProfileCapabilityTimeseries(profileId, fromIso);
   const [keyword, setKeyword] = useState('');
@@ -79,6 +84,10 @@ export default function SkillsPage() {
     setPage(1);
   }, [debouncedKeyword, matched, fromIso]);
 
+  useEffect(() => {
+    if (!showMatchHealth && matched !== 'all') setMatched('all');
+  }, [matched, showMatchHealth]);
+
   const analytics = analyticsQuery.data;
   const callQuality = analytics?.callQuality;
   const pairingRate = callQuality?.pairingSuccessRate ?? null;
@@ -98,20 +107,23 @@ export default function SkillsPage() {
         <div>
           <h2 className="text-[28px] font-semibold leading-9 text-[#f5f5f5]">技能分析</h2>
           <p className="mt-1 text-[13px] text-[var(--color-secondary)]">
-            近 {timeRange} · 关键技能、调用规模与有效配对链路
+            近 {timeRange} · 关键能力、调用规模与研发行为分布
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: `repeat(${showMultiStage ? 4 : 3}, minmax(0, 1fr))` }}
+      >
         <KpiCard
           icon={Layers3}
           label="技能调用量"
           value={analytics?.kpis.capabilityUsageCount.current}
           hint={deltaHint(analytics?.kpis.capabilityUsageCount)}
           loading={analyticsQuery.isLoading}
-          progress={pairingRate}
-          progressLabel={`有效配对 ${formatRate(pairingRate)}`}
+          progress={showCallQuality ? pairingRate : undefined}
+          progressLabel={showCallQuality ? `有效配对 ${formatRate(pairingRate)}` : undefined}
         />
         <KpiCard
           icon={UserRound}
@@ -127,17 +139,19 @@ export default function SkillsPage() {
           hint={deltaHint(analytics?.kpis.coveredDeliveryUnitCount)}
           loading={analyticsQuery.isLoading}
         />
-        <KpiCard
-          icon={Layers}
-          label="全链路需求"
-          value={analytics?.kpis.multiStageDeliveryUnitCount.current}
-          hint="覆盖 >=3 个阶段"
-          loading={analyticsQuery.isLoading}
-        />
+        {showMultiStage ? (
+          <KpiCard
+            icon={Layers}
+            label="全链路需求"
+            value={analytics?.kpis.multiStageDeliveryUnitCount.current}
+            hint="覆盖 >=3 个阶段"
+            loading={analyticsQuery.isLoading}
+          />
+        ) : null}
       </div>
 
       <div className="grid grid-cols-12 gap-3">
-        <section className="col-span-8 p-[14px] rounded-[6px]" style={CARD_STYLE}>
+        <section className={`${showCallQuality ? 'col-span-8' : 'col-span-12'} p-[14px] rounded-[6px]`} style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-4" style={{ color: 'var(--color-primary)' }}>
             <TrendingUp size={18} />
             <h3 className="text-[14px] font-semibold text-[#f5f5f5]">调用量趋势</h3>
@@ -151,37 +165,39 @@ export default function SkillsPage() {
           )}
         </section>
 
-        <section className="col-span-4 p-[14px] rounded-[6px]" style={CARD_STYLE}>
-          <div className="flex items-center gap-2 mb-4" style={{ color: 'var(--color-primary)' }}>
-            <Zap size={18} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">调用质量</h3>
-          </div>
-          {analyticsQuery.error ? (
-            <SectionError error={analyticsQuery.error} onRetry={() => void analyticsQuery.refetch()} />
-          ) : (
-            <div className="grid gap-4">
-              <div>
-                <div
-                  className="text-[34px] font-semibold leading-none text-[var(--color-primary)]"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {analyticsQuery.isLoading ? '—' : formatRate(pairingRate)}
-                </div>
-                <div className="mt-2 text-[12px] text-[var(--color-secondary)]">有效配对率</div>
-              </div>
-              <div className="h-[6px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: percentWidth(pairingRate), background: 'var(--color-good-text)' }}
-                />
-              </div>
-              <div className="grid gap-2 text-[12px] text-[var(--color-secondary)]">
-                <QualityCount label="已配对" value={callQuality?.pairedCount} loading={analyticsQuery.isLoading} />
-                <QualityCount label="总触发" value={callQuality?.triggeredCount} loading={analyticsQuery.isLoading} />
-              </div>
+        {showCallQuality ? (
+          <section className="col-span-4 p-[14px] rounded-[6px]" style={CARD_STYLE}>
+            <div className="flex items-center gap-2 mb-4" style={{ color: 'var(--color-primary)' }}>
+              <Zap size={18} />
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">调用质量</h3>
             </div>
-          )}
-        </section>
+            {analyticsQuery.error ? (
+              <SectionError error={analyticsQuery.error} onRetry={() => void analyticsQuery.refetch()} />
+            ) : (
+              <div className="grid gap-4">
+                <div>
+                  <div
+                    className="text-[34px] font-semibold leading-none text-[var(--color-primary)]"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {analyticsQuery.isLoading ? '—' : formatRate(pairingRate)}
+                  </div>
+                  <div className="mt-2 text-[12px] text-[var(--color-secondary)]">有效配对率</div>
+                </div>
+                <div className="h-[6px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: percentWidth(pairingRate), background: 'var(--color-good-text)' }}
+                  />
+                </div>
+                <div className="grid gap-2 text-[12px] text-[var(--color-secondary)]">
+                  <QualityCount label="已配对" value={callQuality?.pairedCount} loading={analyticsQuery.isLoading} />
+                  <QualityCount label="总触发" value={callQuality?.triggeredCount} loading={analyticsQuery.isLoading} />
+                </div>
+              </div>
+            )}
+          </section>
+        ) : null}
       </div>
 
       {!analyticsQuery.isLoading && topCapabilities.length > 0 ? (
@@ -290,7 +306,7 @@ export default function SkillsPage() {
           className="flex items-center px-[14px] py-[9px]"
           style={{ borderBottom: '1px solid var(--color-border)' }}
         >
-          <FilterTabs active={matched} onChange={setMatched} />
+          <FilterTabs active={matched} onChange={setMatched} showUnmatched={showMatchHealth} />
         </div>
 
         {summaryQuery.error ? (
@@ -524,13 +540,15 @@ function SkillChip({ icon: Icon, value }: { icon: LucideIcon; value: string }) {
 function FilterTabs({
   active,
   onChange,
+  showUnmatched,
 }: {
   active: SkillFilter;
   onChange: (value: SkillFilter) => void;
+  showUnmatched: boolean;
 }) {
   const tabs: Array<{ key: SkillFilter; label: string }> = [
     { key: 'all', label: '全部' },
-    { key: 'unmatched', label: '未匹配' },
+    ...(showUnmatched ? [{ key: 'unmatched' as const, label: '未匹配' }] : []),
   ];
 
   return (

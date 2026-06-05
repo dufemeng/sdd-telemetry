@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Zap } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileUserDetail } from '@/pages/profiles/useProfiles';
+import { useProfileHiddenMetrics, useProfileUserDetail } from '@/pages/profiles/useProfiles';
 import { useUserActivity } from './useUserActivity';
 import { UserWorkItemList } from './components/UserWorkItemList';
 import { UserActivityTimeline } from './components/UserActivityTimeline';
@@ -59,6 +59,8 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
 export default function UserProfilePage() {
   const { id: userId = '' } = useParams();
   const { profileId } = useShellContext();
+  const hiddenMetrics = useProfileHiddenMetrics(profileId);
+  const showSddActivity = !hiddenMetrics.has('sddStageDots');
   const navigate = useNavigate();
   const profileQuery = useProfileUserDetail(profileId, userId || null);
   const profile = profileQuery.data;
@@ -70,7 +72,7 @@ export default function UserProfilePage() {
     setSelectedWorkItemId(null);
   }, [userId]);
 
-  const activityNodes = useUserActivity(userId, selectedWorkItemId);
+  const activityNodes = useUserActivity(userId, selectedWorkItemId, showSddActivity);
 
   if (profileQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
@@ -139,7 +141,7 @@ export default function UserProfilePage() {
         </div>
       </section>
 
-      <SkillUsageChart userId={userId} />
+      {showSddActivity ? <SkillUsageChart userId={userId} /> : null}
 
       {/* Two-column body */}
       <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
@@ -148,6 +150,7 @@ export default function UserProfilePage() {
             workItems={workItems}
             selectedId={selectedWorkItemId}
             onSelect={setSelectedWorkItemId}
+            showStages={showSddActivity}
           />
         </section>
 

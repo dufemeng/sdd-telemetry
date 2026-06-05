@@ -4,6 +4,7 @@ export * from './contracts/ingest.contract';
 export * from './contracts/events.contract';
 export * from './contracts/sdd.contract';
 export * from './contracts/profile.contract';
+export * from './profile-config';
 export * from './contracts/ops.contract';
 export * from './contracts/reports.contract';
 export * from './client/http-client';

@@ -30,11 +30,21 @@ export type ProfileCapabilityManifest = z.infer<typeof ProfileCapabilityManifest
 export const ProfileStatusSchema = z.enum(['active', 'disabled']);
 export type ProfileStatus = z.infer<typeof ProfileStatusSchema>;
 
+export const ProfilePresentationSchema = z.object({
+  workflowKind: z.enum(['sdd', 'local_path_monorepo']),
+  maturityStages: z.array(z.string()),
+  artifactStageOrder: z.array(z.string()),
+  hiddenMetrics: z.array(z.string()),
+  knowledgeCoverageMode: z.enum(['filesystem_scan', 'recall_facts']),
+});
+export type ProfilePresentation = z.infer<typeof ProfilePresentationSchema>;
+
 export const ProfileSummarySchema = z.object({
   profileId: z.string(),
   displayName: z.string(),
   status: ProfileStatusSchema,
   manifest: ProfileCapabilityManifestSchema,
+  presentation: ProfilePresentationSchema,
 });
 export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
 

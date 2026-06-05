@@ -13,6 +13,7 @@ import type {
   ProfileKnowledgeRecallListResponse,
   ProfileKnowledgeTimelineResponse,
   ProfileOverview,
+  ProfilePresentation,
   ProfileSummary,
   ProfileUserDetail,
   ProfileUserItem,
@@ -30,6 +31,16 @@ export function useProfiles() {
 export function useProfileManifest(profileId: string): ProfileCapabilityManifest | undefined {
   const { data } = useProfiles();
   return data?.find((p) => p.profileId === profileId)?.manifest;
+}
+
+export function useProfilePresentation(profileId: string): ProfilePresentation | undefined {
+  const { data } = useProfiles();
+  return data?.find((p) => p.profileId === profileId)?.presentation;
+}
+
+export function useProfileHiddenMetrics(profileId: string): Set<string> {
+  const presentation = useProfilePresentation(profileId);
+  return new Set(presentation?.hiddenMetrics ?? []);
 }
 
 export function useProfileDemands(profileId: string, fromIso?: string) {

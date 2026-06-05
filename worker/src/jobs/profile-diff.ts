@@ -1,5 +1,14 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise';
+import path from 'node:path';
+import { BOSS_A_MONOREPO_PROFILE_ID, getProfileConfig } from '@sdd-telemetry/api';
 import { createMysqlPool } from '../infrastructure/mysql/client';
+import {
+  bossAStableKey,
+  isBossAReadAction,
+  isBossAWriteAction,
+  matchBossASource,
+  resolveBossARules,
+} from './profile-projection/boss-a-matcher';
 
 /**
  * sdd-default 新旧对账（MVP-1，Task 14）。
@@ -33,6 +42,12 @@ async function main(): Promise<void> {
     );
     if (!runId) {
       throw new Error(`no current projection run for profile ${profileId}; run profile:rebuild first`);
+    }
+    if (profileId === BOSS_A_MONOREPO_PROFILE_ID) {
+      const report = await diffBossA(pool, profileId, runId);
+      console.info(JSON.stringify(report, null, 2));
+      if (report.gate === 'FAIL') process.exitCode = 1;
+      return;
     }
 
     // 桥接域：key-set 级对账。桥接 key = sha256(profileId:prefix:上游稳定 key)，
@@ -193,3 +208,187 @@ async function main(): Promise<void> {
 }
 
 void main();
+
+interface BossASourceRow extends RowDataPacket {
+  reference_key: string;
+  action_type: string;
+  normalized_locator: string | null;
+}
+
+interface BossADiffReport {
+  profileId: string;
+  runId: number;
+  sourceReferences: {
+    planWrites: number;
+    knowledgeReads: number;
+    frontendCode: number;
+    backendCode: number;
+    unknownInMonorepo: number;
+  };
+  projection: {
+    deliveryUnits: number;
+    artifacts: number;
+    artifactWrites: number;
+    capabilityUsages: number;
+    knowledgeRecalls: number;
+    codeActivities: number;
+  };
+  linkage: {
+    planWriteMissingArtifactWrite: number;
+    artifactWithoutDeliveryUnit: number;
+    knowledgeOrphanSourceRef: number;
+    codeOrphanSourceRef: number;
+    unknownCodeRepoKind: number;
+    ambiguousContext: number;
+  };
+  note: string;
+  gate: 'PASS' | 'FAIL';
+  gateFailures: string[];
+}
+
+async function diffBossA(
+  pool: Pool,
+  profileId: string,
+  runId: number,
+): Promise<BossADiffReport> {
+  const config = getProfileConfig(profileId);
+  if (!config) throw new Error(`profile config not found: ${profileId}`);
+  const rules = resolveBossARules(config);
+  const root = process.env.BOSS_A_MONOREPO_ROOT;
+  if (!root) throw new Error('BOSS_A_MONOREPO_ROOT is required for boss-a diff');
+  const normalizedRoot = normalizePath(root).replace(/\/+$/, '');
+
+  const [sourceRows] = await pool.query<BossASourceRow[]>(
+    `SELECT reference_key, action_type, normalized_locator
+     FROM source_references
+     WHERE locator_type='path' AND normalized_locator IS NOT NULL`,
+  );
+
+  const expectedArtifactWriteKeys = new Set<string>();
+  const sourceReferences = {
+    planWrites: 0,
+    knowledgeReads: 0,
+    frontendCode: 0,
+    backendCode: 0,
+    unknownInMonorepo: 0,
+  };
+
+  for (const row of sourceRows) {
+    const match = matchBossASource(row.normalized_locator, row.action_type, profileId, rules);
+    if (!match) {
+      if (row.normalized_locator && isInside(normalizePath(row.normalized_locator), normalizedRoot)) {
+        sourceReferences.unknownInMonorepo += 1;
+      }
+      continue;
+    }
+    if (match.sourceCategory === 'process_doc' && isBossAWriteAction(row.action_type)) {
+      sourceReferences.planWrites += 1;
+      expectedArtifactWriteKeys.add(bossAStableKey(profileId, 'artifact_write', row.reference_key));
+    } else if (match.sourceCategory === 'knowledge' && isBossAReadAction(row.action_type)) {
+      sourceReferences.knowledgeReads += 1;
+    } else if (match.sourceCategory === 'code' && match.code?.repoKind === 'frontend') {
+      sourceReferences.frontendCode += 1;
+    } else if (match.sourceCategory === 'code' && match.code?.repoKind === 'backend') {
+      sourceReferences.backendCode += 1;
+    }
+  }
+
+  const actualWriteKeys = await loadKeySet(pool, 'profile_artifact_writes', 'write_key', runId);
+  const planWriteMissingArtifactWrite = Array.from(expectedArtifactWriteKeys)
+    .filter((key) => !actualWriteKeys.has(key)).length;
+
+  const projection = {
+    deliveryUnits: await countRun(pool, 'profile_delivery_units', runId),
+    artifacts: await countRun(pool, 'profile_artifacts', runId),
+    artifactWrites: await countRun(pool, 'profile_artifact_writes', runId),
+    capabilityUsages: await countRun(pool, 'profile_capability_usages', runId),
+    knowledgeRecalls: await countRun(pool, 'profile_knowledge_recalls', runId),
+    codeActivities: await countRun(pool, 'profile_code_activities', runId),
+  };
+
+  const linkage = {
+    planWriteMissingArtifactWrite,
+    artifactWithoutDeliveryUnit: await scalar(
+      pool,
+      `SELECT COUNT(*) AS v FROM profile_artifacts WHERE projection_run_id=? AND delivery_unit_id IS NULL`,
+      [runId],
+    ),
+    knowledgeOrphanSourceRef: await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_knowledge_recalls k
+       LEFT JOIN source_references s ON s.reference_key = k.source_reference_key
+       WHERE k.projection_run_id=? AND s.reference_key IS NULL`,
+      [runId],
+    ),
+    codeOrphanSourceRef: await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_code_activities c
+       LEFT JOIN source_references s ON s.reference_key = c.source_reference_key
+       WHERE c.projection_run_id=? AND s.reference_key IS NULL`,
+      [runId],
+    ),
+    unknownCodeRepoKind: await scalar(
+      pool,
+      `SELECT COUNT(*) AS v
+       FROM profile_code_activities
+       WHERE projection_run_id=? AND (repo_kind IS NULL OR repo_kind='unknown')`,
+      [runId],
+    ),
+    ambiguousContext: await scalar(
+      pool,
+      `SELECT SUM(v) AS v FROM (
+         SELECT COUNT(*) AS v FROM profile_knowledge_recalls
+         WHERE projection_run_id=? AND JSON_EXTRACT(evidence_json, '$.ambiguous') = true
+         UNION ALL
+         SELECT COUNT(*) AS v FROM profile_code_activities
+         WHERE projection_run_id=? AND JSON_EXTRACT(evidence_json, '$.ambiguous') = true
+       ) t`,
+      [runId, runId],
+    ),
+  };
+
+  const gateFailures: string[] = [];
+  if (linkage.planWriteMissingArtifactWrite !== 0) gateFailures.push(`plan write missing artifact write=${linkage.planWriteMissingArtifactWrite}`);
+  if (linkage.artifactWithoutDeliveryUnit !== 0) gateFailures.push(`artifact without delivery_unit_id=${linkage.artifactWithoutDeliveryUnit}`);
+  if (linkage.knowledgeOrphanSourceRef !== 0) gateFailures.push(`knowledge orphan source ref=${linkage.knowledgeOrphanSourceRef}`);
+  if (linkage.codeOrphanSourceRef !== 0) gateFailures.push(`code orphan source ref=${linkage.codeOrphanSourceRef}`);
+  if (linkage.unknownCodeRepoKind !== 0) gateFailures.push(`unknown code repo kind=${linkage.unknownCodeRepoKind}`);
+
+  return {
+    profileId,
+    runId,
+    sourceReferences,
+    projection,
+    linkage,
+    note: 'Boss A diff is an internal consistency gate, not an independent legacy parity check; manually sample real paths before demo.',
+    gate: gateFailures.length === 0 ? 'PASS' : 'FAIL',
+    gateFailures,
+  };
+}
+
+async function countRun(pool: Pool, table: string, runId: number): Promise<number> {
+  return scalar(pool, `SELECT COUNT(*) AS v FROM \`${table}\` WHERE projection_run_id=?`, [runId]);
+}
+
+async function loadKeySet(
+  pool: Pool,
+  table: string,
+  keyColumn: string,
+  runId: number,
+): Promise<Set<string>> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT \`${keyColumn}\` AS k FROM \`${table}\` WHERE projection_run_id=?`,
+    [runId],
+  );
+  return new Set(rows.map((row) => String(row.k)));
+}
+
+function normalizePath(value: string): string {
+  return path.posix.normalize(value.replace(/\\/g, '/'));
+}
+
+function isInside(locator: string, root: string): boolean {
+  return locator === root || locator.startsWith(`${root}/`);
+}

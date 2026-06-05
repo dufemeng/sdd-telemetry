@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileUsers } from '@/pages/profiles/useProfiles';
+import { useProfileHiddenMetrics, useProfileUsers } from '@/pages/profiles/useProfiles';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
@@ -192,6 +192,8 @@ function daysSince(ts: string | null, now: number): number | null {
 
 export default function UsersPage() {
   const { profileId } = useShellContext();
+  const hiddenMetrics = useProfileHiddenMetrics(profileId);
+  const showMaturity = !hiddenMetrics.has('maturity');
   const usersQuery = useProfileUsers(profileId, { pageSize: 200 });
   const rawData: ProfileUserItem[] = usersQuery.data?.items ?? [];
   const isLoading = usersQuery.isLoading;
@@ -212,6 +214,10 @@ export default function UsersPage() {
   const avgMaturity = total > 0
     ? rawData.reduce((s, u) => s + maturityReached(u), 0) / total
     : 0;
+  const userTableHeaders = showMaturity
+    ? ['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃']
+    : ['成员', '状态', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃'];
+  const userTableColumnCount = userTableHeaders.length;
 
   // 漏斗：起点为团队规模，往下是各 SDD 阶段走到的人数。形状相对全队收窄，并标出相邻段绝对流失最多的一步
   const funnelRows = [
@@ -290,8 +296,11 @@ export default function UsersPage() {
   return (
     <div className="grid gap-3">
 
-      {/* Section 1: KPI (4) */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* Section 1: KPI */}
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: `repeat(${showMaturity ? 4 : 3}, minmax(0, 1fr))` }}
+      >
 
         {/* 团队规模 + 三态 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
@@ -355,38 +364,39 @@ export default function UsersPage() {
           </div>
         </section>
 
-        {/* 平均采用成熟度 */}
-        <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
-          <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
-            <Layers size={18} />
-          </div>
-          <div className="flex flex-col justify-between">
-            <span className="text-[12px] text-[var(--color-secondary)]">平均采用成熟度</span>
-            <div>
-              <div className="flex items-baseline gap-1 mb-[6px]">
-                <span className="text-[24px] font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
-                  {isLoading ? '—' : avgMaturity.toFixed(1)}
-                </span>
-                <span className="text-[13px] text-[var(--color-muted)]">&nbsp;/ 4 阶段</span>
-              </div>
-              <div className="flex gap-[5px]">
-                {SDD_STAGES.map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-full"
-                    style={{
-                      width: 8,
-                      height: 8,
-                      background: i < Math.round(avgMaturity) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
-                      opacity: i === Math.floor(avgMaturity) && avgMaturity % 1 > 0 ? 0.5 : 1,
-                    }}
-                  />
-                ))}
-              </div>
+        {showMaturity ? (
+          <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
+            <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX_STYLE}>
+              <Layers size={18} />
             </div>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">满分 4（完整 SDD 链路）</em>
-          </div>
-        </section>
+            <div className="flex flex-col justify-between">
+              <span className="text-[12px] text-[var(--color-secondary)]">平均采用成熟度</span>
+              <div>
+                <div className="flex items-baseline gap-1 mb-[6px]">
+                  <span className="text-[24px] font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
+                    {isLoading ? '—' : avgMaturity.toFixed(1)}
+                  </span>
+                  <span className="text-[13px] text-[var(--color-muted)]">&nbsp;/ 4 阶段</span>
+                </div>
+                <div className="flex gap-[5px]">
+                  {SDD_STAGES.map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-full"
+                      style={{
+                        width: 8,
+                        height: 8,
+                        background: i < Math.round(avgMaturity) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
+                        opacity: i === Math.floor(avgMaturity) && avgMaturity % 1 > 0 ? 0.5 : 1,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <em className="text-[11px] not-italic text-[var(--color-muted)]">满分 4（完整 SDD 链路）</em>
+            </div>
+          </section>
+        ) : null}
 
         {/* 流失成员 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
@@ -410,6 +420,7 @@ export default function UsersPage() {
       <div className="grid grid-cols-3 gap-3">
 
         {/* SDD 阶段渗透：相对第一步收窄的漏斗 */}
+        {showMaturity ? (
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
@@ -474,9 +485,10 @@ export default function UsersPage() {
             })}
           </div>
         </section>
+        ) : null}
 
         {/* 转冷预警：早期挽回信号，区别于已流失 */}
-        <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE }>
+        <section className={`${showMaturity ? '' : 'col-span-3'} rounded-[6px] overflow-hidden`} style={CARD_STYLE }>
           <div
             className="flex items-center gap-2 px-[14px] py-3"
             style={{ borderBottom: '1px solid var(--color-border)' }}
@@ -569,9 +581,11 @@ export default function UsersPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={u.status} isNew={u.isNew} />
-                        <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                          {depth}/4
-                        </span>
+                        {showMaturity ? (
+                          <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                            {depth}/4
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -641,7 +655,7 @@ export default function UsersPage() {
           <table className="w-full" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃'].map((h) => (
+                {userTableHeaders.map((h) => (
                   <th
                     key={h}
                     className="px-[12px] py-[8px] text-left text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)]"
@@ -655,7 +669,7 @@ export default function UsersPage() {
             <tbody>
               {pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
+                  <td colSpan={userTableColumnCount} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
                     {debouncedSearch ? '无匹配成员' : '暂无数据'}
                   </td>
                 </tr>
@@ -689,10 +703,11 @@ export default function UsersPage() {
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                         <StatusBadge status={u.status} isNew={u.isNew} />
                       </td>
-                      {/* SDD 成熟度 */}
-                      <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        <DepthDots stages={u.capabilityStages} />
-                      </td>
+                      {showMaturity ? (
+                        <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
+                          <DepthDots stages={u.capabilityStages} />
+                        </td>
+                      ) : null}
                       {/* 工作项 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                         {u.deliveryUnitCount > 0 ? (

@@ -4,7 +4,7 @@ import { requestData } from '@/api/client';
 
 export type UserArtifactWrite = SddArtifactWrite & { artifactId: string };
 
-export function useUserArtifactWrites(workItemId: string | null, userId: string | undefined) {
+export function useUserArtifactWrites(workItemId: string | null, userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ['user-artifact-writes', workItemId, userId],
     queryFn: async (): Promise<UserArtifactWrite[]> => {
@@ -33,7 +33,7 @@ export function useUserArtifactWrites(workItemId: string | null, userId: string 
       });
       return merged;
     },
-    enabled: workItemId !== null,
+    enabled: enabled && workItemId !== null,
     staleTime: 30_000,
   });
 }

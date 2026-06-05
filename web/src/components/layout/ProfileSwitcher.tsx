@@ -48,10 +48,15 @@ export function ProfileSwitcher({ profileId, onProfileChange }: ProfileSwitcherP
           {(profiles ?? []).map((p) => (
             <button
               key={p.profileId}
-              onClick={() => { onProfileChange(p.profileId); setOpen(false); }}
-              className="flex items-center justify-between w-full px-3 h-8 text-[12px] border-0 bg-transparent cursor-pointer text-[var(--color-secondary)] hover:bg-[#222] hover:text-[var(--color-primary)] transition-colors duration-[120ms]"
+              onClick={() => {
+                if (p.status === 'disabled') return;
+                onProfileChange(p.profileId);
+                setOpen(false);
+              }}
+              disabled={p.status === 'disabled'}
+              className="flex items-center justify-between w-full px-3 h-8 text-[12px] border-0 bg-transparent cursor-pointer text-[var(--color-secondary)] hover:bg-[#222] hover:text-[var(--color-primary)] transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <span className="truncate">{p.displayName}</span>
+              <span className="truncate">{p.displayName}{p.status === 'disabled' ? '（未配置）' : ''}</span>
               {p.profileId === profileId && <Check size={14} className="text-emerald-400 shrink-0" />}
             </button>
           ))}
