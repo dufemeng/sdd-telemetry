@@ -192,7 +192,7 @@ function daysSince(ts: string | null, now: number): number | null {
 
 export default function UsersPage() {
   const { profileId } = useShellContext();
-  const usersQuery = useProfileUsers(profileId, {});
+  const usersQuery = useProfileUsers(profileId, { pageSize: 500 });
   const rawData: ProfileUserItem[] = usersQuery.data?.items ?? [];
   const isLoading = usersQuery.isLoading;
   const [search, setSearch] = useState('');

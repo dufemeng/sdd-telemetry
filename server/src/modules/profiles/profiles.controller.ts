@@ -167,6 +167,9 @@ export class ProfilesController {
     const data = await this.profilesService.listKnowledgeRecalls(profileId, {
       page: query.page,
       pageSize: query.pageSize,
+      ...(query.deliveryUnitId ? { deliveryUnitId: query.deliveryUnitId } : {}),
+      ...(query.userId ? { userId: query.userId } : {}),
+      ...(query.capabilityUsageId ? { capabilityUsageId: query.capabilityUsageId } : {}),
     });
     return ok(parseWithSchema(ProfileKnowledgeRecallListResponseSchema, data));
   }

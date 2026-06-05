@@ -129,7 +129,8 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              0 AS error_count
+              (SELECT COUNT(*) FROM sdd_errors e
+                WHERE e.work_item_id = du.id) AS error_count
        FROM profile_delivery_units du
        ${whereSql(clauses)}
        ORDER BY du.last_seen_at DESC, du.id DESC`,
@@ -168,7 +169,8 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              0 AS error_count
+              (SELECT COUNT(*) FROM sdd_errors e
+                WHERE e.work_item_id = du.id) AS error_count
        FROM profile_delivery_units du
        WHERE du.profile_id = ? AND du.projection_run_id = ? AND du.id = ?
        LIMIT 1`,
@@ -324,8 +326,8 @@ export class ProfileProjectionRepository {
            COUNT(*) AS usage_count,
            COUNT(DISTINCT cu.user_id) AS active_user_count,
            COUNT(DISTINCT cu.delivery_unit_id) AS covered_delivery_unit_count,
-           SUM(CASE WHEN cu.trigger_source = 'user' THEN 1 ELSE 0 END) AS user_triggered_count,
-           SUM(CASE WHEN cu.trigger_source = 'auto' THEN 1 ELSE 0 END) AS auto_triggered_count
+            SUM(CASE WHEN cu.capability_source = 'user' THEN 1 ELSE 0 END) AS user_triggered_count,
+            SUM(CASE WHEN cu.capability_source = 'auto' THEN 1 ELSE 0 END) AS auto_triggered_count
          FROM profile_capability_usages cu
          ${whereSql(clauses)}`,
         params,
@@ -486,7 +488,7 @@ export class ProfileProjectionRepository {
        ${whereSql(clauses)}
        GROUP BY bucket_ts
        ORDER BY bucket_ts ASC`,
-      [bucketSeconds, bucketSeconds, ...params.slice(2)],
+      [bucketSeconds, bucketSeconds, ...params],
     )) as Array<Record<string, unknown>>;
 
     return {
@@ -657,68 +659,71 @@ export class ProfileProjectionRepository {
     query: ProfileUsersQuery,
   ): Promise<{ items: ProfileUserItem[]; total: number }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses = ['u.profile_id = ?', 'u.projection_run_id = ?'];
-    const params: unknown[] = [profileId, runId];
-    addTimeRangeWhere(clauses, params, 'u.last_seen_at', query);
-
-    if (query.status && query.status !== 'live' && query.status !== 'cold' && query.status !== 'churn') {
-      // no-op
-    }
-    if (query.keyword) {
-      clauses.push('(u.display_name LIKE ? OR u.user_key LIKE ?)');
-      const kw = `%${query.keyword}%`;
-      params.push(kw, kw);
-    }
+    const aggClauses = ['agg.profile_id = ?', 'agg.projection_run_id = ?'];
+    const aggParams: unknown[] = [profileId, runId];
 
     const offset = (query.page - 1) * query.pageSize;
 
     const countRows = (await dataSource.query(
-      `SELECT COUNT(*) AS v FROM profile_users u ${whereSql(clauses)}`,
-      params,
+      `SELECT COUNT(DISTINCT user_id) AS v
+       FROM (
+         SELECT user_id FROM profile_capability_usages WHERE profile_id = ? AND projection_run_id = ?
+         UNION SELECT user_id FROM profile_artifact_writes WHERE profile_id = ? AND projection_run_id = ?
+         UNION SELECT user_id FROM profile_knowledge_recalls WHERE profile_id = ? AND projection_run_id = ?
+         UNION SELECT user_id FROM profile_code_activities WHERE profile_id = ? AND projection_run_id = ?
+       ) u`,
+      [profileId, runId, profileId, runId, profileId, runId, profileId, runId],
     )) as Array<Record<string, unknown>>;
 
-    const rows = (await dataSource.query(
-      `SELECT u.id, u.user_key, u.install_id, u.display_name, u.machine_id, u.machine_name,
-              u.first_seen_at, u.last_seen_at,
-              (SELECT COUNT(*) FROM profile_capability_usages cu
-                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id) AS capability_usage_count,
-              (SELECT COUNT(DISTINCT cu.interaction_id) FROM profile_capability_usages cu
-                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.interaction_id IS NOT NULL) AS interaction_count,
-              (SELECT COUNT(DISTINCT cu.delivery_unit_id) FROM profile_capability_usages cu
-                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.delivery_unit_id IS NOT NULL) AS delivery_unit_count,
-              (SELECT GROUP_CONCAT(DISTINCT cu.capability_code) FROM profile_capability_usages cu
-                WHERE cu.projection_run_id = u.projection_run_id AND cu.user_id = u.id AND cu.capability_code IS NOT NULL) AS capability_stages,
-              (SELECT COUNT(*) FROM profile_artifacts a
-                WHERE a.projection_run_id = u.projection_run_id AND a.user_id = u.id) AS artifact_count,
-              (SELECT COUNT(*) FROM profile_knowledge_recalls kr
-                WHERE kr.projection_run_id = u.projection_run_id AND kr.user_id = u.id) AS knowledge_recall_count,
-              (SELECT COUNT(*) FROM profile_code_activities ca
-                WHERE ca.projection_run_id = u.projection_run_id AND ca.user_id = u.id AND ca.action_type IN ('write','edit','update')) AS code_write_count,
-              (SELECT COUNT(*) FROM profile_code_activities ca
-                WHERE ca.projection_run_id = u.projection_run_id AND ca.user_id = u.id AND ca.action_type IN ('read','grep','glob')) AS code_read_count
-       FROM profile_users u
-       ${whereSql(clauses)}
-       ORDER BY u.last_seen_at DESC, u.id DESC
+    const aggRows = (await dataSource.query(
+      `SELECT agg.user_id,
+              su.user_key, su.user_name AS display_name, su.install_id, su.machine_id, su.machine_name,
+              su.first_seen_at, su.last_seen_at,
+              agg.capability_usage_count, agg.interaction_count, agg.delivery_unit_count,
+              agg.capability_stages, agg.artifact_count, agg.knowledge_recall_count,
+              agg.code_write_count, agg.code_read_count
+       FROM (
+         SELECT cu.user_id,
+                COUNT(*) AS capability_usage_count,
+                COUNT(DISTINCT cu.interaction_id) AS interaction_count,
+                COUNT(DISTINCT cu.delivery_unit_id) AS delivery_unit_count,
+                GROUP_CONCAT(DISTINCT cu.capability_code) AS capability_stages,
+                (SELECT COUNT(*) FROM profile_artifacts a
+                  WHERE a.projection_run_id = cu.projection_run_id AND a.user_id = cu.user_id) AS artifact_count,
+                (SELECT COUNT(*) FROM profile_knowledge_recalls kr
+                  WHERE kr.projection_run_id = cu.projection_run_id AND kr.user_id = cu.user_id) AS knowledge_recall_count,
+                (SELECT COUNT(*) FROM profile_code_activities ca
+                  WHERE ca.projection_run_id = cu.projection_run_id AND ca.user_id = ca.user_id AND ca.action_type IN ('write','edit','update')) AS code_write_count,
+                (SELECT COUNT(*) FROM profile_code_activities ca
+                  WHERE ca.projection_run_id = cu.projection_run_id AND ca.user_id = cu.user_id AND ca.action_type IN ('read','grep','glob')) AS code_read_count
+         FROM profile_capability_usages cu
+         WHERE cu.profile_id = ? AND cu.projection_run_id = ?
+         GROUP BY cu.user_id
+       ) agg
+       JOIN sdd_users su ON su.id = agg.user_id
+       ORDER BY su.last_seen_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, query.pageSize, offset],
+      [profileId, runId, query.pageSize, offset],
     )) as Array<Record<string, unknown>>;
 
-    const items: ProfileUserItem[] = rows.map((row) => {
+    const now = Date.now();
+    const coldMs = 7 * 86_400_000;
+    const churnMs = 30 * 86_400_000;
+    const newMs = 14 * 86_400_000;
+
+    const items: ProfileUserItem[] = aggRows.map((row) => {
       const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : 0;
       const firstSeen = row.first_seen_at ? new Date(String(row.first_seen_at)).getTime() : 0;
-      const now = Date.now();
-      const liveThreshold = 14 * 86_400_000;
-      const churnThreshold = 60 * 86_400_000;
 
       let status: 'live' | 'cold' | 'churn' = 'cold';
-      if (lastSeen > 0 && now - lastSeen <= liveThreshold) status = 'live';
-      else if (lastSeen === 0 || now - lastSeen > churnThreshold) status = 'churn';
+      if (lastSeen > 0 && now - lastSeen <= coldMs) status = 'live';
+      else if (lastSeen === 0 || now - lastSeen > churnMs) status = 'churn';
 
       const rampDays = firstSeen > 0 ? Math.round((now - firstSeen) / 86_400_000) : null;
-      const isNew = firstSeen > 0 && now - firstSeen <= 30 * 86_400_000;
+      const isNew = firstSeen > 0 && now - firstSeen <= newMs;
 
       return {
-        id: toStringId(row.id),
+        id: toStringId(row.user_id),
         userKey: String(row.user_key ?? ''),
         installId: (row.install_id as string | null) ?? null,
         displayName: (row.display_name as string | null) ?? null,
@@ -751,12 +756,12 @@ export class ProfileProjectionRepository {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
 
     const userRows = (await dataSource.query(
-      `SELECT u.id, u.user_key, u.install_id, u.display_name, u.machine_id, u.machine_name,
-              u.first_seen_at, u.last_seen_at
-       FROM profile_users u
-       WHERE u.profile_id = ? AND u.projection_run_id = ? AND u.id = ?
+      `SELECT su.id, su.user_key, su.install_id, su.user_name AS display_name, su.machine_id, su.machine_name,
+              su.first_seen_at, su.last_seen_at
+       FROM sdd_users su
+       WHERE su.id = ?
        LIMIT 1`,
-      [profileId, runId, userId],
+      [userId],
     )) as Array<Record<string, unknown>>;
 
     if (userRows.length === 0) return null;
@@ -765,14 +770,15 @@ export class ProfileProjectionRepository {
     const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : 0;
     const firstSeen = row.first_seen_at ? new Date(String(row.first_seen_at)).getTime() : 0;
     const now = Date.now();
-    const liveThreshold = 14 * 86_400_000;
-    const churnThreshold = 60 * 86_400_000;
+    const coldMs = 7 * 86_400_000;
+    const churnMs = 30 * 86_400_000;
+    const newMs = 14 * 86_400_000;
 
     let status: 'live' | 'cold' | 'churn' = 'cold';
-    if (lastSeen > 0 && now - lastSeen <= liveThreshold) status = 'live';
-    else if (lastSeen === 0 || now - lastSeen > churnThreshold) status = 'churn';
+    if (lastSeen > 0 && now - lastSeen <= coldMs) status = 'live';
+    else if (lastSeen === 0 || now - lastSeen > churnMs) status = 'churn';
 
-    const isNew = firstSeen > 0 && now - firstSeen <= 30 * 86_400_000;
+    const isNew = firstSeen > 0 && now - firstSeen <= newMs;
     const rampDays = firstSeen > 0 ? Math.round((now - firstSeen) / 86_400_000) : null;
 
     const [summaryRows, deliveryUnitRows, maturityRows] = await Promise.all([
@@ -900,29 +906,25 @@ export class ProfileProjectionRepository {
   private computeMaturityStages(user: ProfileUserItem): ProfileUserMaturityStage[] {
     const stages: ProfileUserMaturityStage[] = [];
     const now = new Date().toISOString();
-    if (user.capabilityUsageCount > 0) {
-      stages.push({ stage: 'first_capability_use', firstReachedAt: user.firstSeenAt ?? now });
-    }
-    if (user.deliveryUnitCount > 0) {
-      stages.push({ stage: 'first_delivery_contribution', firstReachedAt: user.firstSeenAt ?? now });
-    }
-    if (user.knowledgeRecallCount > 0) {
-      stages.push({ stage: 'first_knowledge_recall', firstReachedAt: user.firstSeenAt ?? now });
-    }
-    if (user.codeWriteCount > 0) {
-      stages.push({ stage: 'first_code_write', firstReachedAt: user.firstSeenAt ?? now });
+    const codes = user.capabilityStages;
+    const stageMap: Record<string, string> = {
+      proposal: 'proposal', design: 'design', task: 'task', codereview: 'codereview',
+    };
+    for (const code of codes) {
+      const stage = stageMap[code];
+      if (stage) stages.push({ stage, firstReachedAt: user.firstSeenAt ?? now });
     }
     return stages;
   }
 
   private computeMaturityCompletion(user: ProfileUserItem): number {
-    const total = 4;
+    const SDD_MATURITY_STAGES = ['proposal', 'design', 'task', 'codereview'];
+    const codes = new Set(user.capabilityStages);
     let reached = 0;
-    if (user.capabilityUsageCount > 0) reached++;
-    if (user.deliveryUnitCount > 0) reached++;
-    if (user.knowledgeRecallCount > 0) reached++;
-    if (user.codeWriteCount > 0) reached++;
-    return reached / total;
+    for (const stage of SDD_MATURITY_STAGES) {
+      if (codes.has(stage)) reached++;
+    }
+    return reached / SDD_MATURITY_STAGES.length;
   }
 
   // ── Knowledge ───────────────────────────────────────────────────────────────
@@ -936,9 +938,9 @@ export class ProfileProjectionRepository {
     const totalsRows = (await dataSource.query(
       `SELECT
          COUNT(*) AS total_docs,
-         COUNT(DISTINCT CASE WHEN kr.id IS NOT NULL THEN kr.knowledge_relative_path END) AS recalled_docs,
-         COUNT(*) AS recalls,
-         COUNT(DISTINCT CASE WHEN kr.knowledge_relative_path IS NOT NULL THEN kr.knowledge_relative_path END) AS distinct_recalled,
+          COUNT(DISTINCT CASE WHEN kr.id IS NOT NULL THEN kr.knowledge_locator END) AS recalled_docs,
+          COUNT(*) AS recalls,
+          COUNT(DISTINCT CASE WHEN kr.knowledge_locator IS NOT NULL THEN kr.knowledge_locator END) AS distinct_recalled,
          0 AS cold_docs,
          0 AS dead_docs,
          0 AS new_unread_docs,
@@ -955,9 +957,9 @@ export class ProfileProjectionRepository {
 
     const domainRows = (await dataSource.query(
       `SELECT
-         COALESCE(kr.knowledge_domain, 'unknown') AS domain,
-         COUNT(*) AS total_docs,
-         COUNT(DISTINCT kr.knowledge_relative_path) AS recalled_docs,
+          COALESCE(kr.knowledge_domain, 'unknown') AS domain,
+          COUNT(*) AS total_docs,
+          COUNT(DISTINCT kr.knowledge_locator) AS recalled_docs,
          COUNT(*) AS recalls,
          0 AS dead_docs,
          0 AS new_unread_docs,
@@ -1055,13 +1057,13 @@ export class ProfileProjectionRepository {
     const rows = (await dataSource.query(
       `SELECT kr.id, kr.tool_call_id, kr.interaction_id, kr.capability_usage_id,
               kr.delivery_unit_id, kr.user_id,
-              u.display_name AS user_name,
-              kr.action_type, kr.raw_locator,
-              kr.knowledge_relative_path, kr.knowledge_domain,
+              su.user_name AS user_name,
+              kr.action_type, kr.knowledge_locator,
+              kr.knowledge_domain,
               kr.knowledge_axis, kr.knowledge_system,
-              kr.event_sequence, kr.event_time
+              kr.event_time
        FROM profile_knowledge_recalls kr
-       LEFT JOIN profile_users u ON u.id = kr.user_id AND u.projection_run_id = kr.projection_run_id
+       LEFT JOIN sdd_users su ON su.id = kr.user_id
        ${whereSql(clauses)}
        ORDER BY kr.event_time DESC, kr.id DESC
        LIMIT ? OFFSET ?`,
@@ -1077,12 +1079,12 @@ export class ProfileProjectionRepository {
       userId: row.user_id == null ? null : toStringId(row.user_id),
       userName: (row.user_name as string | null) ?? null,
       actionType: String(row.action_type ?? ''),
-      rawLocator: (row.raw_locator as string | null) ?? null,
-      knowledgeRelativePath: (row.knowledge_relative_path as string | null) ?? null,
+      rawLocator: (row.knowledge_locator as string | null) ?? null,
+      knowledgeRelativePath: (row.knowledge_locator as string | null) ?? null,
       knowledgeDomain: (row.knowledge_domain as string | null) ?? null,
       knowledgeAxis: (row.knowledge_axis as string | null) ?? null,
       knowledgeSystem: (row.knowledge_system as string | null) ?? null,
-      eventSequence: row.event_sequence == null ? null : toNumber(row.event_sequence),
+      eventSequence: null,
       eventTime: toIsoDate(row.event_time),
     }));
 

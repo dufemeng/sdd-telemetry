@@ -349,7 +349,30 @@ export class ProfilesService {
       }
     }
 
-    throw new ApiHttpError(501, 'UNSUPPORTED', 'users not available via legacy source');
+    const sddUsers = await this.sddQueryService.listUsers();
+    const now = Date.now();
+    const items: ProfileUserItem[] = sddUsers.map((u) => ({
+      id: u.id,
+      userKey: u.userKey,
+      installId: u.installId,
+      displayName: u.userName,
+      machineId: u.machineId,
+      machineName: u.machineName,
+      firstSeenAt: u.firstSeenAt,
+      lastSeenAt: u.lastSeenAt,
+      capabilityUsageCount: u.skillUsageCount,
+      interactionCount: u.interactionCount,
+      deliveryUnitCount: u.workItemCount,
+      capabilityStages: u.semanticStages,
+      status: u.status,
+      isNew: u.isNew,
+      artifactCount: u.artifactCount,
+      knowledgeRecallCount: 0,
+      codeWriteCount: u.codeWriteCount,
+      codeReadCount: u.codeReadCount,
+      rampDays: u.rampDays,
+    }));
+    return { items, total: items.length, page: query.page, pageSize: query.pageSize };
   }
 
   async getUserDetail(
@@ -370,7 +393,41 @@ export class ProfilesService {
       }
     }
 
-    throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
+    const sddDetail = await this.sddQueryService.getUserDetail(userId);
+    if (!sddDetail) throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
+    const u = sddDetail.user;
+    return {
+      user: {
+        id: u.id, userKey: u.userKey, installId: u.installId,
+        displayName: u.userName, machineId: u.machineId, machineName: u.machineName,
+        firstSeenAt: u.firstSeenAt, lastSeenAt: u.lastSeenAt,
+        capabilityUsageCount: u.skillUsageCount, interactionCount: u.interactionCount,
+        deliveryUnitCount: u.workItemCount, capabilityStages: u.semanticStages,
+        status: u.status, isNew: u.isNew, artifactCount: u.artifactCount,
+        knowledgeRecallCount: 0, codeWriteCount: u.codeWriteCount, codeReadCount: u.codeReadCount,
+        rampDays: u.rampDays,
+      },
+      summary: {
+        deliveryUnitCount: sddDetail.summary.workItemCount,
+        artifactCount: sddDetail.summary.artifactCount,
+        turnCount: sddDetail.summary.turnCount,
+        sessionCount: sddDetail.summary.sessionCount,
+        knowledgeRecallCount: 0,
+        codeWriteCount: sddDetail.summary.codeWriteCount,
+        codeReadCount: sddDetail.summary.codeReadCount,
+      },
+      maturity: {
+        stages: sddDetail.maturity.stages,
+        completionRate: sddDetail.maturity.completionRate,
+        rampDays: sddDetail.maturity.rampDays,
+      },
+      deliveryUnits: sddDetail.workItems.map((wi) => ({
+        deliveryUnitId: wi.workItemId,
+        title: wi.title,
+        stageCodes: wi.stageCodes,
+        lastActivityAt: wi.lastActivityAt,
+      })),
+    };
   }
 
   async getKnowledgeCoverage(
@@ -440,7 +497,7 @@ export class ProfilesService {
 
   async listKnowledgeRecalls(
     profileId: string,
-    params: { page: number; pageSize: number; deliveryUnitId?: string; userId?: string },
+    params: { page: number; pageSize: number; deliveryUnitId?: string; userId?: string; capabilityUsageId?: string },
   ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
     this.requireProfile(profileId);
 

@@ -423,6 +423,9 @@ export type ProfileKnowledgeCoverageResponse = z.infer<
 
 export const ProfileKnowledgeTimelineQuerySchema = TimeRangeQuerySchema.extend({
   range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
+  granularity: z.enum(['day', 'hour']).optional(),
+  groupBy: z.enum(['domain', 'axis']).optional(),
+  wikiDomain: z.string().optional(),
 });
 export type ProfileKnowledgeTimelineQuery = z.infer<typeof ProfileKnowledgeTimelineQuerySchema>;
 
@@ -443,6 +446,9 @@ export type ProfileKnowledgeTimelineResponse = z.infer<
 export const ProfileKnowledgeListQuerySchema = TimeRangeQuerySchema.extend({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  deliveryUnitId: IdSchema.optional(),
+  userId: IdSchema.optional(),
+  capabilityUsageId: IdSchema.optional(),
 });
 export type ProfileKnowledgeListQuery = z.infer<typeof ProfileKnowledgeListQuerySchema>;
 
