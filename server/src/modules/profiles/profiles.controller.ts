@@ -16,6 +16,7 @@ import {
   ProfileDemandQuerySchema,
   ProfileKnowledgeCoverageQuerySchema,
   ProfileKnowledgeCoverageResponseSchema,
+  ProfileKnowledgeDeliveryUnitRankingQuerySchema,
   ProfileKnowledgeDeliveryUnitRankingResponseSchema,
   ProfileKnowledgeListQuerySchema,
   ProfileKnowledgeRecallListResponseSchema,
@@ -156,7 +157,7 @@ export class ProfilesController {
   async knowledgeTimeline() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileKnowledgeTimelineQuerySchema, this.ctx.query);
-    const data = await this.profilesService.getKnowledgeTimeline(profileId, query.range);
+    const data = await this.profilesService.getKnowledgeTimeline(profileId, query);
     return ok(parseWithSchema(ProfileKnowledgeTimelineResponseSchema, data));
   }
 
@@ -165,6 +166,7 @@ export class ProfilesController {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileKnowledgeListQuerySchema, this.ctx.query);
     const data = await this.profilesService.listKnowledgeRecalls(profileId, {
+      range: query.range,
       page: query.page,
       pageSize: query.pageSize,
       ...(query.deliveryUnitId ? { deliveryUnitId: query.deliveryUnitId } : {}),
@@ -177,7 +179,8 @@ export class ProfilesController {
   @Get('/:profileId/knowledge/delivery-units')
   async knowledgeDeliveryUnits() {
     const profileId = this.ctx.params.profileId as string;
-    const data = await this.profilesService.getKnowledgeDeliveryUnitRanking(profileId);
+    const query = parseWithSchema(ProfileKnowledgeDeliveryUnitRankingQuerySchema, this.ctx.query);
+    const data = await this.profilesService.getKnowledgeDeliveryUnitRanking(profileId, query);
     return ok(parseWithSchema(ProfileKnowledgeDeliveryUnitRankingResponseSchema, data));
   }
 }

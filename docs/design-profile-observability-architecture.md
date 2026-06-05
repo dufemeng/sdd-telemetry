@@ -690,6 +690,7 @@ profile_code_activities
 | `capability_code` | profile 内稳定能力编码 |
 | `display_name` | 展示名 |
 | `capability_source` | skill / command / mcp_tool / subagent |
+| `trigger_source` | 用户触发 / 自动触发来源；`sdd-default` 对齐 `sdd_skill_usages.invocation_trigger` |
 | `status` | started / completed / failed / unknown |
 | `event_time` | 时间 |
 | `matched_rule_id` / `confidence` / `evidence_json` / `rule_version` | 证据 |

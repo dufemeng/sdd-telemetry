@@ -559,8 +559,10 @@ key 规则：桥接输入使用 `sdd_skill_usages.usage_key`，不得使用 `sdd
 | --- | --- |
 | `raw_skill_name` | `raw_capability_name` |
 | `semantic_code` | `capability_code` |
+| `skill_source` | `capability_source` |
+| `invocation_trigger` | `trigger_source` |
 | `interaction_id` | `interaction_id` |
-| `work_item_id` | 后续映射为 `delivery_unit_id` |
+| `work_item_id` | 通过当前 run 的 `profile_delivery_units` registry 映射为 `delivery_unit_id` |
 | `status` | `status` |
 | `event_time` | `event_time` |
 
@@ -1104,7 +1106,7 @@ MVP-1 完成必须同时满足：
 
 ### 16.3 未完成（增量，不阻塞主干）
 
-- **Task 20 四大看板取数（进行中）**：产出分析 `/demands` 端点 + hook 已就位（上面）；但 WorkItemsPage 全量接入需「调用次数」按 delivery_unit 聚合，依赖 **capability→delivery 链路**（桥接当前 `profile_capability_usages.delivery_unit_id` 为空），属前置增量。知识库/能力/用户三大看板端点（`/knowledge/coverage`、`/capabilities/analytics`、`/users`）尚未做。需求详情 + artifact timeline 下钻端点（§11.5）尚未做。按「逐步接入」推进。
+- **Task 20 四大看板取数（MVP-1 收口时未完成）**：MVP-1 结束时产出分析 `/demands` 端点 + hook 已就位；但 WorkItemsPage 全量接入仍依赖后续补齐 **capability→delivery 链路** 和四大看板 contract 覆盖。该增量已转入 `docs/tasks-profile-contract-coverage.md` 跟进。
 - **§13 完成定义**：第 1–9、11 项已满足；第 10 项部分（后端可提供、前端仅 headline 接入）；第 12 项已补（code 概况展示）。
 
 ### 16.4 评审反馈处理（codex review）

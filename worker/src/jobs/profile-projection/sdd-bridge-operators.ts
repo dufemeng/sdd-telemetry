@@ -35,6 +35,7 @@ interface SkillUsageRow extends RowDataPacket {
   prompt_id: string | null;
   raw_skill_name: string | null;
   skill_source: string | null;
+  invocation_trigger: string | null;
   status: string | null;
   event_time: Date | null;
   semantic_code: string | null;
@@ -47,7 +48,7 @@ const capabilityOperator: ProjectionOperator = {
   async run(ctx: ProjectionContext): Promise<OperatorStats> {
     const [rows] = await ctx.pool.query<SkillUsageRow[]>(
       `SELECT su.id, su.usage_key, su.interaction_id, su.user_id, su.session_id, su.prompt_id,
-              su.raw_skill_name, su.skill_source, su.status, su.event_time,
+              su.raw_skill_name, su.skill_source, su.invocation_trigger, su.status, su.event_time,
               sem.semantic_code, sem.display_name, su.work_item_id
        FROM sdd_skill_usages su
        LEFT JOIN sdd_skill_semantics sem ON sem.id = su.semantic_id`,
@@ -60,14 +61,14 @@ const capabilityOperator: ProjectionOperator = {
         ctx.pool,
         `INSERT INTO profile_capability_usages
            (profile_id, projection_run_id, usage_key, delivery_unit_id, interaction_id, user_id, session_id, prompt_id,
-            raw_capability_name, capability_code, display_name, capability_source, status, event_time,
+            raw_capability_name, capability_code, display_name, capability_source, trigger_source, status, event_time,
             matched_rule_id, confidence, evidence_json, rule_version)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           ctx.profileId, ctx.projectionRunId, usageKey, deliveryUnitId,
           row.interaction_id, row.user_id,
           row.session_id, row.prompt_id, row.raw_skill_name, row.semantic_code, row.display_name,
-          row.skill_source, row.status, row.event_time, null, 'high',
+          row.skill_source, row.invocation_trigger, row.status, row.event_time, null, 'high',
           bridgeEvidence(row.id), BRIDGE_RULE_VERSION,
         ],
       );

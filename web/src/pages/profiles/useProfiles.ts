@@ -239,14 +239,15 @@ export function useProfileKnowledgeTimeline(
   });
 }
 
-export function useProfileKnowledgeDeliveryUnits(profileId: string, wikiDomain?: string | null) {
+export function useProfileKnowledgeDeliveryUnits(profileId: string, range?: string, wikiDomain?: string | null) {
   const qs = new URLSearchParams();
+  if (range) qs.set('range', range);
   if (wikiDomain) qs.set('wikiDomain', wikiDomain);
   return useQuery({
-    queryKey: ['profile-knowledge-delivery-units', profileId, wikiDomain ?? null],
+    queryKey: ['profile-knowledge-delivery-units', profileId, range ?? null, wikiDomain ?? null],
     queryFn: () =>
       requestData<ProfileKnowledgeDeliveryUnitRankingResponse>(
-        `/api/profiles/${profileId}/knowledge/delivery-units${wikiDomain ? `?${qs}` : ''}`,
+        `/api/profiles/${profileId}/knowledge/delivery-units${qs.toString() ? `?${qs}` : ''}`,
       ),
     staleTime: 30_000,
     enabled: Boolean(profileId),

@@ -12,7 +12,9 @@ import type {
   ProfileDemand,
   ProfileDemandDetail,
   ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeDeliveryUnitRankingQuery,
   ProfileKnowledgeRecallItem,
+  ProfileKnowledgeTimelineQuery,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileSummary,
@@ -350,8 +352,20 @@ export class ProfilesService {
     }
 
     const sddUsers = await this.sddQueryService.listUsers();
-    const now = Date.now();
-    const items: ProfileUserItem[] = sddUsers.map((u) => ({
+    const filteredUsers = sddUsers.filter((u) => {
+      if (query.status && u.status !== query.status) return false;
+      if (query.keyword) {
+        const kw = query.keyword.toLowerCase();
+        const text = `${u.userName ?? ''} ${u.userKey ?? ''} ${u.installId ?? ''} ${u.machineName ?? ''}`.toLowerCase();
+        if (!text.includes(kw)) return false;
+      }
+      if (query.from && (!u.lastSeenAt || u.lastSeenAt < query.from)) return false;
+      if (query.to && (!u.lastSeenAt || u.lastSeenAt > query.to)) return false;
+      return true;
+    });
+    const offset = (query.page - 1) * query.pageSize;
+    const pageUsers = filteredUsers.slice(offset, offset + query.pageSize);
+    const items: ProfileUserItem[] = pageUsers.map((u) => ({
       id: u.id,
       userKey: u.userKey,
       installId: u.installId,
@@ -372,7 +386,7 @@ export class ProfilesService {
       codeReadCount: u.codeReadCount,
       rampDays: u.rampDays,
     }));
-    return { items, total: items.length, page: query.page, pageSize: query.pageSize };
+    return { items, total: filteredUsers.length, page: query.page, pageSize: query.pageSize };
   }
 
   async getUserDetail(
@@ -473,19 +487,28 @@ export class ProfilesService {
 
   async getKnowledgeTimeline(
     profileId: string,
-    range: string,
+    query: ProfileKnowledgeTimelineQuery,
   ): Promise<{ points: Array<{ t: string; group: string | null; count: number }> }> {
     this.requireProfile(profileId);
 
     if (this.profileDashboard.readSource === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) {
-        const bucketSeconds = range === '24h' ? 3600 : range === '90d' ? 86400 : range === '30d' ? 3600 * 3 : 86400;
-        return this.profileProjectionRepository.getKnowledgeTimeline(profileId, runId, bucketSeconds);
+        return this.profileProjectionRepository.getKnowledgeTimeline(profileId, runId, {
+          rangeSinceDate: rangeToSinceDate(query.range),
+          granularity: query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
+          groupBy: query.groupBy ?? 'domain',
+          wikiDomain: query.wikiDomain ?? null,
+        });
       }
     }
 
-    const sdd = await this.sddQueryService.getWikiRecallTimeline(range as '24h' | '7d' | '30d' | '90d' | 'all', 'day', 'domain');
+    const sdd = await this.sddQueryService.getWikiRecallTimeline(
+      query.range,
+      query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
+      query.groupBy ?? 'domain',
+      query.wikiDomain ?? null,
+    );
     return {
       points: sdd.points.map((p) => ({
         t: p.t,
@@ -497,22 +520,26 @@ export class ProfilesService {
 
   async listKnowledgeRecalls(
     profileId: string,
-    params: { page: number; pageSize: number; deliveryUnitId?: string; userId?: string; capabilityUsageId?: string },
+    params: { range: '24h' | '7d' | '30d' | '90d' | 'all'; page: number; pageSize: number; deliveryUnitId?: string; userId?: string; capabilityUsageId?: string },
   ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
     this.requireProfile(profileId);
 
     if (this.profileDashboard.readSource === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) {
-        return this.profileProjectionRepository.listKnowledgeRecalls(profileId, runId, params);
+        return this.profileProjectionRepository.listKnowledgeRecalls(profileId, runId, {
+          ...params,
+          rangeSinceDate: rangeToSinceDate(params.range),
+        });
       }
     }
 
     const filters: { workItemId?: string; userId?: string; skillUsageId?: string } = {};
     if (params.deliveryUnitId) filters.workItemId = params.deliveryUnitId;
     if (params.userId) filters.userId = params.userId;
+    if (params.capabilityUsageId) filters.skillUsageId = params.capabilityUsageId;
     const sdd = await this.sddQueryService.listWikiRecalls(
-      '7d',
+      params.range,
       filters,
       params.page,
       params.pageSize,
@@ -541,17 +568,26 @@ export class ProfilesService {
 
   async getKnowledgeDeliveryUnitRanking(
     profileId: string,
+    query: ProfileKnowledgeDeliveryUnitRankingQuery,
   ): Promise<{ items: Array<{ deliveryUnitId: string; unitSlug: string | null; businessDomain: string | null; totalRecalls: number; distinctDomains: number; distinctSystems: number; userCount: number }>; total: number }> {
     this.requireProfile(profileId);
 
     if (this.profileDashboard.readSource === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) {
-        return this.profileProjectionRepository.getKnowledgeDeliveryUnitRanking(profileId, runId);
+        return this.profileProjectionRepository.getKnowledgeDeliveryUnitRanking(profileId, runId, {
+          rangeSinceDate: rangeToSinceDate(query.range),
+          wikiDomain: query.wikiDomain ?? null,
+          userId: query.userId ?? null,
+        });
       }
     }
 
-    const sdd = await this.sddQueryService.getWikiRecallWorkItemRanking('7d', null, null);
+    const sdd = await this.sddQueryService.getWikiRecallWorkItemRanking(
+      query.range,
+      query.wikiDomain ?? null,
+      query.userId ?? null,
+    );
     return {
       items: sdd.items.map((w) => ({
         deliveryUnitId: String(w.workItemId),
@@ -582,4 +618,14 @@ function toSummary(config: WorkflowProfileConfig): ProfileSummary {
     status: config.status,
     manifest: config.manifest,
   };
+}
+
+function rangeToSinceDate(range: '24h' | '7d' | '30d' | '90d' | 'all'): Date | null {
+  if (range === 'all') return null;
+  const days =
+    range === '24h' ? 1 :
+    range === '7d' ? 7 :
+    range === '30d' ? 30 :
+    90;
+  return new Date(Date.now() - days * 86_400_000);
 }

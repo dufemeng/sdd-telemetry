@@ -59,7 +59,7 @@
 ## 4. 范围边界（哪些不属 MVP-1）
 
 文档明确推迟、**不在 MVP-1 验收内**的：
-- **capability→delivery 链路**：Task 8 映射表标注 `work_item_id 后续映射为 delivery_unit_id`（「后续」）。当前 `profile_capability_usages.delivery_unit_id` 为空。
+- **capability→delivery 链路**：Task 8 映射表标注 `work_item_id 后续映射为 delivery_unit_id`（「后续」）。MVP-1 结束时 `profile_capability_usages.delivery_unit_id` 仍为空，后续已转入第二阶段 contract 覆盖补齐。
 - **四大看板全量从 contract 取数**：Task 20 验收不要求换数据源；目前仅产出分析 `/demands` 端点 + hook 就位，WorkItemsPage 未换源（其「调用次数」列依赖上面的链路）。
 - **需求详情 / artifact timeline 下钻端点**（§11.5）：属架构长期愿景，未做。
 - **boss-a / boss-b profile 接入**：明确非 MVP-1。

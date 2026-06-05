@@ -109,6 +109,12 @@ const expectedColumns: Record<string, string[]> = {
     'evidence_json',
     'rule_version',
   ],
+  profile_capability_usages: [
+    'usage_key',
+    'capability_source',
+    'trigger_source',
+    'delivery_unit_id',
+  ],
 };
 
 async function main(): Promise<void> {

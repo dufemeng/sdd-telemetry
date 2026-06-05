@@ -2,7 +2,7 @@
 
 完成时间：2026-06-04
 分支：`codex/profile-observability-mvp-doc`
-基础 commit：`160c9bb` → 最终 commit：`0ce8765`
+基础 commit：`160c9bb` → 阶段提交：`0ce8765` / `139a6fe`；后续审查修复见 §3.1
 
 ## 1. 变更摘要
 
@@ -79,7 +79,7 @@
 | 问题 | 修复 |
 |---|---|
 | `profile_users` 表不存在 | `listUsers`/`getUserDetail` 改为 `sdd_users` + `profile_capability_usages` 聚合 |
-| `trigger_source` 列不存在 | 改为 `capability_source`（对齐 migration `1780000007000`） |
+| `trigger_source` 列不存在 | 新增 `1780000009000` migration，`profile_capability_usages.trigger_source` 承载 `sdd_skill_usages.invocation_trigger` |
 | `knowledge_relative_path`/`raw_locator`/`event_sequence` 列不存在 | 改为 `knowledge_locator`（对齐 migration），`event_sequence` 置 null |
 | timeseries `params.slice(2)` 丢掉 profileId/runId | 改为 `...params` |
 
@@ -88,12 +88,22 @@
 | 问题 | 修复 |
 |---|---|
 | users legacy 回退直接 501/404 | 从 `sddQueryService.listUsers`/`getUserDetail` 读取并映射字段 |
-| `errorCount` 硬编码 0 | 从 `sdd_errors.work_item_id` 聚合 |
-| knowledge list 过滤参数被 controller 丢弃 | controller 透传 `deliveryUnitId`/`userId`/`capabilityUsageId` |
+| `errorCount` 硬编码 0 | 经 `profile_delivery_units.evidence_json.sourceId` 反查旧 `work_item_id` 后聚合 |
+| knowledge list 过滤参数被 controller 丢弃 | controller 透传 `range`/`deliveryUnitId`/`userId`/`capabilityUsageId` |
 | knowledge timeline 参数被忽略 | contract schema 扩展支持 `granularity`/`groupBy`/`wikiDomain` |
-| UsersPage 默认 pageSize=50 截断 | 改为 `pageSize: 500` |
+| UsersPage 默认 pageSize=50 截断 | 改为 `pageSize: 200`（对齐 contract max=200） |
 | 用户状态阈值 14/60/30 天（硬编码） | 改为 7/30/14 天（对齐 `config.default.ts`） |
 | maturity stage 返回 `first_capability_use` 等新名 | 改为 `proposal`/`design`/`task`/`codereview`（对齐前端 `AdoptionRamp`） |
+
+### 3.1 追加审查修复（Codex 续修）
+
+| 问题 | 修复 |
+|---|---|
+| `1780000008000-add-profile-query-indexes` 存在但未注册 | 补入 `data-source.ts`，并把 up/down 改成索引存在性检查，避免重复 ADD/DROP 失败 |
+| `trigger_source` 承载旧 `invocation_trigger` 但列长过短 | `1780000009000` 使用 `VARCHAR(191)`，并兼容半成品环境中已存在的短列自动放宽 |
+| 能力分析 user/auto 触发统计误用 `capability_source` | bridge 写入 `trigger_source=invocation_trigger`，analytics 按 `user-slash` / `claude-proactive,nested-skill` 聚合 |
+| `multiStageDeliveryUnitCount` 与旧口径不一致 | 改为 `proposal/design/task/review` 中覆盖 `>=3` 阶段，并按 artifact `first_seen_at` 应用当前时间窗口 |
+| knowledge ranking 未透传 range | `knowledge/delivery-units` contract、controller、service、web hook 全链路透传 `range` |
 
 ## 4. 页面换源证据
 
@@ -126,9 +136,18 @@
 ## 5. typecheck / build 结果
 
 ```text
-pnpm typecheck: 6/6 tasks successful ✅
-pnpm build:     5/5 tasks successful ✅
-pnpm --filter @sdd-telemetry/worker test: 8 passed ✅
+./node_modules/.bin/tsc --noEmit -p packages/api/tsconfig.json ✅
+./node_modules/.bin/tsc --noEmit -p packages/ui/tsconfig.json ✅
+./node_modules/.bin/tsc --noEmit -p server/tsconfig.json ✅
+./node_modules/.bin/tsc --noEmit -p worker/tsconfig.json ✅
+./node_modules/.bin/tsc --noEmit -p web/tsconfig.json ✅
+./node_modules/.bin/tsc -p packages/api/tsconfig.json ✅
+./node_modules/.bin/tsc -p packages/ui/tsconfig.json ✅
+./node_modules/.bin/tsc -p server/tsconfig.json ✅
+./node_modules/.bin/tsc -p worker/tsconfig.json ✅
+./node_modules/.bin/vite build（web）✅
+./node_modules/.bin/vitest run worker/test/delivery-link-mapping.test.ts：8 passed ✅
+pnpm typecheck / pnpm build：当前沙箱内 `turbo` 层报 `fetch failed`，未能作为根级命令完成；已用各 package 直接编译替代验证。
 ```
 
 ## 6. 未完成项

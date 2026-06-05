@@ -116,9 +116,10 @@ export function useWikiRecallWorkItemRanking(
     queryKey: ['profile-knowledge-delivery-units', profileId, range, filters],
     queryFn: async () => {
       const qs = new URLSearchParams();
+      if (range) qs.set('range', range);
       if (filters.wikiDomain) qs.set('wikiDomain', filters.wikiDomain);
       const r = await requestData<ProfileKnowledgeDeliveryUnitRankingResponse>(
-        `/api/profiles/${profileId}/knowledge/delivery-units${filters.wikiDomain ? `?${qs}` : ''}`,
+        `/api/profiles/${profileId}/knowledge/delivery-units${qs.toString() ? `?${qs}` : ''}`,
       );
       return {
         items: r.items.map((i) => ({

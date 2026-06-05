@@ -331,7 +331,7 @@ rampDays
 - `worker/src/jobs/profile-projection/sdd-bridge-operators.ts`
 - 如有需要修改 runner registry 类型。
 
-当前 `profile_capability_usages.delivery_unit_id` 为空。需要在 capability bridge 中把旧 `sdd_skill_usages.work_item_id` 映射到当前 run 的 `profile_delivery_units.id`。
+实施前基线中 `profile_capability_usages.delivery_unit_id` 为空。本任务需要在 capability bridge 中把旧 `sdd_skill_usages.work_item_id` 映射到当前 run 的 `profile_delivery_units.id`。
 
 注意依赖顺序：
 
@@ -628,7 +628,7 @@ profile_projection 读法：
 
 - 主表：`profile_capability_usages`
 - 需求覆盖：`delivery_unit_id IS NOT NULL`
-- 多阶段需求：同一个 `delivery_unit_id` 下 artifact stage 数量。
+- 多阶段需求：对齐旧技能分析，`proposal/design/task/review` 中覆盖 `>=3` 个阶段，并按 artifact `first_seen_at` 应用当前时间窗口。
 - 调用质量：沿用 `status`、prompt/response pairing 口径，必要时 join `sdd_interactions`。
 - top capabilities：按 `capability_code` / `display_name` 聚合；未匹配能力单独进入 matchHealth。
 

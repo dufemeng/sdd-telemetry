@@ -131,7 +131,7 @@ export default function SkillsPage() {
           icon={Layers}
           label="全链路需求"
           value={analytics?.kpis.multiStageDeliveryUnitCount.current}
-          hint="覆盖 >=2 个阶段"
+          hint="覆盖 >=3 个阶段"
           loading={analyticsQuery.isLoading}
         />
       </div>

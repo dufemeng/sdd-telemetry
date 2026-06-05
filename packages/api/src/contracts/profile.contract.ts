@@ -444,6 +444,7 @@ export type ProfileKnowledgeTimelineResponse = z.infer<
 >;
 
 export const ProfileKnowledgeListQuerySchema = TimeRangeQuerySchema.extend({
+  range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   deliveryUnitId: IdSchema.optional(),
@@ -490,6 +491,15 @@ export const ProfileKnowledgeDeliveryUnitRankingItemSchema = z.object({
 });
 export type ProfileKnowledgeDeliveryUnitRankingItem = z.infer<
   typeof ProfileKnowledgeDeliveryUnitRankingItemSchema
+>;
+
+export const ProfileKnowledgeDeliveryUnitRankingQuerySchema = TimeRangeQuerySchema.extend({
+  range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
+  wikiDomain: z.string().optional(),
+  userId: IdSchema.optional(),
+});
+export type ProfileKnowledgeDeliveryUnitRankingQuery = z.infer<
+  typeof ProfileKnowledgeDeliveryUnitRankingQuerySchema
 >;
 
 export const ProfileKnowledgeDeliveryUnitRankingResponseSchema = z.object({

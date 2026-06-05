@@ -30,6 +30,7 @@ export class AddProfileQueryIndexes1780000008000 implements MigrationInterface {
 
   async up(queryRunner: QueryRunner): Promise<void> {
     for (const [table, indexName, columns] of INDEXES) {
+      if (await indexExists(queryRunner, table, indexName)) continue;
       await queryRunner.query(
         `ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` ${columns}`,
       );
@@ -38,9 +39,20 @@ export class AddProfileQueryIndexes1780000008000 implements MigrationInterface {
 
   async down(queryRunner: QueryRunner): Promise<void> {
     for (const [table, indexName] of INDEXES) {
+      if (!(await indexExists(queryRunner, table, indexName))) continue;
       await queryRunner.query(
         `ALTER TABLE \`${table}\` DROP INDEX \`${indexName}\``,
       );
     }
   }
+}
+
+async function indexExists(qr: QueryRunner, table: string, indexName: string): Promise<boolean> {
+  const rows = (await qr.query(
+    `SELECT 1 FROM information_schema.statistics
+     WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+     LIMIT 1`,
+    [table, indexName],
+  )) as unknown[];
+  return rows.length > 0;
 }
