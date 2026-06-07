@@ -42,10 +42,10 @@ export default function WikiRecallsPage() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: '2fr 1fr' }}>
         <RecallTrendChart />
-        <TopDomains domains={data?.domains ?? []} onSelectDomain={goDomain} />
+        <TopDomains domains={data?.domains ?? []} degraded={!!degraded} onSelectDomain={goDomain} />
       </div>
 
-      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} onSelectDomain={goDomain} />
+      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} degraded={!!degraded} onSelectDomain={goDomain} />
     </div>
   );
 }

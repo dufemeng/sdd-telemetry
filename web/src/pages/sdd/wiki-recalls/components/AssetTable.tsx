@@ -9,10 +9,12 @@ const ALL = '__all__';
 export function AssetTable({
   domains,
   repos,
+  degraded,
   onSelectDomain,
 }: {
   domains: WikiCoverageDomain[];
   repos: WikiCoverageRepo[];
+  degraded: boolean;
   onSelectDomain: (repo: string, domain: string) => void;
 }) {
   const [repoFilter, setRepoFilter] = useState<string>(ALL);
@@ -81,7 +83,7 @@ export function AssetTable({
       <table className="w-full" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {['业务域', '覆盖（已读/库内）', '召回', '文档', '参与人', '沉睡文档', '最近召回'].map((h, i) => (
+            {['业务域', degraded ? '召回文档' : '覆盖（已读/库内）', '召回', '文档', '参与人', '沉睡文档', '最近召回'].map((h, i) => (
               <th
                 key={h}
                 className={`px-[12px] py-[8px] text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)] ${i === 0 ? 'text-left' : 'text-right'}`}
@@ -100,26 +102,32 @@ export function AssetTable({
             return (
               <tr
                 key={`${d.repo}-${d.domain}`}
-                className="group cursor-pointer"
+                className={`group ${degraded ? '' : 'cursor-pointer'}`}
                 style={{ borderBottom: '1px solid var(--color-border)' }}
-                onClick={() => onSelectDomain(d.repo, d.domain)}
+                onClick={degraded ? undefined : () => onSelectDomain(d.repo, d.domain)}
               >
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px]">
                   <div className="flex items-center gap-[9px]">
-                    <span className="rounded-[3px] px-[7px] py-[2px] text-[10px]" style={repoTagStyle(d.repo)}>{REPO_LABEL[d.repo] ?? d.repo}</span>
+                    {d.repo ? (
+                      <span className="rounded-[3px] px-[7px] py-[2px] text-[10px]" style={repoTagStyle(d.repo)}>{REPO_LABEL[d.repo] ?? d.repo}</span>
+                    ) : null}
                     <span className="text-[13px] font-medium text-[#f5f5f5]">{d.domain}</span>
                   </div>
                 </td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="h-[5px] w-[54px] overflow-hidden rounded-full" style={{ background: '#202016' }}>
-                      <span className="block h-full rounded-full" style={{ width: `${rate * 100}%`, background: coverFillColor(rate) }} />
-                    </span>
-                    <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{d.recalledDocs}/{d.totalDocs}</span>
-                  </div>
+                  {degraded ? (
+                    <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{formatInteger(d.recalledDocs)}</span>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="h-[5px] w-[54px] overflow-hidden rounded-full" style={{ background: '#202016' }}>
+                        <span className="block h-full rounded-full" style={{ width: `${rate * 100}%`, background: coverFillColor(rate) }} />
+                      </span>
+                      <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{d.recalledDocs}/{d.totalDocs}</span>
+                    </div>
+                  )}
                 </td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>{formatInteger(d.recalls)}</td>
-                <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right text-[13px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{d.totalDocs}</td>
+                <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right text-[13px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{degraded ? '—' : d.totalDocs}</td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right text-[13px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{d.distinctUsers}</td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right text-[13px]" style={{ fontFamily: 'var(--font-mono)', color: d.deadDocs > 0 ? 'var(--color-bad-text)' : 'var(--color-muted)' }}>{d.deadDocs}</td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-[12px] text-[var(--color-secondary)]">{d.lastRecallAt ? new Date(d.lastRecallAt).toLocaleString() : '—'}</td>
@@ -130,7 +138,7 @@ export function AssetTable({
       </table>
       <div className="flex items-center justify-between px-[14px] py-[10px] text-[11px] text-[var(--color-muted)]" style={{ borderTop: '1px solid var(--color-border)' }}>
         <span>共 {rows.length} 个业务域{repoFilter === ALL ? ` · 跨 ${repos.length} 个知识库` : ''}</span>
-        <span>累计口径 · 分母取快照</span>
+        <span>{degraded ? '累计口径 · 未配置知识库扫描' : '累计口径 · 分母取快照'}</span>
       </div>
     </section>
   );

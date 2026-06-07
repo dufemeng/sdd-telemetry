@@ -5,7 +5,15 @@ import { formatInteger } from '@/lib/format';
 
 const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-muted)'];
 
-export function TopDomains({ domains, onSelectDomain }: { domains: WikiCoverageDomain[]; onSelectDomain: (repo: string, domain: string) => void }) {
+export function TopDomains({
+  domains,
+  degraded,
+  onSelectDomain,
+}: {
+  domains: WikiCoverageDomain[];
+  degraded: boolean;
+  onSelectDomain: (repo: string, domain: string) => void;
+}) {
   const top = [...domains].sort((a, b) => b.recalls - a.recalls).slice(0, 3);
   return (
     <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
@@ -18,19 +26,21 @@ export function TopDomains({ domains, onSelectDomain }: { domains: WikiCoverageD
         {top.map((d, i) => (
           <div
             key={`${d.repo}-${d.domain}`}
-            className="relative cursor-pointer overflow-hidden rounded-[6px] p-[10px] pl-[14px]"
+            className={`relative overflow-hidden rounded-[6px] p-[10px] pl-[14px] ${degraded ? '' : 'cursor-pointer'}`}
             style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
-            onClick={() => onSelectDomain(d.repo, d.domain)}
+            onClick={degraded ? undefined : () => onSelectDomain(d.repo, d.domain)}
           >
             <span className="absolute bottom-0 left-0 top-0 w-[3px]" style={{ background: RANK_COLORS[i] }} />
             <span className="absolute right-0 top-0 px-2 py-[3px] text-[10px] font-bold" style={{ background: RANK_COLORS[i], color: i === 0 ? '#0a0a0a' : 'var(--color-surface)', borderRadius: '0 6px 0 6px' }}>#{i + 1}</span>
             <div className="flex items-center gap-[6px] text-[13px] font-medium text-[#f5f5f5]">
-              <span className="rounded-[3px] px-[6px] py-[1px] text-[10px]" style={repoTagStyle(d.repo)}>{REPO_LABEL[d.repo] ?? d.repo}</span>
+              {d.repo ? (
+                <span className="rounded-[3px] px-[6px] py-[1px] text-[10px]" style={repoTagStyle(d.repo)}>{REPO_LABEL[d.repo] ?? d.repo}</span>
+              ) : null}
               {d.domain}
             </div>
             <div className="mt-[6px] flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
               <span>召回 {formatInteger(d.recalls)}</span>
-              <span>覆盖 {d.recalledDocs}/{d.totalDocs}</span>
+              <span>{degraded ? `召回文档 ${d.recalledDocs}` : `覆盖 ${d.recalledDocs}/${d.totalDocs}`}</span>
               <span>{d.distinctUsers} 人</span>
             </div>
           </div>
