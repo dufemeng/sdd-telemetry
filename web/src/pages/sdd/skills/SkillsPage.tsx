@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  FileText,
   GitBranch,
   Layers,
   Layers3,
@@ -56,7 +57,7 @@ type SkillFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
 
 export default function SkillsPage() {
   const { timeRange, profileId } = useShellContext();
-  const fromIso = timeRangeToFromIso(timeRange);
+  const fromIso = useMemo(() => timeRangeToFromIso(timeRange), [timeRange]);
   const presentation = useProfilePresentationModel(profileId);
   const showCallQuality = presentation.widgets.callQuality;
   const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
@@ -97,6 +98,14 @@ export default function SkillsPage() {
   const selectedItem = useMemo(
     () => items.find((item) => item.rawCapabilityName === selectedRawCapabilityName) ?? null,
     [items, selectedRawCapabilityName],
+  );
+  const recentUsageGroups = useMemo(
+    () => toRecentUsageGroups(usageQuery.data?.items ?? []),
+    [usageQuery.data?.items],
+  );
+  const recentUsageRows = useMemo(
+    () => toRecentUsageRows(recentUsageGroups),
+    [recentUsageGroups],
   );
   const hasPrev = page > 1;
   const hasNext = page * PAGE_SIZE < total;
@@ -444,10 +453,11 @@ export default function SkillsPage() {
           <div className="grid gap-2">
             <h4 className="text-[12px] font-semibold text-[var(--color-secondary)]">最近调用</h4>
             <DataTable
-              headers={['时间', '状态', '用户', 'sessionId', 'promptId', 'interactionId']}
-              rows={(usageQuery.data?.items ?? []).map(toUsageRow)}
+              headers={['时间', '状态', '次数', '用户', 'sessionId', 'promptId', 'interactionId']}
+              rows={recentUsageRows}
               emptyText="暂无调用"
             />
+            <SourceFactList groups={recentUsageGroups} />
           </div>
         </RowInspectorDrawer>
       ) : null}
@@ -628,18 +638,104 @@ function percentWidth(value: number | null): string {
   return `${Math.max(0, Math.min(value ?? 0, 1)) * 100}%`;
 }
 
-function toUsageRow(item: ProfileCapabilityUsageItem): DataTableRow {
-  return {
-    key: item.id,
+interface RecentUsageGroup {
+  key: string;
+  item: ProfileCapabilityUsageItem;
+  count: number;
+  sources: ProfileCapabilityUsageItem[];
+}
+
+function toRecentUsageRows(groups: RecentUsageGroup[]): DataTableRow[] {
+  return groups.map(({ key, item, count }) => ({
+    key,
     cells: [
       formatDateTime(item.eventTime),
       <StatusBadge key="status" status={item.status} />,
+      formatInteger(count),
       item.userId ?? '—',
       item.sessionId ?? '—',
       item.promptId ?? '—',
       item.interactionId ?? '—',
     ],
-  };
+  }));
+}
+
+function toRecentUsageGroups(items: ProfileCapabilityUsageItem[]): RecentUsageGroup[] {
+  const groups = new Map<string, RecentUsageGroup>();
+
+  for (const item of items) {
+    const key = recentUsageGroupKey(item);
+    const group = groups.get(key);
+    if (group) {
+      group.count += 1;
+      group.sources.push(item);
+    } else {
+      groups.set(key, { key, item, count: 1, sources: [item] });
+    }
+  }
+
+  return Array.from(groups.values());
+}
+
+function recentUsageGroupKey(item: ProfileCapabilityUsageItem): string {
+  return [
+    item.eventTime ?? '',
+    item.status,
+    item.userId ?? '',
+    item.sessionId ?? '',
+    item.promptId ?? '',
+    item.interactionId ?? '',
+  ].join('\u001f');
+}
+
+function SourceFactList({ groups }: { groups: RecentUsageGroup[] }) {
+  const sources = groups.flatMap((group) => group.sources).filter((source) => source.sourceLocator);
+  if (sources.length === 0) return null;
+
+  return (
+    <div className="grid gap-2">
+      <div className="grid gap-[3px]">
+        <div className="flex items-center gap-[6px] text-[12px] font-semibold text-[var(--color-secondary)]">
+          <FileText size={13} />
+          <span>涉及文件</span>
+          <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+            {formatInteger(sources.length)}
+          </span>
+        </div>
+        <p className="text-[11px] leading-4 text-[var(--color-muted)]">
+          主表按一次交互聚合；这里保留这次能力调用命中的原始文件事实。
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-[4px]" style={{ border: '1px solid var(--color-border)' }}>
+        {sources.map((source, index) => (
+          <div
+            key={source.sourceReferenceKey ?? source.usageKey}
+            className="flex items-center justify-between gap-3 px-[10px] py-[7px] text-[11px]"
+            style={index === sources.length - 1 ? undefined : { borderBottom: '1px solid var(--color-border)' }}
+          >
+            <span
+              className="min-w-0 truncate text-[var(--color-secondary)]"
+              style={{ fontFamily: 'var(--font-mono)' }}
+              title={source.sourceLocator ?? source.usageKey}
+            >
+              {formatSourceLocator(source.sourceLocator) ?? source.usageKey}
+            </span>
+            <span className="shrink-0 text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+              {source.sourceActionType ?? 'source'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatSourceLocator(locator: string | null | undefined): string | null {
+  if (!locator) return null;
+  const marker = '/nxb-mono-repo/';
+  const markerIndex = locator.indexOf(marker);
+  if (markerIndex >= 0) return locator.slice(markerIndex + marker.length);
+  return locator.replace(/^.*\/(docs\/|wiki\/|src\/)/, '$1');
 }
 
 function toOverviewFields(item: ProfileCapabilityUsageSummaryItem): RowInspectorField[] {

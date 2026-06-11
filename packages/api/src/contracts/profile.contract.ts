@@ -399,6 +399,9 @@ export const ProfileCapabilityUsageItemSchema = z.object({
   sessionId: z.string().nullable(),
   promptId: z.string().nullable(),
   eventTime: ISODateTimeSchema.nullable(),
+  sourceReferenceKey: z.string().nullable().optional(),
+  sourceActionType: z.string().nullable().optional(),
+  sourceLocator: z.string().nullable().optional(),
 });
 export type ProfileCapabilityUsageItem = z.infer<typeof ProfileCapabilityUsageItemSchema>;
 
@@ -498,6 +501,16 @@ export const ProfileUserActivityQuerySchema = z.object({
 });
 export type ProfileUserActivityQuery = z.infer<typeof ProfileUserActivityQuerySchema>;
 
+export const ProfileUserActivityCountsSchema = z.object({
+  total: z.number().int().nonnegative(),
+  capability: z.number().int().nonnegative(),
+  knowledge: z.number().int().nonnegative(),
+  code: z.number().int().nonnegative(),
+  artifactWrite: z.number().int().nonnegative(),
+  artifactDiscussion: z.number().int().nonnegative(),
+});
+export type ProfileUserActivityCounts = z.infer<typeof ProfileUserActivityCountsSchema>;
+
 export const ProfileUserActivityItemSchema = z.object({
   id: z.string(),
   kind: z.enum(['capability', 'knowledge', 'artifact_write', 'artifact_discussion', 'code']),
@@ -512,6 +525,7 @@ export const ProfileUserActivityItemSchema = z.object({
   title: z.string(),
   detail: z.string().nullable(),
   locator: z.string().nullable(),
+  activityCounts: ProfileUserActivityCountsSchema.nullable().optional(),
 });
 export type ProfileUserActivityItem = z.infer<typeof ProfileUserActivityItemSchema>;
 

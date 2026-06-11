@@ -36,6 +36,10 @@ import {
   type WorkflowProfileConfig,
 } from './profile-config';
 import { ProfileProjectionRepository } from './profile-projection.repository';
+import {
+  collapseProfileUserActivityItems,
+  expandProfileUserActivityFetchLimit,
+} from './profile-user-activity';
 
 type ReadSource = 'legacy_sdd' | 'profile_projection';
 type ProfileReadMode =
@@ -381,6 +385,9 @@ export class ProfilesService {
       sessionId: s.sessionId,
       promptId: s.promptId,
       eventTime: s.eventTime,
+      sourceReferenceKey: null,
+      sourceActionType: null,
+      sourceLocator: null,
     }));
     return { items, total: items.length, page: query.page, pageSize: query.pageSize };
   }
@@ -509,12 +516,13 @@ export class ProfilesService {
     }
     if (read.mode === 'empty') return { items: [] };
 
+    const rawLimit = expandProfileUserActivityFetchLimit(query.limit);
     const [usages, recalls] = await Promise.all([
       this.sddQueryService.listUsages({
         userId,
         ...(query.deliveryUnitId ? { workItemId: query.deliveryUnitId } : {}),
         ...(since ? { from: since.toISOString() } : {}),
-        limit: query.limit,
+        limit: rawLimit,
       }),
       this.sddQueryService.listWikiRecalls(
         query.range,
@@ -523,7 +531,7 @@ export class ProfilesService {
           ...(query.deliveryUnitId ? { workItemId: query.deliveryUnitId } : {}),
         },
         1,
-        query.limit,
+        rawLimit,
       ),
     ]);
 
@@ -560,13 +568,7 @@ export class ProfilesService {
       })),
     ];
 
-    items.sort((a, b) => {
-      if (!a.eventTime && !b.eventTime) return 0;
-      if (!a.eventTime) return 1;
-      if (!b.eventTime) return -1;
-      return new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime();
-    });
-    return { items: items.slice(0, query.limit) };
+    return { items: collapseProfileUserActivityItems(items, query.limit) };
   }
 
   async getKnowledgeCoverage(

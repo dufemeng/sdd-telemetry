@@ -32,6 +32,11 @@ import type {
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, whereSql } from '../query-utils';
+import {
+  collapseProfileUserActivityItems,
+  expandProfileUserActivityFetchLimit,
+  type ProfileUserActivityFactItem,
+} from './profile-user-activity';
 
 /**
  * profile_projection 读路径（MVP-1，Task 17）。
@@ -257,7 +262,7 @@ export class ProfileProjectionRepository {
   ): Promise<ProfileDemandDetail | null> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
 
-    const [unitRows] = await dataSource.query(
+    const rows = (await dataSource.query(
       `SELECT du.id, du.delivery_unit_key, du.business_domain, du.unit_slug, du.title,
               du.relative_dir_or_locator AS locator, du.first_seen_at, du.last_seen_at,
               (SELECT COUNT(*) FROM profile_artifacts a
@@ -271,8 +276,7 @@ export class ProfileProjectionRepository {
        WHERE du.profile_id = ? AND du.projection_run_id = ? AND du.id = ?
        LIMIT 1`,
       [profileId, runId, demandId],
-    ) as [Array<Record<string, unknown>>, unknown];
-    const rows = unitRows as Array<Record<string, unknown>>;
+    )) as Array<Record<string, unknown>>;
     if (rows.length === 0) return null;
     const row = rows[0]!;
 
@@ -737,8 +741,13 @@ export class ProfileProjectionRepository {
       `SELECT cu.id, cu.usage_key, cu.capability_code, cu.display_name AS capability_display_name,
               cu.raw_capability_name, cu.capability_source, cu.status,
               cu.user_id, cu.interaction_id, cu.delivery_unit_id,
-              cu.session_id, cu.prompt_id, cu.event_time
+              cu.session_id, cu.prompt_id, cu.event_time,
+              sr.reference_key AS source_reference_key,
+              sr.action_type AS source_action_type,
+              sr.normalized_locator AS source_locator
        FROM profile_capability_usages cu
+       LEFT JOIN source_references sr
+         ON cu.usage_key = SHA2(CONCAT(cu.profile_id, ':capability:', sr.reference_key), 256)
        ${whereSql(clauses)}
        ORDER BY cu.event_time DESC, cu.id DESC
        LIMIT ? OFFSET ?`,
@@ -759,6 +768,9 @@ export class ProfileProjectionRepository {
       sessionId: (row.session_id as string | null) ?? null,
       promptId: (row.prompt_id as string | null) ?? null,
       eventTime: toIsoDate(row.event_time),
+      sourceReferenceKey: (row.source_reference_key as string | null) ?? null,
+      sourceActionType: (row.source_action_type as string | null) ?? null,
+      sourceLocator: (row.source_locator as string | null) ?? null,
     }));
 
     return { items, total: toNumber(countRows[0]?.v) };
@@ -1112,6 +1124,7 @@ export class ProfileProjectionRepository {
     const writes = paramsFor('w');
     const turns = paramsFor('t');
     const code = paramsFor('ca');
+    const rawLimit = expandProfileUserActivityFetchLimit(options.limit);
     const rows = (await dataSource.query(
       `SELECT * FROM (
         SELECT CONCAT('capability-', cu.id) AS id, 'capability' AS kind,
@@ -1121,8 +1134,10 @@ export class ProfileProjectionRepository {
                cu.raw_capability_name,
                COALESCE(cu.display_name, cu.raw_capability_name, '能力调用') AS title,
                cu.status AS detail,
+               it.prompt_text,
                NULL AS locator
         FROM profile_capability_usages cu
+        LEFT JOIN sdd_interaction_texts it ON it.interaction_id = cu.interaction_id
         WHERE ${capability.clause}
 
         UNION ALL
@@ -1134,9 +1149,11 @@ export class ProfileProjectionRepository {
                cu.raw_capability_name,
                CASE WHEN kr.action_type = 'read' THEN '知识读取' ELSE CONCAT('知识 ', COALESCE(kr.action_type, '活动')) END AS title,
                kr.knowledge_locator AS detail,
+               it.prompt_text,
                kr.knowledge_locator AS locator
         FROM profile_knowledge_recalls kr
         LEFT JOIN profile_capability_usages cu ON cu.id = kr.capability_usage_id
+        LEFT JOIN sdd_interaction_texts it ON it.interaction_id = kr.interaction_id
         WHERE ${knowledge.clause}
 
         UNION ALL
@@ -1148,9 +1165,11 @@ export class ProfileProjectionRepository {
                cu.raw_capability_name,
                COALESCE(w.write_kind, '产物写入') AS title,
                w.content_preview AS detail,
+               it.prompt_text,
                NULL AS locator
         FROM profile_artifact_writes w
         LEFT JOIN profile_capability_usages cu ON cu.id = w.capability_usage_id
+        LEFT JOIN sdd_interaction_texts it ON it.interaction_id = w.interaction_id
         WHERE ${writes.clause}
 
         UNION ALL
@@ -1162,9 +1181,11 @@ export class ProfileProjectionRepository {
                cu.raw_capability_name,
                '产物讨论' AS title,
                NULL AS detail,
+               it.prompt_text,
                NULL AS locator
         FROM profile_artifact_turns t
         LEFT JOIN profile_capability_usages cu ON cu.id = t.capability_usage_id
+        LEFT JOIN sdd_interaction_texts it ON it.interaction_id = t.interaction_id
         WHERE ${turns.clause}
 
         UNION ALL
@@ -1176,9 +1197,11 @@ export class ProfileProjectionRepository {
                cu.raw_capability_name,
                CASE WHEN ca.action_type IN ('write','edit','update') THEN '代码实施' ELSE CONCAT('代码 ', COALESCE(ca.action_type, '活动')) END AS title,
                ca.action_type AS detail,
+               it.prompt_text,
                ca.code_locator AS locator
         FROM profile_code_activities ca
         LEFT JOIN profile_capability_usages cu ON cu.id = ca.capability_usage_id
+        LEFT JOIN sdd_interaction_texts it ON it.interaction_id = ca.interaction_id
         WHERE ${code.clause}
       ) activity
       ORDER BY activity.event_time IS NULL, activity.event_time DESC, activity.id DESC
@@ -1189,11 +1212,11 @@ export class ProfileProjectionRepository {
         ...writes.params,
         ...turns.params,
         ...code.params,
-        options.limit,
+        rawLimit,
       ],
     )) as Array<Record<string, unknown>>;
 
-    return rows.map((row) => ({
+    const items = rows.map((row): ProfileUserActivityFactItem => ({
       id: String(row.id),
       kind: String(row.kind) as ProfileUserActivityItem['kind'],
       eventTime: toIsoDate(row.event_time),
@@ -1207,7 +1230,9 @@ export class ProfileProjectionRepository {
       title: String(row.title ?? '活动'),
       detail: (row.detail as string | null) ?? null,
       locator: (row.locator as string | null) ?? null,
+      promptText: (row.prompt_text as string | null) ?? null,
     }));
+    return collapseProfileUserActivityItems(items, options.limit);
   }
 
   private async getUserSummary(
