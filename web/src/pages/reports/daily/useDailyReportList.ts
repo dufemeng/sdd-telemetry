@@ -7,6 +7,7 @@ export function useDailyReportList(
   to?: string,
   page = 1,
   pageSize = 30,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ['daily-report-list', from, to, page, pageSize],
@@ -20,6 +21,7 @@ export function useDailyReportList(
         `/api/reports/daily?${params.toString()}`,
       );
     },
+    enabled,
     staleTime: 60_000,
   });
 }

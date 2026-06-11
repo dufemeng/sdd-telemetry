@@ -7,6 +7,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import type { SddSemantic } from '@sdd-telemetry/api';
 import { useAuth } from '@/components/auth/useAuth';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfilePresentationModel } from '@/pages/profiles/useProfiles';
 
 const PAGE_SIZE = 20;
 
@@ -18,7 +20,10 @@ function formatArtifactFilenamePatterns(patterns: string[] | null) {
 
 export default function SemanticsPage() {
   const { user } = useAuth();
-  const { data } = useSddSemantics();
+  const { profileId } = useShellContext();
+  const presentation = useProfilePresentationModel(profileId);
+  const isSddProfile = presentation.workflowKind === 'sdd';
+  const { data } = useSddSemantics(isSddProfile);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const allItems = data ?? [];
@@ -35,6 +40,21 @@ export default function SemanticsPage() {
   };
 
   const canEdit = user.role === 'super_admin';
+
+  if (!isSddProfile) {
+    return (
+      <Panel title="SDD 语义映射" icon={<Settings size={18} />}>
+        <div className="grid gap-2 p-1 text-[12px] text-[var(--color-secondary)]">
+          <p>
+            当前 profile 使用 source-backed 规则，不消费这里的 SDD 语义列表。
+          </p>
+          <p className="text-[var(--color-muted)]">
+            source rule、artifact rule、capability rule 会由后续 Profile Config Admin 维护。
+          </p>
+        </div>
+      </Panel>
+    );
+  }
 
   return (
     <div

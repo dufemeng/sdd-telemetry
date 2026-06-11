@@ -24,7 +24,10 @@ import {
   ProfileKnowledgeTimelineResponseSchema,
   ProfileOverviewQuerySchema,
   ProfileOverviewSchema,
+  ProfileInspectorResponseSchema,
   ProfileSummaryListSchema,
+  ProfileUserActivityQuerySchema,
+  ProfileUserActivityResponseSchema,
   ProfileUserDetailSchema,
   ProfileUsersQuerySchema,
   ProfileUsersResponseSchema,
@@ -34,8 +37,10 @@ import {
   type ProfileCapabilityTimeseries,
   type ProfileDemand,
   type ProfileDemandDetail,
+  type ProfileInspectorResponse,
   type ProfileOverview,
   type ProfileSummary,
+  type ProfileUserActivityItem,
   type ProfileUserDetail,
 } from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
@@ -61,6 +66,13 @@ export class ProfilesController {
     const profileId = this.ctx.params.profileId as string;
     const data: ProfileCapabilityManifest = this.profilesService.getManifest(profileId);
     return ok(parseWithSchema(ProfileCapabilityManifestSchema, data));
+  }
+
+  @Get('/:profileId/inspector')
+  async inspector() {
+    const profileId = this.ctx.params.profileId as string;
+    const data: ProfileInspectorResponse = await this.profilesService.getInspector(profileId);
+    return ok(parseWithSchema(ProfileInspectorResponseSchema, data));
   }
 
   @Get('/:profileId/overview')
@@ -144,6 +156,15 @@ export class ProfilesController {
     const userId = this.ctx.params.userId as string;
     const data: ProfileUserDetail = await this.profilesService.getUserDetail(profileId, userId);
     return ok(parseWithSchema(ProfileUserDetailSchema, data));
+  }
+
+  @Get('/:profileId/users/:userId/activity')
+  async userActivity() {
+    const profileId = this.ctx.params.profileId as string;
+    const userId = this.ctx.params.userId as string;
+    const query = parseWithSchema(ProfileUserActivityQuerySchema, this.ctx.query);
+    const data: { items: ProfileUserActivityItem[] } = await this.profilesService.listUserActivity(profileId, userId, query);
+    return ok(parseWithSchema(ProfileUserActivityResponseSchema, data));
   }
 
   @Get('/:profileId/knowledge/coverage')

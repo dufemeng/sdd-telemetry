@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Zap } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileHiddenMetrics, useProfileUserDetail } from '@/pages/profiles/useProfiles';
-import { useUserActivity } from './useUserActivity';
+import { useProfilePresentationModel, useProfileUserActivity, useProfileUserDetail } from '@/pages/profiles/useProfiles';
 import { UserWorkItemList } from './components/UserWorkItemList';
 import { UserActivityTimeline } from './components/UserActivityTimeline';
-import { SkillUsageChart } from './components/SkillUsageChart';
 import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
 import { formatInteger } from '@/lib/format';
 
@@ -59,8 +57,7 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
 export default function UserProfilePage() {
   const { id: userId = '' } = useParams();
   const { profileId } = useShellContext();
-  const hiddenMetrics = useProfileHiddenMetrics(profileId);
-  const showSddActivity = !hiddenMetrics.has('sddStageDots');
+  const presentation = useProfilePresentationModel(profileId);
   const navigate = useNavigate();
   const profileQuery = useProfileUserDetail(profileId, userId || null);
   const profile = profileQuery.data;
@@ -72,7 +69,12 @@ export default function UserProfilePage() {
     setSelectedWorkItemId(null);
   }, [userId]);
 
-  const activityNodes = useUserActivity(userId, selectedWorkItemId, showSddActivity);
+  const activityQuery = useProfileUserActivity(profileId, userId || null, {
+    deliveryUnitId: selectedWorkItemId,
+    range: '30d',
+    limit: 200,
+  });
+  const activityNodes = activityQuery.data?.items ?? [];
 
   if (profileQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
@@ -141,8 +143,6 @@ export default function UserProfilePage() {
         </div>
       </section>
 
-      {showSddActivity ? <SkillUsageChart userId={userId} /> : null}
-
       {/* Two-column body */}
       <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
@@ -150,7 +150,7 @@ export default function UserProfilePage() {
             workItems={workItems}
             selectedId={selectedWorkItemId}
             onSelect={setSelectedWorkItemId}
-            showStages={showSddActivity}
+            stages={presentation.stages.artifactStages}
           />
         </section>
 

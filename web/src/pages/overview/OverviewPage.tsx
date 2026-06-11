@@ -18,22 +18,15 @@ import {
   useProfileCapabilityAnalytics,
   useProfileUsers,
   useProfileDemands,
-  useProfileHiddenMetrics,
+  useProfilePresentationModel,
 } from '@/pages/profiles/useProfiles';
 import { formatInteger, formatPercent, formatRelativeTime } from '@/lib/format';
+import type { ProfileStageDescriptor } from '@sdd-telemetry/api';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const SEVEN_DAYS_MS  = 7  * 86_400_000;
 const FOURTEEN_DAYS_MS = 14 * 86_400_000;
-
-const WI_STAGES = ['proposal', 'design', 'task', 'review'] as const;
-const WI_STAGE_LABEL: Record<typeof WI_STAGES[number], string> = {
-  proposal: '需求撰写',
-  design:   '系统设计',
-  task:     '任务拆分',
-  review:   '代码评审',
-};
 
 const CARD = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
 const ICON_BOX = { background: '#141409', color: 'var(--color-primary)' };
@@ -75,24 +68,41 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
   );
 }
 
-function ArtifactStageChips({ coverageStages }: { coverageStages: string[] }) {
+function getCoverageDepth(coverageStages: string[], stages: ProfileStageDescriptor[]): number {
+  return stages.filter((stage) => coverageStages.includes(stage.code)).length;
+}
+
+function ArtifactStageChips({
+  coverageStages,
+  stages,
+}: {
+  coverageStages: string[];
+  stages: ProfileStageDescriptor[];
+}) {
   if (coverageStages.length === 0) {
     return <span className="text-[12px] text-[var(--color-muted)]">—</span>;
   }
+  const known = stages.filter((stage) => coverageStages.includes(stage.code));
+  const knownCodes = new Set(known.map((stage) => stage.code));
+  const unknown = coverageStages.filter((stage) => !knownCodes.has(stage));
+  const chips = [
+    ...known.map((stage) => ({ code: stage.code, label: stage.label })),
+    ...unknown.map((stage) => ({ code: stage, label: stage })),
+  ];
 
   return (
     <div className="flex flex-wrap gap-[4px]">
-      {coverageStages.slice(0, 3).map((stage) => (
+      {chips.slice(0, 3).map((stage) => (
         <span
-          key={stage}
+          key={stage.code}
           className="text-[10px] px-[6px] py-[1px] rounded-[3px] text-[var(--color-secondary)]"
           style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
         >
-          {stage}
+          {stage.label}
         </span>
       ))}
-      {coverageStages.length > 3 ? (
-        <span className="text-[10px] text-[var(--color-muted)]">+{coverageStages.length - 3}</span>
+      {chips.length > 3 ? (
+        <span className="text-[10px] text-[var(--color-muted)]">+{chips.length - 3}</span>
       ) : null}
     </div>
   );
@@ -102,9 +112,13 @@ function ArtifactStageChips({ coverageStages }: { coverageStages: string[] }) {
 
 export default function OverviewPage() {
   const { timeRange, profileId } = useShellContext();
-  const hiddenMetrics = useProfileHiddenMetrics(profileId);
-  const showSddStages = !hiddenMetrics.has('sddStageDots');
-  const showMultiStage = !hiddenMetrics.has('multiStageDeliveryUnitCount');
+  const presentation = useProfilePresentationModel(profileId);
+  const artifactStages = presentation.stages.artifactStages;
+  const maturityStages = presentation.stages.maturityStages;
+  const showCoverageFunnel = presentation.widgets.artifactCoverageFunnel !== 'none' && artifactStages.length > 0;
+  const isSddStageFunnel = presentation.widgets.artifactCoverageFunnel === 'sdd_stage';
+  const showUserMaturity = presentation.widgets.userMaturity !== 'none' && maturityStages.length > 0;
+  const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
   const fromIso = timeRangeToFromIso(timeRange);
   const analyticsQuery  = useProfileCapabilityAnalytics(profileId, fromIso);
   const usersQuery      = useProfileUsers(profileId, { fromIso, pageSize: 200 });
@@ -129,12 +143,12 @@ export default function OverviewPage() {
   );
 
   const funnel = useMemo(
-    () => WI_STAGES.map((s) => ({
-      stage: s,
-      label: WI_STAGE_LABEL[s],
-      count: demands.filter((i) => i.coverageStages.includes(s)).length,
+    () => artifactStages.map((stage) => ({
+      stage: stage.code,
+      label: stage.label,
+      count: demands.filter((i) => i.coverageStages.includes(stage.code)).length,
     })),
-    [demands],
+    [artifactStages, demands],
   );
   const funnelMax = Math.max(funnel[0]?.count ?? 0, 1);
 
@@ -170,7 +184,7 @@ export default function OverviewPage() {
         <div className={`grid ${showMultiStage ? 'grid-cols-4' : 'grid-cols-3'} gap-3`}>
           <KpiCard
             icon={<Zap size={18} />}
-            label="技能调用量"
+            label={`${presentation.labels.capabilitySingular}调用量`}
             value={profileOverview?.capabilityUsageCount ?? kpis?.capabilityUsageCount.current ?? null}
             metric={kpis?.capabilityUsageCount}
             loading={analyticsQuery.isLoading}
@@ -184,7 +198,7 @@ export default function OverviewPage() {
           />
           <KpiCard
             icon={<GitBranch size={18} />}
-            label="覆盖需求"
+            label={`覆盖${presentation.labels.deliveryUnitSingular}`}
             value={profileOverview?.deliveryUnitCount ?? kpis?.coveredDeliveryUnitCount.current ?? null}
             metric={kpis?.coveredDeliveryUnitCount}
             loading={analyticsQuery.isLoading}
@@ -192,10 +206,10 @@ export default function OverviewPage() {
           {showMultiStage ? (
             <KpiCard
               icon={<FileText size={18} />}
-              label="全链路需求"
+              label={isSddStageFunnel ? `全链路${presentation.labels.deliveryUnitSingular}` : `多类型${presentation.labels.deliveryUnitSingular}`}
               value={kpis?.multiStageDeliveryUnitCount.current ?? null}
               metric={kpis?.multiStageDeliveryUnitCount}
-              hint="覆盖 ≥ 3 个 SDD 阶段"
+              hint={`覆盖 ≥ 3 个${isSddStageFunnel ? 'SDD 阶段' : '产物类型'}`}
               loading={analyticsQuery.isLoading}
             />
           ) : null}
@@ -235,11 +249,11 @@ export default function OverviewPage() {
           </FeatureGate>
         </div>
 
-        {/* ── Section 2: 成员概况 + SDD 漏斗 ── */}
+        {/* ── Section 2: 成员概况 + 覆盖漏斗 ── */}
         <div className="grid grid-cols-12 gap-3">
 
           {/* 成员概况 */}
-          <section className={`${showSddStages ? 'col-span-7' : 'col-span-12'} rounded-[6px] overflow-hidden`} style={CARD}>
+          <section className={`${showCoverageFunnel ? 'col-span-7' : 'col-span-12'} rounded-[6px] overflow-hidden`} style={CARD}>
             <SectionHeader icon={<UserRound size={16} />} title="成员概况">
               <span
                 className="text-[11px] px-[7px] py-[2px] rounded-full"
@@ -257,7 +271,7 @@ export default function OverviewPage() {
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {(showSddStages ? ['成员', '工作项', 'SDD 深度', '最近活跃'] : ['成员', '工作项', '最近活跃']).map((h) => (
+                  {(showUserMaturity ? ['成员', '工作项', '成熟度', '最近活跃'] : ['成员', '工作项', '最近活跃']).map((h) => (
                     <th
                       key={h}
                       className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
@@ -271,7 +285,7 @@ export default function OverviewPage() {
               <tbody>
                 {recentUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={showSddStages ? 4 : 3} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                    <td colSpan={showUserMaturity ? 4 : 3} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
                       {usersQuery.isLoading ? '加载中…' : '暂无数据'}
                     </td>
                   </tr>
@@ -280,7 +294,7 @@ export default function OverviewPage() {
                     const active = u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS;
                     const isNew  = u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS;
                     const borderColor = isNew ? '#60a5fa' : active ? 'var(--color-good-text)' : 'rgba(255,255,255,0.08)';
-                    const depth = ['proposal','design','task','codereview'].filter((s) => u.capabilityStages.includes(s)).length;
+                    const depth = getCoverageDepth(u.capabilityStages, maturityStages);
                     return (
                       <tr
                         key={u.id}
@@ -346,16 +360,17 @@ export default function OverviewPage() {
                             <span className="text-[12px] text-[var(--color-muted)]">—</span>
                           )}
                         </td>
-                        {showSddStages ? (
+                        {showUserMaturity ? (
                           <td
                             className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
                             style={{ paddingTop: 9, paddingBottom: 9, width: 100 }}
                           >
                             <div className="flex items-center gap-[5px]">
-                              {[0,1,2,3].map((i) => (
+                              {maturityStages.map((stage, i) => (
                                 <div
-                                  key={i}
+                                  key={stage.code}
                                   className="rounded-full"
+                                  title={stage.label}
                                   style={{
                                     width: 7, height: 7,
                                     background: i < depth ? 'var(--color-primary)' : 'rgba(255,255,255,0.10)',
@@ -366,7 +381,7 @@ export default function OverviewPage() {
                                 className="text-[10px] text-[var(--color-muted)] ml-[2px]"
                                 style={{ fontFamily: 'var(--font-mono)' }}
                               >
-                                {depth}/4
+                                {depth}/{maturityStages.length}
                               </span>
                             </div>
                           </td>
@@ -392,11 +407,11 @@ export default function OverviewPage() {
               style={{ borderTop: '1px solid var(--color-border)' }}
             >
               <span className="text-[11px] text-[var(--color-muted)]">
-                文档总产出&ensp;
+                {presentation.labels.artifactSingular}总产出&ensp;
                 <strong className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
                   {demandsQuery.isLoading ? '—' : formatInteger(totalDocs)}
                 </strong>
-                &ensp;篇
+                &ensp;个
               </span>
               <span className="text-[11px] text-[var(--color-muted)]">
                 近7天活跃&ensp;
@@ -408,11 +423,13 @@ export default function OverviewPage() {
             </div>
           </section>
 
-          {/* SDD 链路覆盖 */}
-          {showSddStages ? (
+          {/* 链路 / 类型覆盖 */}
+          {showCoverageFunnel ? (
           <section className="col-span-5 p-[14px] rounded-[6px]" style={CARD}>
-            <SectionHeader icon={<TrendingDown size={16} />} title="SDD 链路覆盖">
-              <span className="text-[11px] text-[var(--color-muted)]">包含该阶段的需求数</span>
+            <SectionHeader icon={<TrendingDown size={16} />} title={isSddStageFunnel ? 'SDD 链路覆盖' : '产物类型覆盖'}>
+              <span className="text-[11px] text-[var(--color-muted)]">
+                包含该{isSddStageFunnel ? '阶段' : '类型'}的{presentation.labels.deliveryUnitSingular}数
+              </span>
             </SectionHeader>
 
             <div className="flex items-end gap-[10px] mt-4" style={{ height: 100 }}>
@@ -456,9 +473,9 @@ export default function OverviewPage() {
               style={{ borderTop: '1px solid var(--color-border)' }}
             >
               {[
-                { label: '总需求数', value: demands.length },
-                { label: '活跃需求', value: demands.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
-                { label: '全阶段覆盖', value: demands.filter((i) => WI_STAGES.every((s) => i.coverageStages.includes(s))).length },
+                { label: `总${presentation.labels.deliveryUnitSingular}数`, value: demands.length },
+                { label: `活跃${presentation.labels.deliveryUnitSingular}`, value: demands.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
+                { label: isSddStageFunnel ? '全阶段覆盖' : '全类型覆盖', value: demands.filter((i) => artifactStages.every((stage) => i.coverageStages.includes(stage.code))).length },
                 { label: '有错误', value: demands.filter((i) => i.errorCount > 0).length },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
@@ -473,12 +490,12 @@ export default function OverviewPage() {
           ) : null}
         </div>
 
-        {/* ── Section 3: 热门技能 + 最近活跃需求 ── */}
+        {/* ── Section 3: 热门能力 + 最近活跃交付单元 ── */}
         <div className="grid grid-cols-2 gap-3">
 
-          {/* 热门技能 */}
+          {/* 热门能力 */}
           <section className="rounded-[6px] overflow-hidden" style={CARD}>
-            <SectionHeader icon={<Layers3 size={16} />} title="热门技能">
+            <SectionHeader icon={<Layers3 size={16} />} title={`热门${presentation.labels.capabilityPlural}`}>
               <span className="text-[11px] text-[var(--color-muted)]">近 {timeRange}</span>
             </SectionHeader>
 
@@ -550,14 +567,19 @@ export default function OverviewPage() {
             </div>
           </section>
 
-          {/* 最近活跃需求 */}
+          {/* 最近活跃交付单元 */}
           <section className="rounded-[6px] overflow-hidden" style={CARD}>
-            <SectionHeader icon={<GitBranch size={16} />} title="最近活跃需求" />
+            <SectionHeader icon={<GitBranch size={16} />} title={`最近活跃${presentation.labels.deliveryUnitSingular}`} />
 
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {(showSddStages ? ['需求', '阶段覆盖', '文档', '最近更新'] : ['需求', '产物类型', '文档', '最近更新']).map((h) => (
+                  {[
+                    presentation.labels.deliveryUnitSingular,
+                    isSddStageFunnel ? '阶段覆盖' : '产物类型',
+                    presentation.labels.artifactSingular,
+                    '最近更新',
+                  ].map((h) => (
                     <th
                       key={h}
                       className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
@@ -584,7 +606,7 @@ export default function OverviewPage() {
                       : isActive
                         ? 'var(--color-good-text)'
                         : 'rgba(255,255,255,0.08)';
-                    const depth = WI_STAGES.filter((s) => item.coverageStages.includes(s)).length;
+                    const depth = getCoverageDepth(item.coverageStages, artifactStages);
                     return (
                       <tr
                         key={item.id}
@@ -594,7 +616,7 @@ export default function OverviewPage() {
                           animation: `ov-fade-up 0.22s ease-out ${idx * 0.04}s both`,
                         }}
                       >
-                        {/* 需求 */}
+                        {/* 交付单元 */}
                         <td
                           className="group-hover:bg-[var(--color-hover)] transition-colors"
                           style={{ paddingLeft: 20, paddingRight: 12, paddingTop: 8, paddingBottom: 8, position: 'relative', maxWidth: 0 }}
@@ -633,15 +655,15 @@ export default function OverviewPage() {
                           className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
                           style={{ paddingTop: 8, paddingBottom: 8, width: 80 }}
                         >
-                          {showSddStages ? (
+                          {isSddStageFunnel ? (
                             <div className="flex items-center gap-[4px]">
-                              {WI_STAGES.map((s) => (
+                              {artifactStages.map((stage) => (
                                 <div
-                                  key={s}
-                                  title={WI_STAGE_LABEL[s]}
+                                  key={stage.code}
+                                  title={stage.label}
                                   style={{
                                     width: 6, height: 6, borderRadius: '50%',
-                                    background: item.coverageStages.includes(s)
+                                    background: item.coverageStages.includes(stage.code)
                                       ? 'var(--color-primary)'
                                       : 'rgba(255,255,255,0.10)',
                                   }}
@@ -651,14 +673,14 @@ export default function OverviewPage() {
                                 className="text-[10px] text-[var(--color-muted)] ml-[2px]"
                                 style={{ fontFamily: 'var(--font-mono)' }}
                               >
-                                {depth}/4
+                                {depth}/{artifactStages.length}
                               </span>
                             </div>
                           ) : (
-                            <ArtifactStageChips coverageStages={item.coverageStages} />
+                            <ArtifactStageChips coverageStages={item.coverageStages} stages={artifactStages} />
                           )}
                         </td>
-                        {/* 文档数 */}
+                        {/* 产物数 */}
                         <td
                           className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors text-right"
                           style={{ paddingTop: 8, paddingBottom: 8, width: 56 }}

@@ -3,7 +3,7 @@ import {
   selectAttributionAnchor,
   type AttributionAnchor,
   type AttributionTarget,
-} from '../src/jobs/profile-projection/boss-a-operators';
+} from '../src/jobs/profile-projection/source-registry/attribution';
 
 const baseAnchor = (over: Partial<AttributionAnchor>): AttributionAnchor => ({
   sourceReferenceId: 1,
@@ -12,7 +12,7 @@ const baseAnchor = (over: Partial<AttributionAnchor>): AttributionAnchor => ({
   sessionId: 's1',
   eventTime: new Date('2026-01-01T00:00:00Z'),
   deliveryUnitId: 100,
-  isWrite: false,
+  preferred: false,
   ...over,
 });
 
@@ -27,11 +27,11 @@ const target = (over: Partial<AttributionTarget>): AttributionTarget => ({
 
 const WINDOW = 120;
 
-describe('Boss A attribution anchor selection', () => {
+describe('source-backed attribution anchor selection', () => {
   it('prefers a plan-doc write anchor over a more recent read anchor in the same interaction', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, isWrite: true }),
-      baseAnchor({ sourceReferenceId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, isWrite: false }),
+      baseAnchor({ sourceReferenceId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, preferred: true }),
+      baseAnchor({ sourceReferenceId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, preferred: false }),
     ];
     const result = selectAttributionAnchor(anchors, target({ sourceReferenceId: 3 }), WINDOW);
     expect(result.deliveryUnitId).toBe(100);
@@ -41,8 +41,8 @@ describe('Boss A attribution anchor selection', () => {
 
   it('falls back to the most recent read anchor when no write anchor exists in the interaction', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, isWrite: false }),
-      baseAnchor({ sourceReferenceId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, isWrite: false }),
+      baseAnchor({ sourceReferenceId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, preferred: false }),
+      baseAnchor({ sourceReferenceId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, preferred: false }),
     ];
     const result = selectAttributionAnchor(anchors, target({ sourceReferenceId: 3 }), WINDOW);
     expect(result.deliveryUnitId).toBe(200);
@@ -51,7 +51,7 @@ describe('Boss A attribution anchor selection', () => {
 
   it('ignores anchors that occur after the target within the interaction', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 5, deliveryUnitId: 100, isWrite: true }),
+      baseAnchor({ sourceReferenceId: 5, deliveryUnitId: 100, preferred: true }),
     ];
     const result = selectAttributionAnchor(anchors, target({ sourceReferenceId: 3 }), WINDOW);
     expect(result.deliveryUnitId).toBeNull();
@@ -59,8 +59,8 @@ describe('Boss A attribution anchor selection', () => {
 
   it('uses the unique write anchor within the session window across interactions', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, isWrite: true }),
-      baseAnchor({ sourceReferenceId: 2, interactionId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, isWrite: false }),
+      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, preferred: true }),
+      baseAnchor({ sourceReferenceId: 2, interactionId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 200, preferred: false }),
     ];
     const result = selectAttributionAnchor(anchors, target({ sourceReferenceId: 3, interactionId: 3 }), WINDOW);
     expect(result.deliveryUnitId).toBe(100);
@@ -70,8 +70,8 @@ describe('Boss A attribution anchor selection', () => {
 
   it('returns ambiguous when multiple distinct write anchors exist in the session window', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, isWrite: true }),
-      baseAnchor({ sourceReferenceId: 2, interactionId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 300, isWrite: true }),
+      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, preferred: true }),
+      baseAnchor({ sourceReferenceId: 2, interactionId: 2, eventTime: new Date('2026-01-01T00:30:00Z'), deliveryUnitId: 300, preferred: true }),
     ];
     const result = selectAttributionAnchor(anchors, target({ sourceReferenceId: 3, interactionId: 3 }), WINDOW);
     expect(result.deliveryUnitId).toBeNull();
@@ -80,7 +80,7 @@ describe('Boss A attribution anchor selection', () => {
 
   it('does not attribute across the session window boundary', () => {
     const anchors = [
-      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, isWrite: true }),
+      baseAnchor({ sourceReferenceId: 1, interactionId: 1, eventTime: new Date('2026-01-01T00:00:00Z'), deliveryUnitId: 100, preferred: true }),
     ];
     // target 3 hours later, window is 120 min
     const result = selectAttributionAnchor(

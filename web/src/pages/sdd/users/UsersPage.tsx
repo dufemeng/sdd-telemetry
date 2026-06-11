@@ -12,25 +12,15 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileHiddenMetrics, useProfileUsers } from '@/pages/profiles/useProfiles';
+import { useProfilePresentationModel, useProfileUsers } from '@/pages/profiles/useProfiles';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import type { ProfileUserItem } from '@sdd-telemetry/api';
+import type { ProfileStageDescriptor, ProfileUserItem } from '@sdd-telemetry/api';
 
 const PAGE_SIZE = 20;
 const DAY_MS = 86_400_000;
-
-const SDD_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
-type SddStage = (typeof SDD_STAGES)[number];
-
-const STAGE_LABELS: Record<SddStage, string> = {
-  proposal: '需求撰写',
-  design: '系统设计',
-  task: '任务拆分',
-  codereview: '代码评审',
-};
 
 type UserStatus = 'live' | 'cold' | 'churn';
 type StatusFilter = 'all' | UserStatus | 'new';
@@ -42,12 +32,12 @@ const STATUS_LABELS: Record<UserStatus, string> = {
   churn: '流失',
 };
 
-function getSddDepth(stages: string[]): number {
-  return SDD_STAGES.filter((s) => stages.includes(s)).length;
+function getStageDepth(stages: string[], descriptors: ProfileStageDescriptor[]): number {
+  return descriptors.filter((stage) => stages.includes(stage.code)).length;
 }
 
-function maturityReached(u: ProfileUserItem): number {
-  return SDD_STAGES.filter((s) => u.capabilityStages.includes(s)).length;
+function maturityReached(u: ProfileUserItem, descriptors: ProfileStageDescriptor[]): number {
+  return getStageDepth(u.capabilityStages, descriptors);
 }
 
 // ---- Avatar ----
@@ -99,23 +89,29 @@ function StatusBadge({ status, isNew }: { status: UserStatus; isNew?: boolean })
 }
 
 // ---- DepthDots ----
-function DepthDots({ stages }: { stages: string[] }) {
-  const depth = getSddDepth(stages);
+function DepthDots({
+  stages,
+  descriptors,
+}: {
+  stages: string[];
+  descriptors: ProfileStageDescriptor[];
+}) {
+  const depth = getStageDepth(stages, descriptors);
   return (
     <div className="flex flex-col gap-[5px]">
       <span className="text-[11px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-        {depth} / 4 阶段
+        {depth} / {descriptors.length} 阶段
       </span>
       <div className="flex gap-[4px]">
-        {SDD_STAGES.map((s) => (
+        {descriptors.map((stage) => (
           <div
-            key={s}
-            title={STAGE_LABELS[s]}
+            key={stage.code}
+            title={stage.label}
             className="rounded-full"
             style={{
               width: 6,
               height: 6,
-              background: stages.includes(s) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
+              background: stages.includes(stage.code) ? 'var(--color-primary)' : 'rgba(255,255,255,0.12)',
             }}
           />
         ))}
@@ -192,8 +188,9 @@ function daysSince(ts: string | null, now: number): number | null {
 
 export default function UsersPage() {
   const { profileId } = useShellContext();
-  const hiddenMetrics = useProfileHiddenMetrics(profileId);
-  const showMaturity = !hiddenMetrics.has('maturity');
+  const presentation = useProfilePresentationModel(profileId);
+  const maturityStages = presentation.stages.maturityStages;
+  const showMaturity = presentation.widgets.userMaturity !== 'none' && maturityStages.length > 0;
   const usersQuery = useProfileUsers(profileId, { pageSize: 200 });
   const rawData: ProfileUserItem[] = usersQuery.data?.items ?? [];
   const isLoading = usersQuery.isLoading;
@@ -212,21 +209,21 @@ export default function UsersPage() {
   const total = rawData.length;
   const active7d = liveCount;
   const avgMaturity = total > 0
-    ? rawData.reduce((s, u) => s + maturityReached(u), 0) / total
+    ? rawData.reduce((s, u) => s + maturityReached(u, maturityStages), 0) / total
     : 0;
   const userTableHeaders = showMaturity
-    ? ['成员', '状态', 'SDD 成熟度', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃']
-    : ['成员', '状态', '工作项', '产出转化（artifact / 编码次数）', '接入时长', '最近活跃'];
+    ? ['成员', '状态', '成熟度', presentation.labels.deliveryUnitSingular, `产出转化（${presentation.labels.artifactSingular} / 编码次数）`, '接入时长', '最近活跃']
+    : ['成员', '状态', presentation.labels.deliveryUnitSingular, `产出转化（${presentation.labels.artifactSingular} / 编码次数）`, '接入时长', '最近活跃'];
   const userTableColumnCount = userTableHeaders.length;
 
-  // 漏斗：起点为团队规模，往下是各 SDD 阶段走到的人数。形状相对全队收窄，并标出相邻段绝对流失最多的一步
+  // 漏斗：起点为团队规模，往下是各成熟度阶段走到的人数。形状相对全队收窄，并标出相邻段绝对流失最多的一步
   const funnelRows = [
     { key: 'team', label: '团队规模', code: null as string | null, count: total },
-    ...SDD_STAGES.map((stage) => ({
-      key: stage as string,
-      label: STAGE_LABELS[stage],
-      code: stage as string | null,
-      count: rawData.filter((u) => u.capabilityStages.includes(stage)).length,
+    ...maturityStages.map((stage) => ({
+      key: stage.code,
+      label: stage.label,
+      code: stage.code as string | null,
+      count: rawData.filter((u) => u.capabilityStages.includes(stage.code)).length,
     })),
   ];
   const funnelMax = Math.max(...funnelRows.map((d) => d.count), 1);
@@ -246,7 +243,7 @@ export default function UsersPage() {
       return bDays - aDays;
     });
 
-  // 标杆：按 (artifactCount + workItemCount) 排序
+  // 标杆：按 artifactCount + deliveryUnitCount 排序
   const topContributors = useMemo(() => (
     [...rawData]
       .sort((a, b) => {
@@ -376,12 +373,13 @@ export default function UsersPage() {
                   <span className="text-[24px] font-semibold" style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
                     {isLoading ? '—' : avgMaturity.toFixed(1)}
                   </span>
-                  <span className="text-[13px] text-[var(--color-muted)]">&nbsp;/ 4 阶段</span>
+                  <span className="text-[13px] text-[var(--color-muted)]">&nbsp;/ {maturityStages.length} 阶段</span>
                 </div>
                 <div className="flex gap-[5px]">
-                  {SDD_STAGES.map((_, i) => (
+                  {maturityStages.map((stage, i) => (
                     <div
-                      key={i}
+                      key={stage.code}
+                      title={stage.label}
                       className="rounded-full"
                       style={{
                         width: 8,
@@ -393,7 +391,7 @@ export default function UsersPage() {
                   ))}
                 </div>
               </div>
-              <em className="text-[11px] not-italic text-[var(--color-muted)]">满分 4（完整 SDD 链路）</em>
+              <em className="text-[11px] not-italic text-[var(--color-muted)]">满分 {maturityStages.length} 阶段</em>
             </div>
           </section>
         ) : null}
@@ -416,16 +414,16 @@ export default function UsersPage() {
         </section>
       </div>
 
-      {/* Section 2: SDD 阶段渗透 + 转冷预警 */}
+      {/* Section 2: 成熟度渗透 + 转冷预警 */}
       <div className="grid grid-cols-3 gap-3">
 
-        {/* SDD 阶段渗透：相对第一步收窄的漏斗 */}
+        {/* 成熟度渗透：相对第一步收窄的漏斗 */}
         {showMaturity ? (
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
               <TrendingDown size={18} />
-              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">SDD 阶段渗透</h3>
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">成熟度阶段渗透</h3>
             </div>
             <span className="text-[11px] text-[var(--color-muted)]">
               从全队 {total} 人逐阶段收窄 · 数字为占全队比例
@@ -551,7 +549,7 @@ export default function UsersPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             {topContributors.map((u, i) => {
-              const depth = maturityReached(u);
+              const depth = maturityReached(u, maturityStages);
               const days = daysSince(u.firstSeenAt, now);
               return (
                 <Link
@@ -583,7 +581,7 @@ export default function UsersPage() {
                         <StatusBadge status={u.status} isNew={u.isNew} />
                         {showMaturity ? (
                           <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                            {depth}/4
+                            {depth}/{maturityStages.length}
                           </span>
                         ) : null}
                       </div>
@@ -592,11 +590,11 @@ export default function UsersPage() {
                   <div className="flex flex-wrap gap-[6px]">
                     <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
                       <GitBranch size={10} />
-                      {u.deliveryUnitCount} 需求
+                      {u.deliveryUnitCount} {presentation.labels.deliveryUnitSingular}
                     </span>
                     <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}>
                       <Layers size={10} />
-                      {u.artifactCount} artifact
+                      {u.artifactCount} {presentation.labels.artifactSingular}
                     </span>
                     {u.codeWriteCount > 0 ? (
                       <span className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-good-text)] px-[6px] py-[2px] rounded-[4px]" style={{ background: 'var(--color-good-bg)', border: '1px solid var(--color-good-text)' }}>
@@ -705,7 +703,7 @@ export default function UsersPage() {
                       </td>
                       {showMaturity ? (
                         <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                          <DepthDots stages={u.capabilityStages} />
+                          <DepthDots stages={u.capabilityStages} descriptors={maturityStages} />
                         </td>
                       ) : null}
                       {/* 工作项 */}
@@ -722,7 +720,7 @@ export default function UsersPage() {
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
                         <div className="flex gap-[8px] text-[11px]" style={{ fontFamily: 'var(--font-mono)' }}>
                           <span className="text-[var(--color-secondary)]">
-                            {u.artifactCount} <span className="text-[10px] text-[var(--color-muted)]">artifact</span>
+                            {u.artifactCount} <span className="text-[10px] text-[var(--color-muted)]">{presentation.labels.artifactSingular}</span>
                           </span>
                           <span className="text-[var(--color-good-text)]">
                             {u.codeWriteCount} <span className="text-[10px] text-[var(--color-muted)]">次编码</span>

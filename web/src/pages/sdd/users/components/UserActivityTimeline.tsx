@@ -1,18 +1,18 @@
-import { BookOpen, MessageSquare, Sparkles, Wrench } from 'lucide-react';
-import type { ActivityNode } from '../useUserActivity';
+import { BookOpen, Code2, FilePen, MessageSquare, Sparkles } from 'lucide-react';
+import type { ProfileUserActivityItem } from '@sdd-telemetry/api';
 import { formatRelativeTime, formatTime, truncate } from '@/lib/format';
 
 export function UserActivityTimeline({
   nodes,
   onOpenInteraction,
 }: {
-  nodes: ActivityNode[];
+  nodes: ProfileUserActivityItem[];
   onOpenInteraction: (interactionId: string) => void;
 }) {
   if (nodes.length === 0) {
     return (
       <div className="p-4 text-[12px] text-[var(--color-muted)] text-center">
-        暂无活动（事件层可能已过期，或该用户尚无 skill_usage / wiki_recall 记录）
+        暂无活动
       </div>
     );
   }
@@ -20,8 +20,14 @@ export function UserActivityTimeline({
   return (
     <div className="flex flex-col">
       {nodes.map((node) => {
-        const Icon = node.kind === 'skill' ? Sparkles : node.kind === 'wiki' ? BookOpen : node.kind === 'discussion' ? MessageSquare : Wrench;
+        const Icon =
+          node.kind === 'capability' ? Sparkles :
+          node.kind === 'knowledge' ? BookOpen :
+          node.kind === 'code' ? Code2 :
+          node.kind === 'artifact_discussion' ? MessageSquare :
+          FilePen;
         const clickable = Boolean(node.interactionId);
+        const detail = node.detail ?? node.locator;
         return (
           <div
             key={node.id}
@@ -44,13 +50,14 @@ export function UserActivityTimeline({
               </div>
               <div className="text-[10px] text-[var(--color-muted)] mt-[2px]" style={{ fontFamily: 'var(--font-mono)' }}>
                 {formatTime(node.eventTime)}
-                {node.semanticCode ? <> · <span className="text-[var(--color-secondary)]">{node.semanticCode}</span></> : null}
-                {node.wikiRelativePath ? <> · wiki</> : null}
-                {node.kind === 'write' || node.kind === 'discussion' ? <> · {node.kind === 'discussion' ? '讨论' : '写入'}</> : null}
+                {node.capabilityCode ? <> · <span className="text-[var(--color-secondary)]">{node.capabilityCode}</span></> : null}
+                {node.kind === 'knowledge' ? <> · 知识</> : null}
+                {node.kind === 'code' ? <> · 代码</> : null}
+                {node.kind === 'artifact_write' || node.kind === 'artifact_discussion' ? <> · {node.kind === 'artifact_discussion' ? '讨论' : '写入'}</> : null}
               </div>
-              {node.detail && node.kind !== 'skill' ? (
+              {detail && node.kind !== 'capability' ? (
                 <div className="text-[11px] text-[var(--color-secondary)] mt-[4px] whitespace-pre-wrap break-words" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {truncate(node.detail, 400)}
+                  {truncate(detail, 400)}
                 </div>
               ) : null}
             </div>

@@ -1,4 +1,5 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
+import { getProfileConfig, normalizeProfilePresentation } from '@sdd-telemetry/api';
 import type {
   ProfileArtifactTimelineItem,
   ProfileCapabilityAnalytics,
@@ -18,7 +19,10 @@ import type {
   ProfileKnowledgeTimelinePoint,
   ProfileOverview,
   ProfileOverviewQuery,
+  ProfileInspectorFactCounts,
+  ProfileInspectorProjectionRun,
   ProfileUserDeliveryUnit,
+  ProfileUserActivityItem,
   ProfileUserDetail,
   ProfileUserItem,
   ProfileUserMaturity,
@@ -34,9 +38,6 @@ import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, whereSql } from '..
  * 只读 current pointer 指向的 completed run；基础概览按 profile_* 通用事实聚合。
  */
 
-const MULTI_STAGE_ARTIFACT_TYPES = ['proposal', 'design', 'task', 'review'] as const;
-/** 上手成熟度阶段顺序，对齐旧用户分析 SDD_MATURITY_STAGES。 */
-const MATURITY_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
 const DAY_MS = 86_400_000;
 const ROOT_DOMAIN_LABEL = '（根目录）';
 
@@ -55,6 +56,18 @@ interface KnowledgeFilterOptions {
   rangeSinceDate?: Date | null;
   wikiDomain?: string | null;
   userId?: string | null;
+}
+
+interface UserActivityOptions {
+  deliveryUnitId?: string | null;
+  rangeSinceDate?: Date | null;
+  limit: number;
+}
+
+export interface ProfileProjectionInspector {
+  currentRun: ProfileInspectorProjectionRun | null;
+  latestRun: ProfileInspectorProjectionRun | null;
+  counts: ProfileInspectorFactCounts;
 }
 
 @Provide('profileProjectionRepository')
@@ -83,6 +96,75 @@ export class ProfileProjectionRepository {
     )) as CountRow[];
     const value = rows[0]?.v;
     return value == null ? null : Number(value);
+  }
+
+  async getInspector(profileId: string): Promise<ProfileProjectionInspector> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const [currentRows, latestRows] = await Promise.all([
+      dataSource.query(
+        `SELECT r.id, r.run_type, r.status, r.started_at, r.completed_at, r.stats_json, r.error_message
+         FROM profile_current_projection_runs c
+         JOIN profile_projection_runs r
+           ON r.id = c.current_projection_run_id
+         WHERE c.profile_id = ?
+         LIMIT 1`,
+        [profileId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT r.id, r.run_type, r.status, r.started_at, r.completed_at, r.stats_json, r.error_message
+         FROM profile_projection_runs r
+         WHERE r.profile_id = ?
+         ORDER BY r.id DESC
+         LIMIT 1`,
+        [profileId],
+      ) as Promise<Array<Record<string, unknown>>>,
+    ]);
+
+    const currentRun = currentRows[0] ? toProjectionRun(currentRows[0]) : null;
+    const latestRun = latestRows[0] ? toProjectionRun(latestRows[0]) : null;
+    const counts = currentRun ? await this.getFactCounts(profileId, Number(currentRun.id)) : emptyFactCounts();
+    return { currentRun, latestRun, counts };
+  }
+
+  private async getFactCounts(profileId: string, runId: number): Promise<ProfileInspectorFactCounts> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const count = async (table: string): Promise<number> => {
+      const rows = (await dataSource.query(
+        `SELECT COUNT(*) AS v
+         FROM \`${table}\`
+         WHERE profile_id = ? AND projection_run_id = ?`,
+        [profileId, runId],
+      )) as CountRow[];
+      return toNumber(rows[0]?.v);
+    };
+
+    const [
+      deliveryUnits,
+      artifacts,
+      artifactWrites,
+      artifactTurns,
+      capabilityUsages,
+      knowledgeRecalls,
+      codeActivities,
+    ] = await Promise.all([
+      count('profile_delivery_units'),
+      count('profile_artifacts'),
+      count('profile_artifact_writes'),
+      count('profile_artifact_turns'),
+      count('profile_capability_usages'),
+      count('profile_knowledge_recalls'),
+      count('profile_code_activities'),
+    ]);
+
+    return {
+      deliveryUnits,
+      artifacts,
+      artifactWrites,
+      artifactTurns,
+      capabilityUsages,
+      knowledgeRecalls,
+      codeActivities,
+    };
   }
 
   async getOverview(
@@ -145,8 +227,7 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              (SELECT COUNT(*) FROM sdd_errors e
-                WHERE e.work_item_id = CAST(JSON_UNQUOTE(JSON_EXTRACT(du.evidence_json, '$.sourceId')) AS UNSIGNED)) AS error_count
+              0 AS error_count
        FROM profile_delivery_units du
        ${whereSql(clauses)}
        ORDER BY du.last_seen_at DESC, du.id DESC`,
@@ -185,8 +266,7 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              (SELECT COUNT(*) FROM sdd_errors e
-                WHERE e.work_item_id = CAST(JSON_UNQUOTE(JSON_EXTRACT(du.evidence_json, '$.sourceId')) AS UNSIGNED)) AS error_count
+              0 AS error_count
        FROM profile_delivery_units du
        WHERE du.profile_id = ? AND du.projection_run_id = ? AND du.id = ?
        LIMIT 1`,
@@ -327,6 +407,8 @@ export class ProfileProjectionRepository {
     query: ProfileOverviewQuery,
   ): Promise<ProfileCapabilityAnalytics> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const presentation = normalizeProfilePresentation(getProfileConfig(profileId)?.presentation);
+    const multiStageArtifactTypes = presentation.stages.artifactStages.map((stage) => stage.code);
 
     const buildClauses = (extra: string[] = []): { clauses: string[]; params: unknown[] } => {
       const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?', ...extra];
@@ -351,6 +433,9 @@ export class ProfileProjectionRepository {
     };
 
     const multiStageQuery = () => {
+      if (multiStageArtifactTypes.length === 0) {
+        return Promise.resolve([{ v: 0 }]) as Promise<Array<Record<string, unknown>>>;
+      }
       const activeClauses = [
         'active.profile_id = ?',
         'active.projection_run_id = ?',
@@ -364,7 +449,7 @@ export class ProfileProjectionRepository {
            SELECT a.delivery_unit_id
            FROM profile_artifacts a
            WHERE a.profile_id = ? AND a.projection_run_id = ?
-             AND a.artifact_type IN (${MULTI_STAGE_ARTIFACT_TYPES.map(() => '?').join(',')})
+             AND a.artifact_type IN (${multiStageArtifactTypes.map(() => '?').join(',')})
              AND a.delivery_unit_id IN (
                SELECT DISTINCT active.delivery_unit_id
                FROM profile_artifacts active
@@ -373,7 +458,7 @@ export class ProfileProjectionRepository {
            GROUP BY a.delivery_unit_id
            HAVING COUNT(DISTINCT a.artifact_type) >= 3
          ) sub`,
-        [profileId, runId, ...MULTI_STAGE_ARTIFACT_TYPES, ...activeParams],
+        [profileId, runId, ...multiStageArtifactTypes, ...activeParams],
       ) as Promise<Array<Record<string, unknown>>>;
     };
 
@@ -569,7 +654,7 @@ export class ProfileProjectionRepository {
 
     const rows = (await dataSource.query(
       `SELECT
-         cu.capability_code,
+         MAX(cu.capability_code) AS capability_code,
          MAX(cu.display_name) AS capability_display_name,
          cu.raw_capability_name,
          COUNT(*) AS usage_count,
@@ -761,11 +846,12 @@ export class ProfileProjectionRepository {
       ],
     )) as Array<Record<string, unknown>>;
 
+    const maturityStageCodes = this.getMaturityStageCodes(profileId);
     const maturityByUser = await this.loadMaturityMap(runId, itemRows.map((r) => toStringId(r.user_id)));
 
     const items: ProfileUserItem[] = itemRows.map((row) => {
       const id = toStringId(row.user_id);
-      const { rampDays } = this.computeMaturity(maturityByUser.get(id) ?? new Map(), row.profile_first_seen_at);
+      const { rampDays } = this.computeMaturity(maturityByUser.get(id) ?? new Map(), row.profile_first_seen_at, maturityStageCodes);
       return {
         id,
         userKey: String(row.user_key ?? ''),
@@ -871,20 +957,21 @@ export class ProfileProjectionRepository {
     return byUser;
   }
 
-  /** 成熟度：4 个阶段全部返回（未到达 firstReachedAt 为 null），rampDays 仅在走通全流程时计算。对齐旧 computeUserMaturity。 */
+  /** 成熟度：按 profile presentation 阶段返回；无成熟度阶段时返回空 stages。 */
   private computeMaturity(
     firstByStage: Map<string, string>,
     firstSeenAt: unknown,
+    maturityStageCodes: string[],
   ): { stages: ProfileUserMaturityStage[]; completionRate: number; rampDays: number | null } {
-    const stages: ProfileUserMaturityStage[] = MATURITY_STAGES.map((stage) => ({
+    const stages: ProfileUserMaturityStage[] = maturityStageCodes.map((stage) => ({
       stage,
       firstReachedAt: firstByStage.get(stage) ?? null,
     }));
     const reachedCount = stages.filter((s) => s.firstReachedAt !== null).length;
-    const completionRate = reachedCount / MATURITY_STAGES.length;
+    const completionRate = maturityStageCodes.length > 0 ? reachedCount / maturityStageCodes.length : 0;
 
     let rampDays: number | null = null;
-    if (reachedCount === MATURITY_STAGES.length && firstSeenAt) {
+    if (maturityStageCodes.length > 0 && reachedCount === maturityStageCodes.length && firstSeenAt) {
       const firstSeenMs = new Date(String(firstSeenAt)).getTime();
       const reachedTimes = stages
         .map((s) => (s.firstReachedAt ? new Date(s.firstReachedAt).getTime() : null))
@@ -896,6 +983,11 @@ export class ProfileProjectionRepository {
     return { stages, completionRate, rampDays };
   }
 
+  private getMaturityStageCodes(profileId: string): string[] {
+    return normalizeProfilePresentation(getProfileConfig(profileId)?.presentation)
+      .stages.maturityStages.map((stage) => stage.code);
+  }
+
   async getUserDetail(
     profileId: string,
     runId: number,
@@ -905,7 +997,7 @@ export class ProfileProjectionRepository {
 
     const [userRows, profileActivity] = await Promise.all([
       dataSource.query(
-      `SELECT su.id, su.user_key, su.install_id, su.user_name AS display_name, su.machine_id, su.machine_name,
+      `SELECT su.id, su.user_key, su.install_id, su.user_name AS display_name, su.machine_id, su.machine_name
        FROM sdd_users su
        WHERE su.id = ?
        LIMIT 1`,
@@ -927,7 +1019,11 @@ export class ProfileProjectionRepository {
       this.loadMaturityMap(runId, [userId]),
     ]);
 
-    const maturityResult = this.computeMaturity(maturityByUser.get(userId) ?? new Map(), profileActivity.firstSeenAt);
+    const maturityResult = this.computeMaturity(
+      maturityByUser.get(userId) ?? new Map(),
+      profileActivity.firstSeenAt,
+      this.getMaturityStageCodes(profileId),
+    );
     const rampDays = maturityResult.rampDays;
 
     const s = summaryRows[0] ?? {};
@@ -984,6 +1080,134 @@ export class ProfileProjectionRepository {
     }));
 
     return { user, summary, maturity, deliveryUnits };
+  }
+
+  async listUserActivity(
+    profileId: string,
+    runId: number,
+    userId: string,
+    options: UserActivityOptions,
+  ): Promise<ProfileUserActivityItem[]> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const paramsFor = (alias: string): { clause: string; params: unknown[] } => {
+      const clauses = [
+        `${alias}.profile_id = ?`,
+        `${alias}.projection_run_id = ?`,
+        `${alias}.user_id = ?`,
+      ];
+      const params: unknown[] = [profileId, runId, userId];
+      if (options.deliveryUnitId) {
+        clauses.push(`${alias}.delivery_unit_id = ?`);
+        params.push(options.deliveryUnitId);
+      }
+      if (options.rangeSinceDate) {
+        clauses.push(`${alias}.event_time >= ?`);
+        params.push(options.rangeSinceDate);
+      }
+      return { clause: clauses.join(' AND '), params };
+    };
+
+    const capability = paramsFor('cu');
+    const knowledge = paramsFor('kr');
+    const writes = paramsFor('w');
+    const turns = paramsFor('t');
+    const code = paramsFor('ca');
+    const rows = (await dataSource.query(
+      `SELECT * FROM (
+        SELECT CONCAT('capability-', cu.id) AS id, 'capability' AS kind,
+               cu.event_time, cu.interaction_id, cu.delivery_unit_id,
+               NULL AS artifact_id, cu.id AS capability_usage_id,
+               cu.capability_code, cu.display_name AS capability_display_name,
+               cu.raw_capability_name,
+               COALESCE(cu.display_name, cu.raw_capability_name, '能力调用') AS title,
+               cu.status AS detail,
+               NULL AS locator
+        FROM profile_capability_usages cu
+        WHERE ${capability.clause}
+
+        UNION ALL
+
+        SELECT CONCAT('knowledge-', kr.id) AS id, 'knowledge' AS kind,
+               kr.event_time, kr.interaction_id, kr.delivery_unit_id,
+               NULL AS artifact_id, kr.capability_usage_id,
+               cu.capability_code, cu.display_name AS capability_display_name,
+               cu.raw_capability_name,
+               CASE WHEN kr.action_type = 'read' THEN '知识读取' ELSE CONCAT('知识 ', COALESCE(kr.action_type, '活动')) END AS title,
+               kr.knowledge_locator AS detail,
+               kr.knowledge_locator AS locator
+        FROM profile_knowledge_recalls kr
+        LEFT JOIN profile_capability_usages cu ON cu.id = kr.capability_usage_id
+        WHERE ${knowledge.clause}
+
+        UNION ALL
+
+        SELECT CONCAT('artifact-write-', w.id) AS id, 'artifact_write' AS kind,
+               w.event_time, w.interaction_id, w.delivery_unit_id,
+               w.artifact_id, w.capability_usage_id,
+               cu.capability_code, cu.display_name AS capability_display_name,
+               cu.raw_capability_name,
+               COALESCE(w.write_kind, '产物写入') AS title,
+               w.content_preview AS detail,
+               NULL AS locator
+        FROM profile_artifact_writes w
+        LEFT JOIN profile_capability_usages cu ON cu.id = w.capability_usage_id
+        WHERE ${writes.clause}
+
+        UNION ALL
+
+        SELECT CONCAT('artifact-discussion-', t.id) AS id, 'artifact_discussion' AS kind,
+               t.event_time, t.interaction_id, t.delivery_unit_id,
+               t.artifact_id, t.capability_usage_id,
+               cu.capability_code, cu.display_name AS capability_display_name,
+               cu.raw_capability_name,
+               '产物讨论' AS title,
+               NULL AS detail,
+               NULL AS locator
+        FROM profile_artifact_turns t
+        LEFT JOIN profile_capability_usages cu ON cu.id = t.capability_usage_id
+        WHERE ${turns.clause}
+
+        UNION ALL
+
+        SELECT CONCAT('code-', ca.id) AS id, 'code' AS kind,
+               ca.event_time, ca.interaction_id, ca.delivery_unit_id,
+               NULL AS artifact_id, ca.capability_usage_id,
+               cu.capability_code, cu.display_name AS capability_display_name,
+               cu.raw_capability_name,
+               CASE WHEN ca.action_type IN ('write','edit','update') THEN '代码实施' ELSE CONCAT('代码 ', COALESCE(ca.action_type, '活动')) END AS title,
+               ca.action_type AS detail,
+               ca.code_locator AS locator
+        FROM profile_code_activities ca
+        LEFT JOIN profile_capability_usages cu ON cu.id = ca.capability_usage_id
+        WHERE ${code.clause}
+      ) activity
+      ORDER BY activity.event_time IS NULL, activity.event_time DESC, activity.id DESC
+      LIMIT ?`,
+      [
+        ...capability.params,
+        ...knowledge.params,
+        ...writes.params,
+        ...turns.params,
+        ...code.params,
+        options.limit,
+      ],
+    )) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      kind: String(row.kind) as ProfileUserActivityItem['kind'],
+      eventTime: toIsoDate(row.event_time),
+      interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
+      deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
+      artifactId: row.artifact_id == null ? null : toStringId(row.artifact_id),
+      capabilityUsageId: row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
+      capabilityCode: (row.capability_code as string | null) ?? null,
+      capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
+      rawCapabilityName: (row.raw_capability_name as string | null) ?? null,
+      title: String(row.title ?? '活动'),
+      detail: (row.detail as string | null) ?? null,
+      locator: (row.locator as string | null) ?? null,
+    }));
   }
 
   private async getUserSummary(
@@ -1066,9 +1290,30 @@ export class ProfileProjectionRepository {
     const totalDocs = toNumber(t.total_docs);
     const recalledDocs = toNumber(t.distinct_recalled);
     const coverageRate = totalDocs > 0 ? recalledDocs / totalDocs : 0;
+    const namespaceSql = `COALESCE(
+      NULLIF(JSON_UNQUOTE(JSON_EXTRACT(kr.evidence_json, '$.sourceNamespace')), ''),
+      NULLIF(SUBSTRING_INDEX(kr.knowledge_locator, '/', 1), ''),
+      'local'
+    )`;
+
+    const repoRows = (await dataSource.query(
+      `SELECT
+          ${namespaceSql} AS source_namespace,
+          COUNT(*) AS total_docs,
+          COUNT(DISTINCT kr.knowledge_locator) AS recalled_docs,
+          COUNT(*) AS recalls,
+          COUNT(DISTINCT kr.user_id) AS distinct_users,
+          MAX(kr.event_time) AS last_recall_at
+       FROM profile_knowledge_recalls kr
+       WHERE kr.profile_id = ? AND kr.projection_run_id = ?
+       GROUP BY ${namespaceSql}
+       ORDER BY recalls DESC`,
+      [profileId, runId],
+    )) as Array<Record<string, unknown>>;
 
     const domainRows = (await dataSource.query(
       `SELECT
+          ${namespaceSql} AS source_namespace,
           COALESCE(kr.knowledge_domain, 'unknown') AS domain,
           COUNT(*) AS total_docs,
           COUNT(DISTINCT kr.knowledge_locator) AS recalled_docs,
@@ -1079,13 +1324,30 @@ export class ProfileProjectionRepository {
          MAX(kr.event_time) AS last_recall_at
        FROM profile_knowledge_recalls kr
        WHERE kr.profile_id = ? AND kr.projection_run_id = ?
-       GROUP BY COALESCE(kr.knowledge_domain, 'unknown')
+       GROUP BY ${namespaceSql}, COALESCE(kr.knowledge_domain, 'unknown')
        ORDER BY recalls DESC`,
       [profileId, runId],
     )) as Array<Record<string, unknown>>;
 
+    const repos: ProfileKnowledgeCoverageRepo[] = repoRows.map((row) => {
+      const recalls = toNumber(row.recalls);
+      const repoTotalDocs = toNumber(row.total_docs);
+      const repoRecalledDocs = toNumber(row.recalled_docs);
+      return {
+        sourceNamespace: String(row.source_namespace ?? 'local'),
+        label: String(row.source_namespace ?? 'local'),
+        totalDocs: repoTotalDocs,
+        recalledDocs: repoRecalledDocs,
+        coverageRate: repoTotalDocs > 0 ? repoRecalledDocs / repoTotalDocs : 0,
+        recalls,
+        deadDocs: 0,
+        newUnreadDocs: 0,
+        distinctUsers: toNumber(row.distinct_users),
+      };
+    });
+
     const domains: ProfileKnowledgeCoverageDomain[] = domainRows.map((row) => ({
-      sourceNamespace: '',
+      sourceNamespace: String(row.source_namespace ?? 'local'),
       domain: String(row.domain ?? ''),
       totalDocs: toNumber(row.total_docs),
       recalledDocs: toNumber(row.recalled_docs),
@@ -1097,7 +1359,15 @@ export class ProfileProjectionRepository {
     }));
 
     return {
-      scan: { configured: false, repos: [] },
+      scan: {
+        configured: false,
+        repos: repoRows.map((row) => ({
+          sourceNamespace: String(row.source_namespace ?? 'local'),
+          label: String(row.source_namespace ?? 'local'),
+          gitRef: null,
+          scannedAt: toIsoDate(row.last_recall_at) ?? new Date(0).toISOString(),
+        })),
+      },
       totals: {
         totalDocs,
         recalledDocs,
@@ -1108,7 +1378,7 @@ export class ProfileProjectionRepository {
         newUnreadDocs: 0,
         orphanPaths: 0,
       },
-      repos: [],
+      repos,
       domains,
     };
   }
@@ -1272,6 +1542,47 @@ export class ProfileProjectionRepository {
       total: rows.length,
     };
   }
+}
+
+function toProjectionRun(row: Record<string, unknown>): ProfileInspectorProjectionRun {
+  return {
+    id: toStringId(row.id),
+    runType: String(row.run_type ?? ''),
+    status: String(row.status ?? ''),
+    startedAt: toIsoDate(row.started_at),
+    completedAt: toIsoDate(row.completed_at),
+    stats: toRecord(row.stats_json),
+    errorMessage: (row.error_message as string | null) ?? null,
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function emptyFactCounts(): ProfileInspectorFactCounts {
+  return {
+    deliveryUnits: 0,
+    artifacts: 0,
+    artifactWrites: 0,
+    artifactTurns: 0,
+    capabilityUsages: 0,
+    knowledgeRecalls: 0,
+    codeActivities: 0,
+  };
 }
 
 function addKnowledgeDomainWhere(clauses: string[], params: unknown[], wikiDomain: string | null): void {

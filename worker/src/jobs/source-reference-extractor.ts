@@ -11,7 +11,7 @@ import path from 'node:path';
  * - 身份与幂等基于稳定的 reference_key；stable_evidence_id 取 tool_use_id，回退 event_id。
  *
  * 注：第一期聚焦 input direction（SDD-default 的 locator 都在 tool input）。result direction
- * 抽取（boss-b 在线文档创建/更新返回的 docId 常在 tool result）留待 B 接入时扩展。
+ * 抽取（在线文档创建/更新返回的 docId 常在 tool result）留待在线文档 profile 接入时扩展。
  */
 
 export const SOURCE_REFERENCE_RULE_VERSION = 'src-ref-v1';

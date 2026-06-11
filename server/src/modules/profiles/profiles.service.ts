@@ -17,7 +17,11 @@ import type {
   ProfileKnowledgeTimelineQuery,
   ProfileOverview,
   ProfileOverviewQuery,
+  ProfileInspectorResponse,
+  ProfileInspectorResolvedSourceRule,
   ProfileSummary,
+  ProfileUserActivityItem,
+  ProfileUserActivityQuery,
   ProfileUserDetail,
   ProfileUserItem,
   ProfileUsersQuery,
@@ -25,9 +29,10 @@ import type {
 import { ApiHttpError } from '../../common/auth/api-http-error';
 import { SddQueryService } from '../sdd/sdd-query.service';
 import {
-  SDD_DEFAULT_PROFILE_ID,
   getProfileConfig,
   listProfileConfigs,
+  resolveRuntimeProfileConfig,
+  validateProfileConfig,
   type WorkflowProfileConfig,
 } from './profile-config';
 import { ProfileProjectionRepository } from './profile-projection.repository';
@@ -55,6 +60,55 @@ export class ProfilesService {
 
   getManifest(profileId: string): ProfileCapabilityManifest {
     return this.requireProfile(profileId).manifest;
+  }
+
+  async getInspector(profileId: string): Promise<ProfileInspectorResponse> {
+    const config = this.requireProfile(profileId);
+    const validation = validateProfileConfig(config);
+    const runtime = resolveRuntimeProfileConfig(config, process.env);
+    const read = await this.resolveReadMode(profileId);
+    const projection = await this.profileProjectionRepository.getInspector(profileId);
+
+    return {
+      profile: {
+        profileId: config.profileId,
+        displayName: config.displayName,
+        status: isRuntimeConfiguredWithResolution(config, runtime.unresolved.length) ? config.status : 'disabled',
+        projectionMode: config.projectionMode,
+        readSource: this.profileDashboard.readSource,
+        manifest: config.manifest,
+        presentation: config.presentation,
+      },
+      validation,
+      runtime: {
+        configured: isRuntimeConfiguredWithResolution(config, runtime.unresolved.length),
+        resolvedRuleCount: runtime.rules.length,
+        unresolved: runtime.unresolved,
+        resolvedSourceRules: runtime.rules.map<ProfileInspectorResolvedSourceRule>(({ rule, resolvedRoot }) => ({
+          ruleId: rule.ruleId,
+          locatorType: rule.locatorType,
+          category: rule.category,
+          confidence: rule.confidence,
+          priority: rule.priority,
+          actions: rule.actions,
+          resolvedRoot,
+          description: rule.description ?? null,
+        })),
+      },
+      projection: {
+        readMode: read.mode,
+        currentRun: projection.currentRun,
+        latestRun: projection.latestRun,
+        counts: projection.counts,
+      },
+      rules: {
+        sourceRules: config.sourceRules.map((rule) => ({ ...rule })),
+        deliveryUnitRules: config.deliveryUnitRules.map((rule) => ({ ...rule })),
+        artifactRules: config.artifactRules.map((rule) => ({ ...rule })),
+        capabilityRules: config.capabilityRules.map((rule) => ({ ...rule })),
+        attributionPolicy: { ...config.attributionPolicy },
+      },
+    };
   }
 
   /**
@@ -131,6 +185,7 @@ export class ProfilesService {
     if (read.mode === 'projection') {
       const detail = await this.profileProjectionRepository.getDemandDetail(profileId, read.runId, demandId);
       if (detail) return detail;
+      throw new ApiHttpError(404, 'DEMAND_NOT_FOUND', `demand not found: ${demandId}`);
     }
     if (read.mode === 'empty') {
       throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
@@ -392,6 +447,7 @@ export class ProfilesService {
     if (read.mode === 'projection') {
       const detail = await this.profileProjectionRepository.getUserDetail(profileId, read.runId, userId);
       if (detail) return detail;
+      throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
     }
     if (read.mode === 'empty') {
       throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
@@ -432,6 +488,84 @@ export class ProfilesService {
         lastActivityAt: wi.lastActivityAt,
       })),
     };
+  }
+
+  async listUserActivity(
+    profileId: string,
+    userId: string,
+    query: ProfileUserActivityQuery,
+  ): Promise<{ items: ProfileUserActivityItem[] }> {
+    const read = await this.resolveReadMode(profileId);
+    const since = rangeToSinceDate(query.range);
+
+    if (read.mode === 'projection') {
+      const items = await this.profileProjectionRepository.listUserActivity(profileId, read.runId, userId, {
+        deliveryUnitId: query.deliveryUnitId ?? null,
+        rangeSinceDate: since,
+        limit: query.limit,
+      });
+      return { items };
+    }
+    if (read.mode === 'empty') return { items: [] };
+
+    const [usages, recalls] = await Promise.all([
+      this.sddQueryService.listUsages({
+        userId,
+        ...(query.deliveryUnitId ? { workItemId: query.deliveryUnitId } : {}),
+        ...(since ? { from: since.toISOString() } : {}),
+        limit: query.limit,
+      }),
+      this.sddQueryService.listWikiRecalls(
+        query.range,
+        {
+          userId,
+          ...(query.deliveryUnitId ? { workItemId: query.deliveryUnitId } : {}),
+        },
+        1,
+        query.limit,
+      ),
+    ]);
+
+    const items: ProfileUserActivityItem[] = [
+      ...usages.map((usage) => ({
+        id: `capability-${usage.id}`,
+        kind: 'capability' as const,
+        eventTime: usage.eventTime,
+        interactionId: usage.interactionId,
+        deliveryUnitId: usage.workItemId,
+        artifactId: null,
+        capabilityUsageId: usage.id,
+        capabilityCode: usage.semanticCode,
+        capabilityDisplayName: usage.semanticDisplayName,
+        rawCapabilityName: usage.rawSkillName,
+        title: usage.semanticDisplayName ?? usage.rawSkillName ?? '能力调用',
+        detail: usage.status,
+        locator: null,
+      })),
+      ...recalls.items.map((recall) => ({
+        id: `knowledge-${recall.id}`,
+        kind: 'knowledge' as const,
+        eventTime: recall.eventTime,
+        interactionId: recall.interactionId,
+        deliveryUnitId: recall.workItemId,
+        artifactId: null,
+        capabilityUsageId: recall.skillUsageId,
+        capabilityCode: null,
+        capabilityDisplayName: null,
+        rawCapabilityName: null,
+        title: recall.actionType === 'read' ? '知识读取' : `知识 ${recall.actionType}`,
+        detail: recall.wikiRelativePath ?? recall.rawPath,
+        locator: recall.wikiRelativePath ?? recall.rawPath,
+      })),
+    ];
+
+    items.sort((a, b) => {
+      if (!a.eventTime && !b.eventTime) return 0;
+      if (!a.eventTime) return 1;
+      if (!b.eventTime) return -1;
+      return new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime();
+    });
+    return { items: items.slice(0, query.limit) };
   }
 
   async getKnowledgeCoverage(
@@ -585,12 +719,12 @@ export class ProfilesService {
   }
 
   private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
-    this.requireProfile(profileId);
+    const config = this.requireProfile(profileId);
     if (this.profileDashboard.readSource === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) return { mode: 'projection', runId };
     }
-    return profileId === SDD_DEFAULT_PROFILE_ID ? { mode: 'legacy' } : { mode: 'empty' };
+    return config.projectionMode === 'sdd_bridge' ? { mode: 'legacy' } : { mode: 'empty' };
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {
@@ -613,7 +747,17 @@ function toSummary(config: WorkflowProfileConfig): ProfileSummary {
 }
 
 function isRuntimeConfigured(config: WorkflowProfileConfig): boolean {
-  return config.sourceRules.every((rule) => !rule.rootEnv || Boolean(process.env[rule.rootEnv]));
+  // sdd_bridge 不依赖 source root；source_backed 需所有启用规则可解析（无 unresolved）。
+  if (config.projectionMode === 'sdd_bridge') return true;
+  const enabledCount = config.sourceRules.filter((rule) => rule.enabled).length;
+  if (enabledCount === 0) return false;
+  return resolveRuntimeProfileConfig(config, process.env).unresolved.length === 0;
+}
+
+function isRuntimeConfiguredWithResolution(config: WorkflowProfileConfig, unresolvedCount: number): boolean {
+  if (config.projectionMode === 'sdd_bridge') return true;
+  const enabledCount = config.sourceRules.filter((rule) => rule.enabled).length;
+  return enabledCount > 0 && unresolvedCount === 0;
 }
 
 function emptyOverview(): ProfileOverview {

@@ -10,11 +10,13 @@ export function AssetTable({
   domains,
   repos,
   degraded,
+  recallFactsMode = false,
   onSelectDomain,
 }: {
   domains: WikiCoverageDomain[];
   repos: WikiCoverageRepo[];
   degraded: boolean;
+  recallFactsMode?: boolean;
   onSelectDomain: (repo: string, domain: string) => void;
 }) {
   const [repoFilter, setRepoFilter] = useState<string>(ALL);
@@ -35,7 +37,7 @@ export function AssetTable({
 
   const rows = useMemo(() => {
     let list = scoped;
-    if (onlyDead) list = list.filter((d) => d.deadDocs > 0);
+    if (onlyDead && !recallFactsMode) list = list.filter((d) => d.deadDocs > 0);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -43,7 +45,7 @@ export function AssetTable({
       );
     }
     return list;
-  }, [scoped, onlyDead, search]);
+  }, [scoped, onlyDead, recallFactsMode, search]);
 
   return (
     <section className="rounded-[6px]" style={CARD_STYLE}>
@@ -78,7 +80,9 @@ export function AssetTable({
       </div>
       <div className="flex gap-[6px] px-[14px] py-[9px]" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <FilterBtn on={!onlyDead} onClick={() => setOnlyDead(false)} label="全部" count={scoped.length} />
-        <FilterBtn on={onlyDead} onClick={() => setOnlyDead(true)} label="有沉睡文档" count={deadCount} />
+        {recallFactsMode ? null : (
+          <FilterBtn on={onlyDead} onClick={() => setOnlyDead(true)} label="有沉睡文档" count={deadCount} />
+        )}
       </div>
       <table className="w-full" style={{ borderCollapse: 'collapse' }}>
         <thead>
@@ -138,7 +142,7 @@ export function AssetTable({
       </table>
       <div className="flex items-center justify-between px-[14px] py-[10px] text-[11px] text-[var(--color-muted)]" style={{ borderTop: '1px solid var(--color-border)' }}>
         <span>共 {rows.length} 个业务域{repoFilter === ALL ? ` · 跨 ${repos.length} 个知识库` : ''}</span>
-        <span>{degraded ? '累计口径 · 未配置知识库扫描' : '累计口径 · 分母取快照'}</span>
+        <span>{recallFactsMode ? '累计口径 · 召回事实' : degraded ? '累计口径 · 未配置知识库扫描' : '累计口径 · 分母取快照'}</span>
       </div>
     </section>
   );

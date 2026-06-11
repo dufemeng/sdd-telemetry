@@ -1,9 +1,11 @@
 export {
-  BOSS_A_MONOREPO_PROFILE_ID,
   SDD_DEFAULT_PROFILE_ID,
   getProfileConfig,
   listProfileConfigs,
+  resolveRuntimeProfileConfig,
+  validateProfileConfig,
   type LocalPathSourceRule,
-  type ProfileRuleBase,
+  type SourceRule,
+  type SourceRuleBase,
   type WorkflowProfileConfig,
 } from '@sdd-telemetry/api';

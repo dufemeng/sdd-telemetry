@@ -10,12 +10,12 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfileDemands, useProfileHiddenMetrics } from '@/pages/profiles/useProfiles';
+import { useProfileDemands, useProfilePresentationModel } from '@/pages/profiles/useProfiles';
 import { BarList } from '@/components/ui/BarList';
 import { Pagination } from '@/components/ui/Pagination';
 import { useClientPagination } from '@/lib/useClientPagination';
 import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
-import type { ProfileDemand } from '@sdd-telemetry/api';
+import type { ProfileDemand, ProfileStageDescriptor } from '@sdd-telemetry/api';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -23,24 +23,8 @@ const PAGE_SIZE = 20;
 const SILENT_MS = 14 * 86_400_000;
 const THIRTY_DAYS_MS = 30 * 86_400_000;
 
-const SDD_STAGES = ['proposal', 'design', 'task', 'review'] as const;
-type SddStage = (typeof SDD_STAGES)[number];
-
-const STAGE_LABELS: Record<SddStage, string> = {
-  proposal: '需求撰写',
-  design: '系统设计',
-  task: '任务拆分',
-  review: '代码评审',
-};
-
-const STAGE_DOT_COLORS: Record<SddStage, string> = {
-  proposal: '#60a5fa',
-  design: 'var(--color-good-text)',
-  task: 'var(--color-primary)',
-  review: '#a78bfa',
-};
-
 const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-muted)'];
+const STAGE_DOT_COLORS = ['#60a5fa', 'var(--color-good-text)', 'var(--color-primary)', '#a78bfa', '#f59e0b', '#f472b6'];
 
 const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
 const ICON_BOX = { background: '#141409', color: 'var(--color-primary)' };
@@ -56,33 +40,45 @@ function getStatus(item: ProfileDemand, now: number): WorkItemStatus {
   return 'silent';
 }
 
-function getCoreStages(coverageStages: string[]): SddStage[] {
-  return SDD_STAGES.filter((s) => coverageStages.includes(s));
+function getCoreStages(coverageStages: string[], stages: ProfileStageDescriptor[]): ProfileStageDescriptor[] {
+  return stages.filter((s) => coverageStages.includes(s.code));
+}
+
+function getStageColor(stage: ProfileStageDescriptor): string {
+  return stage.colorToken ?? STAGE_DOT_COLORS[stage.order % STAGE_DOT_COLORS.length] ?? 'var(--color-primary)';
 }
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
-function StageDots({ coverageStages }: { coverageStages: string[] }) {
-  const core = getCoreStages(coverageStages);
+function StageDots({
+  coverageStages,
+  stages,
+  unitLabel,
+}: {
+  coverageStages: string[];
+  stages: ProfileStageDescriptor[];
+  unitLabel: string;
+}) {
+  const core = getCoreStages(coverageStages, stages);
   return (
     <div className="flex flex-col gap-[5px]">
       <span
         className="text-[11px] text-[var(--color-secondary)]"
         style={{ fontFamily: 'var(--font-mono)' }}
       >
-        {core.length} / 4 阶段
+        {core.length} / {stages.length} {unitLabel}
       </span>
       <div className="flex gap-[4px]">
-        {SDD_STAGES.map((s) => (
+        {stages.map((stage) => (
           <div
-            key={s}
-            title={STAGE_LABELS[s]}
+            key={stage.code}
+            title={stage.label}
             className="rounded-full"
             style={{
               width: 6,
               height: 6,
-              background: coverageStages.includes(s)
-                ? STAGE_DOT_COLORS[s]
+              background: coverageStages.includes(stage.code)
+                ? getStageColor(stage)
                 : 'rgba(255,255,255,0.12)',
             }}
           />
@@ -92,23 +88,36 @@ function StageDots({ coverageStages }: { coverageStages: string[] }) {
   );
 }
 
-function ArtifactStageChips({ coverageStages }: { coverageStages: string[] }) {
+function ArtifactStageChips({
+  coverageStages,
+  stages,
+}: {
+  coverageStages: string[];
+  stages: ProfileStageDescriptor[];
+}) {
   if (coverageStages.length === 0) {
     return <span className="text-[12px] text-[var(--color-muted)]">—</span>;
   }
+  const known = stages.filter((stage) => coverageStages.includes(stage.code));
+  const knownCodes = new Set(known.map((stage) => stage.code));
+  const unknown = coverageStages.filter((stage) => !knownCodes.has(stage));
+  const chips = [
+    ...known.map((stage) => ({ code: stage.code, label: stage.label })),
+    ...unknown.map((stage) => ({ code: stage, label: stage })),
+  ];
   return (
     <div className="flex flex-wrap gap-[4px]">
-      {coverageStages.slice(0, 4).map((stage) => (
+      {chips.slice(0, 4).map((stage) => (
         <span
-          key={stage}
+          key={stage.code}
           className="text-[10px] px-[6px] py-[1px] rounded-[3px] text-[var(--color-secondary)]"
           style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
         >
-          {stage}
+          {stage.label}
         </span>
       ))}
-      {coverageStages.length > 4 ? (
-        <span className="text-[10px] text-[var(--color-muted)]">+{coverageStages.length - 4}</span>
+      {chips.length > 4 ? (
+        <span className="text-[10px] text-[var(--color-muted)]">+{chips.length - 4}</span>
       ) : null}
     </div>
   );
@@ -165,8 +174,11 @@ const STATUS_BORDER: Record<WorkItemStatus, string> = {
 
 export default function WorkItemsPage() {
   const { profileId } = useShellContext();
-  const hiddenMetrics = useProfileHiddenMetrics(profileId);
-  const showSddStages = !hiddenMetrics.has('sddStageDots');
+  const presentation = useProfilePresentationModel(profileId);
+  const artifactStages = presentation.stages.artifactStages;
+  const showCoverageFunnel = presentation.widgets.artifactCoverageFunnel !== 'none' && artifactStages.length > 0;
+  const isSddStageFunnel = presentation.widgets.artifactCoverageFunnel === 'sdd_stage';
+  const coverageUnitLabel = isSddStageFunnel ? '阶段' : '类型';
   const { data = [], isLoading } = useProfileDemands(profileId);
   const navigate = useNavigate();
   const [search, setSearch]           = useState('');
@@ -186,12 +198,12 @@ export default function WorkItemsPage() {
     [data, now],
   );
 
-  // ── Section 2: 需求健康度 ─────────────────────────────────────────────────
+  // ── Section 2: 产出健康度 ─────────────────────────────────────────────────
 
-  const funnelData = SDD_STAGES.map((s) => ({
-    stage: s,
-    label: STAGE_LABELS[s],
-    count: data.filter((i) => i.coverageStages.includes(s)).length,
+  const funnelData = artifactStages.map((stage) => ({
+    stage: stage.code,
+    label: stage.label,
+    count: data.filter((i) => i.coverageStages.includes(stage.code)).length,
   }));
   const funnelMax = Math.max(funnelData[0]?.count ?? 0, 1);
 
@@ -209,14 +221,14 @@ export default function WorkItemsPage() {
     return top8.map(([label, value]) => ({ label, value, ratio: value / maxVal }));
   }, [data]);
 
-  // ── Section 3: 标杆需求 ───────────────────────────────────────────────────
+  // ── Section 3: 标杆交付单元 ───────────────────────────────────────────────
 
   const topItems = useMemo(
     () => [...data].sort((a, b) => b.artifactCount - a.artifactCount).slice(0, 3),
     [data],
   );
 
-  // ── Section 4: 需求一览 ───────────────────────────────────────────────────
+  // ── Section 4: 交付单元一览 ───────────────────────────────────────────────
 
   const statusCounts = useMemo(
     () =>
@@ -242,9 +254,14 @@ export default function WorkItemsPage() {
 
   const { pageItems, pageNumber, hasNext, hasPrev, goNext, goPrev, reset } =
     useClientPagination(filtered, PAGE_SIZE);
-  const demandTableHeaders = showSddStages
-    ? ['需求标题', '业务域', '阶段覆盖', '文档数', '调用次数', '最近更新']
-    : ['需求标题', '业务域', '产物类型', '文档数', '调用次数', '最近更新'];
+  const demandTableHeaders = [
+    `${presentation.labels.deliveryUnitSingular}标题`,
+    '业务域',
+    isSddStageFunnel ? '阶段覆盖' : '产物类型',
+    `${presentation.labels.artifactSingular}数`,
+    `${presentation.labels.capabilitySingular}次数`,
+    '最近更新',
+  ];
   const demandTableColumnCount = demandTableHeaders.length;
 
   const handleFilter = (v: StatusFilter) => { setStatusFilter(v); reset(); };
@@ -257,27 +274,27 @@ export default function WorkItemsPage() {
       {/* ── Section 1: Hero KPI ── */}
       <div className="grid grid-cols-4 gap-3">
 
-        {/* 需求总数 */}
+        {/* 交付单元总数 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX}>
             <GitBranch size={18} />
           </div>
           <div className="flex flex-col justify-between">
-            <span className="text-[12px] text-[var(--color-secondary)]">需求总数</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">{presentation.labels.deliveryUnitSingular}总数</span>
             <strong className="text-[24px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
               {isLoading ? '—' : formatInteger(total)}
             </strong>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">全团队累计覆盖需求目录</em>
+            <em className="text-[11px] not-italic text-[var(--color-muted)]">全团队累计覆盖{presentation.labels.deliveryUnitPlural}</em>
           </div>
         </section>
 
-        {/* 活跃需求 */}
+        {/* 活跃交付单元 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX}>
             <TrendingDown size={18} />
           </div>
           <div className="flex flex-col justify-between flex-1 min-w-0">
-            <span className="text-[12px] text-[var(--color-secondary)]">活跃需求</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">活跃{presentation.labels.deliveryUnitSingular}</span>
             <div>
               <div className="flex items-baseline gap-1 mb-[6px]">
                 <span className="text-[24px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -297,24 +314,24 @@ export default function WorkItemsPage() {
                 />
               </div>
             </div>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">近 14 天有文档更新</em>
+            <em className="text-[11px] not-italic text-[var(--color-muted)]">近 14 天有{presentation.labels.artifactSingular}更新</em>
           </div>
         </section>
 
-        {/* 文档总产出 */}
+        {/* 产物总产出 */}
         <section className="flex gap-3 min-h-[98px] p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX}>
             <FileText size={18} />
           </div>
           <div className="flex flex-col justify-between">
-            <span className="text-[12px] text-[var(--color-secondary)]">文档总产出</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">{presentation.labels.artifactSingular}总产出</span>
             <strong
               className="text-[24px] font-semibold"
               style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}
             >
               {isLoading ? '—' : formatInteger(totalDocs)}
             </strong>
-            <em className="text-[11px] not-italic text-[var(--color-muted)]">全团队 artifact 累计</em>
+            <em className="text-[11px] not-italic text-[var(--color-muted)]">全团队 {presentation.labels.artifactPlural} 累计</em>
           </div>
         </section>
 
@@ -324,7 +341,7 @@ export default function WorkItemsPage() {
             <Sparkles size={18} />
           </div>
           <div className="flex flex-col justify-between flex-1 min-w-0">
-            <span className="text-[12px] text-[var(--color-secondary)]">本月新增需求</span>
+            <span className="text-[12px] text-[var(--color-secondary)]">本月新增{presentation.labels.deliveryUnitSingular}</span>
             <strong className="text-[24px] font-semibold text-[#60a5fa]" style={{ fontFamily: 'var(--font-mono)' }}>
               {isLoading ? '—' : newThisMonth.length}
             </strong>
@@ -333,18 +350,22 @@ export default function WorkItemsPage() {
         </section>
       </div>
 
-      {/* ── Section 2: 需求健康度 ── */}
+      {/* ── Section 2: 产出健康度 ── */}
       <div className="grid grid-cols-3 gap-3">
 
-        {/* 阶段覆盖漏斗 */}
-        {showSddStages ? (
+        {/* 阶段 / 类型覆盖漏斗 */}
+        {showCoverageFunnel ? (
         <section className="col-span-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
               <TrendingDown size={18} />
-              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">阶段覆盖漏斗</h3>
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">
+                {isSddStageFunnel ? '阶段覆盖漏斗' : '产物类型覆盖漏斗'}
+              </h3>
             </div>
-            <span className="text-[11px] text-[var(--color-muted)]">包含该阶段 artifact 的需求数</span>
+            <span className="text-[11px] text-[var(--color-muted)]">
+              包含该{coverageUnitLabel} {presentation.labels.artifactSingular}的{presentation.labels.deliveryUnitSingular}数
+            </span>
           </div>
           <div className="flex items-end gap-2" style={{ height: 100 }}>
             {funnelData.map((item, i) => (
@@ -374,7 +395,7 @@ export default function WorkItemsPage() {
         ) : null}
 
         {/* 业务域分布 */}
-        <section className={`${showSddStages ? '' : 'col-span-3'} p-[14px] rounded-[6px]`} style={CARD_STYLE}>
+        <section className={`${showCoverageFunnel ? '' : 'col-span-3'} p-[14px] rounded-[6px]`} style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-3" style={{ color: 'var(--color-primary)' }}>
             <GitBranch size={18} />
             <h3 className="text-[14px] font-semibold text-[#f5f5f5]">业务域分布</h3>
@@ -383,12 +404,12 @@ export default function WorkItemsPage() {
         </section>
       </div>
 
-      {/* ── Section 3: 标杆需求 Top 3 ── */}
+      {/* ── Section 3: 标杆交付单元 Top 3 ── */}
       {!isLoading && topItems.length > 0 && (
         <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-3">
             <Trophy size={18} style={{ color: 'var(--color-primary)' }} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">标杆需求</h3>
+            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">标杆{presentation.labels.deliveryUnitSingular}</h3>
             <span
               className="text-[10px] px-[6px] py-[2px] rounded-full font-medium"
               style={{ color: 'var(--color-primary)', border: '1px solid rgba(250,255,105,0.22)', background: 'rgba(250,255,105,0.06)' }}
@@ -398,7 +419,7 @@ export default function WorkItemsPage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             {topItems.map((item, i) => {
-              const coreStages = getCoreStages(item.coverageStages);
+              const coreStages = getCoreStages(item.coverageStages, artifactStages);
               return (
                 <div
                   key={item.id}
@@ -429,28 +450,28 @@ export default function WorkItemsPage() {
                       </span>
                     )}
                   </div>
-                  {showSddStages ? (
+                  {isSddStageFunnel ? (
                     <div className="flex items-center gap-[4px] pl-[10px]">
-                      {SDD_STAGES.map((s) => (
+                      {artifactStages.map((stage) => (
                         <div
-                          key={s}
-                          title={STAGE_LABELS[s]}
+                          key={stage.code}
+                          title={stage.label}
                           className="rounded-full"
                           style={{
                             width: 7,
                             height: 7,
-                            background: item.coverageStages.includes(s)
-                              ? STAGE_DOT_COLORS[s]
+                            background: item.coverageStages.includes(stage.code)
+                              ? getStageColor(stage)
                               : 'rgba(255,255,255,0.12)',
                           }}
                         />
                       ))}
                       <span className="ml-1 text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-                        {coreStages.length}/4
+                        {coreStages.length}/{artifactStages.length}
                       </span>
                     </div>
                   ) : (
-                    <div className="pl-[10px]"><ArtifactStageChips coverageStages={item.coverageStages} /></div>
+                    <div className="pl-[10px]"><ArtifactStageChips coverageStages={item.coverageStages} stages={artifactStages} /></div>
                   )}
                   <div className="flex gap-[6px] pl-[10px]">
                     <span
@@ -458,7 +479,7 @@ export default function WorkItemsPage() {
                       style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)' }}
                     >
                       <FileText size={10} />
-                      {item.artifactCount} 篇
+                      {item.artifactCount} 个
                     </span>
                     <span
                       className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]"
@@ -478,7 +499,7 @@ export default function WorkItemsPage() {
         </section>
       )}
 
-      {/* ── Section 4: 需求一览 ── */}
+      {/* ── Section 4: 交付单元一览 ── */}
       <section className="rounded-[6px]" style={CARD_STYLE}>
 
         {/* 标题 + 搜索 */}
@@ -488,7 +509,7 @@ export default function WorkItemsPage() {
         >
           <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
             <GitBranch size={18} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">需求一览</h3>
+            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">{presentation.labels.deliveryUnitSingular}一览</h3>
           </div>
           <div
             className="flex items-center gap-2 h-[28px] px-[10px] w-[260px] rounded-[4px]"
@@ -497,7 +518,7 @@ export default function WorkItemsPage() {
             <Search size={13} className="text-[var(--color-muted)] shrink-0" />
             <input
               className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
-              placeholder="搜索需求标题 / slug / 业务域"
+              placeholder={`搜索${presentation.labels.deliveryUnitSingular}标题 / slug / 业务域`}
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
@@ -532,7 +553,7 @@ export default function WorkItemsPage() {
               {pageItems.length === 0 ? (
                 <tr>
                   <td colSpan={demandTableColumnCount} className="py-10 text-center text-[12px] text-[var(--color-muted)]">
-                    {search ? '无匹配需求' : '暂无数据'}
+                    {search ? `无匹配${presentation.labels.deliveryUnitSingular}` : '暂无数据'}
                   </td>
                 </tr>
               ) : (
@@ -545,7 +566,7 @@ export default function WorkItemsPage() {
                       style={{ borderBottom: '1px solid var(--color-border)' }}
                       onClick={() => navigate(`/sdd/work-items/${item.id}`)}
                     >
-                      {/* 需求标题 */}
+                      {/* 交付单元标题 */}
                       <td
                         className="py-[10px] group-hover:bg-[#171717] transition-colors relative"
                         style={{ paddingLeft: 20, paddingRight: 12 }}
@@ -580,13 +601,13 @@ export default function WorkItemsPage() {
                       </td>
                       {/* 阶段覆盖 / 产物类型 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors">
-                        {showSddStages ? (
-                          <StageDots coverageStages={item.coverageStages} />
+                        {isSddStageFunnel ? (
+                          <StageDots coverageStages={item.coverageStages} stages={artifactStages} unitLabel={coverageUnitLabel} />
                         ) : (
-                          <ArtifactStageChips coverageStages={item.coverageStages} />
+                          <ArtifactStageChips coverageStages={item.coverageStages} stages={artifactStages} />
                         )}
                       </td>
-                      {/* 文档数 */}
+                      {/* 产物数 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors text-right">
                         {item.artifactCount > 0 ? (
                           <span className="text-[13px] text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -596,7 +617,7 @@ export default function WorkItemsPage() {
                           <span className="text-[12px] text-[var(--color-muted)]">—</span>
                         )}
                       </td>
-                      {/* 调用次数 */}
+                      {/* 能力次数 */}
                       <td className="px-[12px] py-[10px] group-hover:bg-[#171717] transition-colors text-right">
                         {item.capabilityUsageCount > 0 ? (
                           <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -630,7 +651,7 @@ export default function WorkItemsPage() {
           className="flex items-center justify-between px-[14px] py-[10px]"
           style={{ borderTop: '1px solid var(--color-border)' }}
         >
-          <span className="text-[11px] text-[var(--color-muted)]">共 {filtered.length} 个需求</span>
+          <span className="text-[11px] text-[var(--color-muted)]">共 {filtered.length} 个{presentation.labels.deliveryUnitSingular}</span>
           {(hasNext || hasPrev) && (
             <Pagination
               pageNumber={pageNumber}

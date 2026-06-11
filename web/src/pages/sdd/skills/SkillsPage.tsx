@@ -32,7 +32,7 @@ import {
   useProfileCapabilityTimeseries,
   useProfileCapabilityUsageSummary,
   useProfileCapabilityUsages,
-  useProfileHiddenMetrics,
+  useProfilePresentationModel,
 } from '@/pages/profiles/useProfiles';
 
 type UsageMatchFilter = 'all' | 'matched' | 'unmatched';
@@ -57,10 +57,10 @@ type SkillFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
 export default function SkillsPage() {
   const { timeRange, profileId } = useShellContext();
   const fromIso = timeRangeToFromIso(timeRange);
-  const hiddenMetrics = useProfileHiddenMetrics(profileId);
-  const showCallQuality = !hiddenMetrics.has('callQuality');
-  const showMultiStage = !hiddenMetrics.has('multiStageDeliveryUnitCount');
-  const showMatchHealth = !hiddenMetrics.has('matchHealth');
+  const presentation = useProfilePresentationModel(profileId);
+  const showCallQuality = presentation.widgets.callQuality;
+  const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
+  const showMatchHealth = presentation.widgets.matchHealth;
   const analyticsQuery = useProfileCapabilityAnalytics(profileId, fromIso);
   const timeseriesQuery = useProfileCapabilityTimeseries(profileId, fromIso);
   const [keyword, setKeyword] = useState('');
@@ -105,9 +105,9 @@ export default function SkillsPage() {
     <div className="grid gap-3">
       <div className="flex items-end justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <div>
-          <h2 className="text-[28px] font-semibold leading-9 text-[#f5f5f5]">技能分析</h2>
+          <h2 className="text-[28px] font-semibold leading-9 text-[#f5f5f5]">{presentation.labels.capabilityPlural}分析</h2>
           <p className="mt-1 text-[13px] text-[var(--color-secondary)]">
-            近 {timeRange} · 关键能力、调用规模与研发行为分布
+            近 {timeRange} · 关键{presentation.labels.capabilityPlural}、调用规模与研发行为分布
           </p>
         </div>
       </div>
@@ -118,7 +118,7 @@ export default function SkillsPage() {
       >
         <KpiCard
           icon={Layers3}
-          label="技能调用量"
+          label={`${presentation.labels.capabilitySingular}调用量`}
           value={analytics?.kpis.capabilityUsageCount.current}
           hint={deltaHint(analytics?.kpis.capabilityUsageCount)}
           loading={analyticsQuery.isLoading}
@@ -134,7 +134,7 @@ export default function SkillsPage() {
         />
         <KpiCard
           icon={GitBranch}
-          label="覆盖需求"
+          label={`覆盖${presentation.labels.deliveryUnitSingular}`}
           value={analytics?.kpis.coveredDeliveryUnitCount.current}
           hint={deltaHint(analytics?.kpis.coveredDeliveryUnitCount)}
           loading={analyticsQuery.isLoading}
@@ -142,9 +142,9 @@ export default function SkillsPage() {
         {showMultiStage ? (
           <KpiCard
             icon={Layers}
-            label="全链路需求"
+            label={`多阶段${presentation.labels.deliveryUnitSingular}`}
             value={analytics?.kpis.multiStageDeliveryUnitCount.current}
-            hint="覆盖 >=3 个阶段"
+            hint="覆盖 >=3 个阶段或类型"
             loading={analyticsQuery.isLoading}
           />
         ) : null}
@@ -204,7 +204,7 @@ export default function SkillsPage() {
         <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-3">
             <Trophy size={18} style={{ color: 'var(--color-primary)' }} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">标杆技能</h3>
+            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">标杆{presentation.labels.capabilitySingular}</h3>
             <span
               className="text-[10px] px-[6px] py-[2px] rounded-full font-medium"
               style={{
@@ -255,7 +255,7 @@ export default function SkillsPage() {
                 <div className="flex flex-wrap gap-[6px] pl-[10px]">
                   <SkillChip icon={Zap} value={`${formatInteger(item.usageCount)} 次`} />
                   <SkillChip icon={UserRound} value={`${formatInteger(item.userCount)} 人`} />
-                  <SkillChip icon={GitBranch} value={`${formatInteger(item.deliveryUnitCount)} 需求`} />
+                  <SkillChip icon={GitBranch} value={`${formatInteger(item.deliveryUnitCount)} ${presentation.labels.deliveryUnitSingular}`} />
                 </div>
                 {item.conversionRate !== null ? (
                   <div className="grid gap-[6px] pl-[10px]">
@@ -286,7 +286,7 @@ export default function SkillsPage() {
         >
           <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
             <Layers3 size={18} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">技能一览</h3>
+            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">{presentation.labels.capabilitySingular}一览</h3>
           </div>
           <div
             className="flex items-center gap-2 h-[28px] px-[10px] w-[260px] rounded-[4px]"
@@ -295,7 +295,7 @@ export default function SkillsPage() {
             <Search size={13} className="text-[var(--color-muted)] shrink-0" />
             <input
               className="w-full bg-transparent outline-none text-[12px] text-[var(--color-text)] placeholder:text-[var(--color-muted)]"
-              placeholder="搜索技能名称"
+              placeholder={`搜索${presentation.labels.capabilitySingular}名称`}
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
             />
@@ -318,7 +318,7 @@ export default function SkillsPage() {
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['技能名称', '调用量', '用户数', '覆盖需求', '最近调用'].map((header) => (
+                  {[`${presentation.labels.capabilitySingular}名称`, '调用量', '用户数', `覆盖${presentation.labels.deliveryUnitSingular}`, '最近调用'].map((header) => (
                     <th
                       key={header}
                       className="px-[12px] py-[8px] text-left text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)]"
@@ -333,7 +333,7 @@ export default function SkillsPage() {
                 {!summaryQuery.data ? (
                   <TableMessage text="加载中..." />
                 ) : items.length === 0 ? (
-                  <TableMessage text={debouncedKeyword ? '无匹配技能' : '暂无数据'} />
+                  <TableMessage text={debouncedKeyword ? `无匹配${presentation.labels.capabilitySingular}` : '暂无数据'} />
                 ) : (
                   items.map((item) => {
                     const isMatched = Boolean(item.capabilityCode);
@@ -401,7 +401,7 @@ export default function SkillsPage() {
           style={{ borderTop: '1px solid var(--color-border)' }}
         >
           <span className="text-[11px] text-[var(--color-muted)]">
-            共 {formatInteger(total)} 个技能
+            共 {formatInteger(total)} 个{presentation.labels.capabilitySingular}
           </span>
           {hasNext || hasPrev ? (
             <Pagination

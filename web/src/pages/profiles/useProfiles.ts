@@ -13,12 +13,15 @@ import type {
   ProfileKnowledgeRecallListResponse,
   ProfileKnowledgeTimelineResponse,
   ProfileOverview,
+  ProfileInspectorResponse,
   ProfilePresentation,
   ProfileSummary,
+  ProfileUserActivityItem,
   ProfileUserDetail,
   ProfileUserItem,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
+import { normalizeProfilePresentation, type NormalizedProfilePresentation } from './profilePresentation';
 
 export function useProfiles() {
   return useQuery({
@@ -41,6 +44,19 @@ export function useProfilePresentation(profileId: string): ProfilePresentation |
 export function useProfileHiddenMetrics(profileId: string): Set<string> {
   const presentation = useProfilePresentation(profileId);
   return new Set(presentation?.hiddenMetrics ?? []);
+}
+
+export function useProfilePresentationModel(profileId: string): NormalizedProfilePresentation {
+  return normalizeProfilePresentation(useProfilePresentation(profileId));
+}
+
+export function useProfileInspector(profileId: string) {
+  return useQuery({
+    queryKey: ['profile-inspector', profileId],
+    queryFn: () => requestData<ProfileInspectorResponse>(`/api/profiles/${profileId}/inspector`),
+    staleTime: 30_000,
+    enabled: Boolean(profileId),
+  });
 }
 
 export function useProfileDemands(profileId: string, fromIso?: string) {
@@ -210,6 +226,30 @@ export function useProfileUserDetail(profileId: string, userId: string | null) {
     queryKey: ['profile-user-detail', profileId, userId],
     queryFn: () =>
       requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
+    staleTime: 30_000,
+    enabled: Boolean(profileId) && Boolean(userId),
+  });
+}
+
+export function useProfileUserActivity(
+  profileId: string,
+  userId: string | null,
+  params: {
+    deliveryUnitId?: string | null;
+    range?: string;
+    limit?: number;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params.deliveryUnitId) qs.set('deliveryUnitId', params.deliveryUnitId);
+  if (params.range) qs.set('range', params.range);
+  if (params.limit) qs.set('limit', String(params.limit));
+  return useQuery({
+    queryKey: ['profile-user-activity', profileId, userId, params],
+    queryFn: () =>
+      requestData<{ items: ProfileUserActivityItem[] }>(
+        `/api/profiles/${profileId}/users/${userId}/activity${qs.toString() ? `?${qs}` : ''}`,
+      ),
     staleTime: 30_000,
     enabled: Boolean(profileId) && Boolean(userId),
   });

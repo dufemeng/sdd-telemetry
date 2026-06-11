@@ -1,7 +1,7 @@
 # Profile 化研发观测平台架构设计
 
-更新时间：2026-06-03  
-状态：架构方案  
+更新时间：2026-06-07
+状态：架构方案
 目标读者：平台设计/实现者，后续 MVP 实施文档以本文为边界
 
 ## 1. 背景
@@ -39,8 +39,8 @@
 第一期目标是用同一套 profile 观测架构跑通三类 profile：
 
 - `sdd-default`：当前 SDD 工作流的内置 profile，必须保护现有能力和历史数据。
-- `boss-a-monorepo`：本地 monorepo + 固定目录约定。
-- `boss-b-online-docs`：在线知识库 + 在线过程文档 + 自定义 skill/MCP 工作流。
+- `e2e-monorepo`：本地 monorepo + 固定目录约定。
+- `online-docs`：在线知识库 + 在线过程文档 + 自定义 skill/MCP 工作流。
 
 第一期不是做任意团队自助接入平台，也不是做低代码配置系统。profile 配置先用版本化配置文件和 seed/migration 初始化，等 A/B 规则稳定后再考虑管理页面。
 
@@ -76,8 +76,8 @@ profile 表示一套研发工作流观测规则，例如：
 
 ```text
 sdd-default
-boss-a-monorepo
-boss-b-online-docs
+e2e-monorepo
+online-docs
 ```
 
 它不等于团队，也不等于用户。一个用户可以同时使用多个 profile；同一个 session 里也可以出现多套工作流证据。
@@ -179,7 +179,7 @@ Dashboard -> sdd_* tables / SDD fields / SDD stages
 Dashboard / Monitor / Alert / Evaluation
   -> Profile Observability Contract
 
-sdd-default / boss-a / boss-b
+sdd-default / e2e / online-docs
   -> Profile Projection
   -> Profile Observability Contract
 ```
@@ -223,8 +223,8 @@ interaction
 不同 profile 的 delivery unit 来源不同：
 
 - `sdd-default`：requirements 目录下的需求目录。
-- `boss-a-monorepo`：`plan` 目录下的计划/过程文档目录或文件。
-- `boss-b-online-docs`：在线过程文档的稳定 locator，如 URL prefix + doc hash / docId / collectionId。
+- `e2e-monorepo`：`plan` 目录下的计划/过程文档目录或文件。
+- `online-docs`：在线过程文档的稳定 locator，如 URL prefix + doc hash / docId / collectionId。
 
 ### 6.2 过程文档 vs 过程产物
 
@@ -257,16 +257,18 @@ type WorkflowProfileConfig = {
   profileId: string;
   displayName: string;
   status: 'active' | 'disabled';
+  projectionMode: 'sdd_bridge' | 'source_backed';
   manifest: ProfileCapabilityManifest;
   sourceRules: SourceRule[];
   capabilityRules: CapabilityRule[];
   deliveryUnitRules: DeliveryUnitRule[];
   artifactRules: ArtifactRule[];
   knowledgeRules: KnowledgeRule[];
-  codeSourceRules: CodeSourceRule[];
   attributionPolicy: AttributionPolicy;
 };
 ```
+
+代码目录不再使用独立 `codeSourceRules` 入口；第一期统一由 `sourceRules` 中 `category='code'` 的规则表达，避免代码实施环节绕开 Source Registry。
 
 每条规则至少包含：
 
@@ -294,6 +296,13 @@ rule_version
 第一期只有“当前 profile 配置”这一版。`projection_run_id` 用于追溯本行由哪次全量投影生成；`rule_version` 表示 source extraction / projection 算子的实现版本，不表示 profile 多版本。dashboard 读路径永远读取当前 profile 的 projection 结果，不按配置版本选择数据。
 
 幂等 key 不包含 profile 版本。重跑同一个 profile 时，必须按 profile 清理旧 projection 后重建，或通过等价的 current run 机制确保旧行不会参与读路径，避免同一事实被多版规则重复计数。
+
+`projectionMode` 是 worker projection 和 diff gate 的分发键：
+
+- `sdd_bridge`：当前 `sdd-default` 的 legacy bridge / parity 路径。
+- `source_backed`：从 `source_references + sourceRules` 投影的通用路径，适用于 端到端 Monorepo profile、本地路径类 profile，以及后续 URL / MCP 文档类 profile。
+
+operator / diff 分发不应按 `e2e-monorepo` 或 `sdd-default` profile id 特判。
 
 ### 7.1 Capability Manifest
 
@@ -339,7 +348,10 @@ source registry 是 profile 的语义边界。它决定一个 source reference �
 type LocalPathSourceRule = ProfileRuleBase & {
   locatorType: 'path';
   category: 'process_doc' | 'knowledge' | 'code';
-  rootPathPattern: string;
+  rootEnv?: string;
+  rootPath?: string;
+  fallbackBaseEnv?: string;
+  relativeRoot?: string;
   includeGlobs?: string[];
   excludeGlobs?: string[];
   actions: Array<'read' | 'write' | 'update' | 'delete'>;
@@ -351,29 +363,35 @@ type LocalPathSourceRule = ProfileRuleBase & {
 ```ts
 sourceRules: [
   {
-    ruleId: 'boss-a-plan-docs',
+    ruleId: 'e2e-plan-docs',
     priority: 100,
     confidence: 'high',
     enabled: true,
     locatorType: 'path',
     category: 'process_doc',
-    rootPathPattern: '**/plan/**',
+    rootEnv: 'E2E_PLAN_ROOT',
+    fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
+    relativeRoot: 'plan',
     includeGlobs: ['**/*.md'],
     actions: ['write', 'update']
   },
   {
-    ruleId: 'boss-a-knowledge-docs',
+    ruleId: 'e2e-knowledge-docs',
     priority: 100,
     confidence: 'high',
     enabled: true,
     locatorType: 'path',
     category: 'knowledge',
-    rootPathPattern: '**/docs/**',
+    rootEnv: 'E2E_KNOWLEDGE_ROOT',
+    fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
+    relativeRoot: 'docs',
     includeGlobs: ['**/*.md'],
     actions: ['read']
   }
 ]
 ```
+
+`fallbackBaseEnv + relativeRoot` 只是部署便利机制。通用 matcher / projection 只能消费解析后的 root，不能在实现中硬编码 端到端 Monorepo profile 目录后缀。
 
 ### 8.2 在线文档 source
 
@@ -382,7 +400,7 @@ sourceRules: [
 ```ts
 type OnlineDocSourceRule = ProfileRuleBase & {
   locatorType: 'url' | 'mcp_doc';
-  category: 'process_doc' | 'knowledge' | 'code' | 'product_doc' | 'unknown';
+  category: 'process_doc' | 'knowledge' | 'code' | 'unknown';
   mcpServer?: string;
   toolNames?: string[];
   urlPrefix?: string;
@@ -414,6 +432,7 @@ actions: read
 - 同一个 MCP 读取其它 URL，不进入知识库指标。
 - PRD、过程文档和知识库都通过同 MCP 时，必须依赖 URL/docId/collection，而不是 MCP server。
 - denylist 和标题/prompt 辅助规则可以存在，但第一期不是必填，也不进入核心高置信口径。
+- `product_doc` 暂不作为第一期 category；PRD / requirements / 过程文档先统一归 `process_doc`。URL / MCP schema 在老板 B 真实 source reference 验证前属于 provisional readiness，不冻结。
 
 ### 8.3 B profile 待验证项
 
@@ -578,8 +597,8 @@ for (const profile of profiles) {
 新 `profile_*` 表负责承接：
 
 - `sdd-default`
-- `boss-a-monorepo`
-- `boss-b-online-docs`
+- `e2e-monorepo`
+- `online-docs`
 - 后续 profile
 
 ### 10.2 第一期事实层
@@ -946,7 +965,7 @@ GET /api/profiles/:profileId/code/by-repository
 - 允许编辑 alias 和 artifact pattern。
 - 旧 `sdd_*` 继续保留作为对账和回退。
 
-### 12.2 boss-a-monorepo
+### 12.2 e2e-monorepo
 
 已知结构：
 
@@ -971,7 +990,7 @@ profile 规则：
 - `frontend_repo / backend_repo` 的代码活动是交付证据，不把一个需求拆成多个代码仓库需求。
 - 第一版不做需求级代码强闭环，只做 profile/user/repo 级代码实施概况。
 
-### 12.3 boss-b-online-docs
+### 12.3 online-docs
 
 已知事实：
 
@@ -1093,28 +1112,38 @@ PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd | profile_projection
 
 ### 14.3 规则约束
 
-不能继续依赖“排除 requirements/wiki 后剩下都算代码”的隐式口径。profile 应显式配置 code source。
+不能继续依赖“排除 requirements/wiki 后剩下都算代码”的隐式口径。profile 应通过 Source Registry 显式配置 code source。
 
 老板 A 示例：
 
 ```ts
-codeSourceRules: [
+sourceRules: [
   {
-    ruleId: 'boss-a-frontend-code',
+    ruleId: 'e2e-frontend-code',
     priority: 100,
     confidence: 'high',
     enabled: true,
-    rootPathPattern: '**/frontend_repo/**',
+    locatorType: 'path',
+    category: 'code',
+    rootEnv: 'E2E_FRONTEND_ROOT',
+    fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
+    relativeRoot: 'frontend_repo',
     repoKind: 'frontend',
+    includeGlobs: ['**/*'],
     actions: ['read', 'write', 'update']
   },
   {
-    ruleId: 'boss-a-backend-code',
+    ruleId: 'e2e-backend-code',
     priority: 100,
     confidence: 'high',
     enabled: true,
-    rootPathPattern: '**/backend_repo/**',
+    locatorType: 'path',
+    category: 'code',
+    rootEnv: 'E2E_BACKEND_ROOT',
+    fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
+    relativeRoot: 'backend_repo',
     repoKind: 'backend',
+    includeGlobs: ['**/*'],
     actions: ['read', 'write', 'update']
   }
 ]
@@ -1205,8 +1234,8 @@ profile vocabulary 可未来再做，不是第一期必要能力。
 5. 总览和四大看板可通过 profile contract 读取 `sdd-default`。
 6. 全站 Profile Switcher 生效，页面不提供 all-profile 汇总。
 7. manifest 控制页面能力展示和降级。
-8. `boss-a-monorepo` 可通过配置表达 `docs / plan / frontend_repo / backend_repo`。
-9. `boss-b-online-docs` 可通过 URL/docId source registry 表达知识库；requirements 在线文档 locator 待真实源日志确认。
+8. `e2e-monorepo` 可通过配置表达独立的 plan / knowledge / frontend / backend roots，并可用通用 `fallbackBaseEnv + relativeRoot` 兼容 monorepo root。
+9. `online-docs` 可通过 URL/docId source registry provisional 表达知识库；requirements 在线文档 locator 待真实源日志确认，确认前不冻结 URL / MCP schema。
 10. `codeChanges` 作为轻量代码实施能力进入 profile contract。
 
 ## 18. 风险与约束
@@ -1243,8 +1272,8 @@ B profile 的可靠性取决于 MCP 日志里是否有稳定 locator。如果 UR
 6. 用 `sdd-default adapter` 或 `profile_projection` 支撑总览和四大看板。
 7. 加全站 Profile Switcher。
 8. 接入 `codeChanges` 轻量指标。
-9. 配置并验证 `boss-a-monorepo`。
-10. 等 B 源日志确认后配置并验证 `boss-b-online-docs`。
+9. 配置并验证 `e2e-monorepo`。
+10. 等 B 源日志确认后配置并验证 `online-docs`。
 11. 后续再扩监控、告警、评测。
 
 ## 20. 结论
@@ -1261,5 +1290,5 @@ raw/event/interaction/tool call
 
 `sdd-default` 是第一套 profile，也是对现有能力的保护基线。A 和 B 不应该成为两套定制 fork，而应该成为同一套 profile projection 机制下的两个配置样本。
 
-第一期必须稳：保留 `sdd_*`，全量投影对账，切 profile contract 读源，避免功能断档。  
+第一期必须稳：保留 `sdd_*`，全量投影对账，切 profile contract 读源，避免功能断档。
 第一期也必须前瞻：manifest、source registry、projection evidence、codeChanges 和 profile contract 要一次设计到位，让后续看板、监控、告警、评测能继续往上长。

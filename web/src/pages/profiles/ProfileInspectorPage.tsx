@@ -1,0 +1,520 @@
+import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import type { ProfileInspectorResponse } from '@sdd-telemetry/api';
+import { FileJson } from 'lucide-react';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { DataTable } from '@/components/ui/DataTable';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Panel } from '@/components/ui/Panel';
+import { formatInteger, truncate } from '@/lib/format';
+import { useProfileInspector } from './useProfiles';
+import { normalizeProfilePresentation } from './profilePresentation';
+
+type ConfigFileGroup = 'profile' | 'types' | 'registry' | 'runtime' | 'validation';
+
+const CONFIG_FILE_GROUPS: Array<{ value: ConfigFileGroup; label: string }> = [
+  { value: 'profile', label: '当前 profile' },
+  { value: 'types', label: 'profile-types.ts' },
+  { value: 'registry', label: 'profile-registry.ts' },
+  { value: 'runtime', label: 'profile-runtime.ts' },
+  { value: 'validation', label: 'profile-validation.ts' },
+];
+
+export default function ProfileInspectorPage() {
+  const { profileId } = useShellContext();
+  const inspector = useProfileInspector(profileId);
+  const data = inspector.data;
+  const presentation = normalizeProfilePresentation(data?.profile.presentation);
+  const [configFileGroup, setConfigFileGroup] = useState<ConfigFileGroup>('profile');
+
+  const configFile = useMemo(() => buildConfigFileView(data, presentation, configFileGroup), [data, presentation, configFileGroup]);
+
+  if (inspector.isLoading) {
+    return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
+  }
+
+  if (!data) {
+    return <EmptyState text="暂无 Profile 配置数据" />;
+  }
+
+  return (
+    <div>
+      <Panel
+        title="Profile 配置文件"
+        icon={<FileJson size={18} />}
+        headerRight={
+          <SegmentGroup
+            items={CONFIG_FILE_GROUPS}
+            value={configFileGroup}
+            onChange={setConfigFileGroup}
+          />
+        }
+      >
+        <PanelDescription>
+          这里按拆分后的源码文件展示配置。每行只保留 key、description、value，方便把“这个字段在哪个文件里、它控制什么、当前值是什么”对上。
+        </PanelDescription>
+        <FileHeader title={configFile.title} filePath={configFile.filePath} />
+        <DataTable
+          headers={['key', 'description', 'value']}
+          rows={configFile.rows}
+          emptyText="暂无配置项"
+        />
+      </Panel>
+    </div>
+  );
+}
+
+function PanelDescription({ children }: { children: ReactNode }) {
+  return (
+    <p className="mb-3 max-w-[75ch] text-[12px] leading-5 text-[var(--color-muted)]">
+      {children}
+    </p>
+  );
+}
+
+function FileHeader({ title, filePath }: { title: string; filePath: string }) {
+  return (
+    <div
+      className="mb-3 rounded-[4px] px-3 py-2"
+      style={{ border: '1px solid var(--color-border)', background: '#171717' }}
+    >
+      <div className="text-[12px] font-semibold text-[#f5f5f5]">{title}</div>
+      <div className="mt-1 text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+        {filePath}
+      </div>
+    </div>
+  );
+}
+
+function SegmentGroup({
+  items,
+  value,
+  onChange,
+}: {
+  items: Array<{ value: ConfigFileGroup; label: string }>;
+  value: ConfigFileGroup;
+  onChange: (value: ConfigFileGroup) => void;
+}) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-[4px]" style={{ border: '1px solid var(--color-border)' }}>
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          onClick={() => onChange(item.value)}
+          className={[
+            'min-h-8 px-3 text-[12px] transition-colors whitespace-nowrap',
+            value === item.value
+              ? 'bg-[#2b2b20] text-[var(--color-primary)]'
+              : 'bg-transparent text-[var(--color-secondary)] hover:text-[#f5f5f5]',
+          ].join(' ')}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface ConfigFileView {
+  title: string;
+  filePath: string;
+  rows: ReactNode[][];
+}
+
+function buildConfigFileView(
+  data: ProfileInspectorResponse | undefined,
+  presentation: ReturnType<typeof normalizeProfilePresentation>,
+  group: ConfigFileGroup,
+): ConfigFileView {
+  if (!data) {
+    return {
+      title: 'Profile 配置',
+      filePath: 'packages/api/src/profile-config',
+      rows: [],
+    };
+  }
+
+  if (group === 'profile') {
+    return {
+      title: `${data.profile.displayName} 实例配置`,
+      filePath: `packages/api/src/profile-config/profiles/${profileFileName(data.profile.profileId)}`,
+      rows: [
+        configRow('profileId', 'URL、API、下拉框使用的稳定 ID。', data.profile.profileId),
+        configRow('displayName', '页面展示名称。', data.profile.displayName),
+        configRow('status', '是否作为正式入口启用。', formatProfileStatus(data.profile.status)),
+        configRow('projectionMode', 'worker 用哪套投影算子处理这个 profile。', formatProjectionMode(data.profile.projectionMode)),
+        configRow('manifest', '这个 profile 对页面承诺有哪些看板能力。', formatManifest(data.profile.manifest)),
+        configRow('sourceRules', '识别“这个 source 是过程文档、知识库还是代码”的规则。', sourceRuleSummaries(data.rules.sourceRules)),
+        configRow('deliveryUnitRules', '把过程文档路径解析成交付单元。', deliveryRuleSummaries(data.rules.deliveryUnitRules)),
+        configRow('artifactRules', '把过程文档写入解析成 plan/design/task/review 等产物类型。', artifactRuleSummaries(data.rules.artifactRules)),
+        configRow('capabilityRules', '把 source + action 聚合成页面里的能力调用。', capabilityRuleSummaries(data.rules.capabilityRules)),
+        configRow('attributionPolicy', '把知识库读取、代码实施归因到最近的过程文档交付单元。', attributionSummary(data.rules.attributionPolicy)),
+        configRow('presentation', '只影响页面文案、阶段顺序和降级策略，不改变清洗结果。', presentationSummary(presentation)),
+      ],
+    };
+  }
+
+  if (group === 'types') {
+    return {
+      title: '配置语言定义',
+      filePath: 'packages/api/src/profile-config/profile-types.ts',
+      rows: [
+        configRow('WorkflowProfileConfig', '一个 profile 的完整契约，所有实例文件都必须满足它。', 'profileId, displayName, status, projectionMode, manifest, sourceRules, deliveryUnitRules, artifactRules, capabilityRules, attributionPolicy, presentation'),
+        configRow('SourceRule', '来源识别规则，只负责分类，不直接写看板表。', `${formatInteger(data.rules.sourceRules.length)} 条来源规则`),
+        configRow('SourceCategory', '来源进入观测模型后的业务类别。', 'process_doc（过程文档）, knowledge（知识库）, code（代码）, unknown（兜底）'),
+        configRow('SourceAction', '从工具调用标准化出来的动作。', 'read, grep, glob, write, edit, update, delete'),
+        configRow('DeliveryUnitRule', '把 process_doc source 转成交付单元。', `${formatInteger(data.rules.deliveryUnitRules.length)} 条交付单元规则`),
+        configRow('ArtifactRule', '把 process_doc source 转成产物和产物写入。', `${formatInteger(data.rules.artifactRules.length)} 条产物规则`),
+        configRow('CapabilityRule', '把 source/action 转成能力使用记录。', `${formatInteger(data.rules.capabilityRules.length)} 条能力规则`),
+        configRow('AttributionPolicy', '定义非过程文档事实如何挂回交付单元。', attributionSummary(data.rules.attributionPolicy)),
+        configRow('ProfilePresentationConfig', '定义页面展示文案和降级策略。', presentationSummary(presentation)),
+      ],
+    };
+  }
+
+  if (group === 'registry') {
+    return {
+      title: 'Profile 注册表',
+      filePath: 'packages/api/src/profile-config/profile-registry.ts',
+      rows: [
+        configRow('PROFILE_REGISTRY', '把 profileId 映射到具体配置文件。', [
+          'sdd-default -> profiles/sdd-default.ts',
+          'e2e-monorepo -> profiles/e2e-monorepo.ts',
+          'online-docs -> profiles/online-docs.ts',
+        ]),
+        configRow('getProfileConfig(profileId)', 'server/worker 按当前 profileId 取完整配置。', `当前返回 ${data.profile.profileId}`),
+        configRow('listProfileConfigs()', 'Profile 下拉框和配置列表读取所有已注册 profile。', '返回 registry 中的全部配置'),
+        configRow('当前文件', '当前页面正在展示的 profile 实例文件。', `profiles/${profileFileName(data.profile.profileId)}`),
+      ],
+    };
+  }
+
+  if (group === 'runtime') {
+    return {
+      title: '运行期解析',
+      filePath: 'packages/api/src/profile-config/profile-runtime.ts',
+      rows: [
+        configRow('resolveRuntimeProfileConfig', '把 sourceRules 里的 rootEnv/rootPath/fallbackBaseEnv 解析成本机可用规则。', `${formatInteger(data.runtime.resolvedRuleCount)} 条已解析`),
+        configRow('root 解析优先级', '本地路径规则如何找到真实根目录。', 'env[rootEnv] -> rootPath -> env[fallbackBaseEnv] + relativeRoot -> pathContains/pathRegexes 模糊匹配'),
+        configRow('resolvedSourceRules', '当前环境已经可用于匹配 source_references 的规则。', resolvedRuleSummaries(data.runtime.resolvedSourceRules)),
+        configRow('unresolved', '启用但当前环境不可解析的规则。', data.runtime.unresolved.length === 0 ? '无' : data.runtime.unresolved.map((item) => `${item.ruleId}: ${translateRuntimeReason(item.reason)}`)),
+        configRow('sort order', '多条规则同时可用时的排序。', 'confidence 高优先，然后 priority 大优先，然后 ruleId 字典序'),
+      ],
+    };
+  }
+
+  return {
+    title: '配置校验',
+    filePath: 'packages/api/src/profile-config/profile-validation.ts',
+    rows: [
+      configRow('validateProfileConfig', '静态检查配置是否自洽。', data.validation.valid ? '通过' : `${data.validation.issues.length} 个问题`),
+      configRow('duplicate sourceRule ruleId', '同一个 profile 下 source rule ID 不能重复。', data.validation.valid ? '未命中' : validationIssuesFor(data, 'duplicate')),
+      configRow('path/url/mcp_doc required matcher', '不同定位器必须配置足够的匹配条件。', data.validation.valid ? '未命中' : validationIssuesFor(data, 'needs')),
+      configRow('unknown sourceRuleId reference', 'delivery/artifact/capability 不能引用不存在的 source rule。', data.validation.valid ? '未命中' : validationIssuesFor(data, 'unknown sourceRuleId')),
+      configRow('capability target', 'capabilityRule 必须通过 sourceRuleIds 或 sourceCategories 指明来源。', data.validation.valid ? '未命中' : validationIssuesFor(data, 'capabilityRule needs')),
+    ],
+  };
+}
+
+function mono(value: ReactNode): ReactNode {
+  return <span style={{ fontFamily: 'var(--font-mono)' }}>{value}</span>;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return value == null ? '—' : String(value);
+}
+
+function joinField(value: unknown): string {
+  if (!Array.isArray(value)) return value == null ? '—' : String(value);
+  return value.length === 0 ? '—' : value.map((item) => String(item)).join(', ');
+}
+
+function configRow(key: string, description: string, value: unknown): ReactNode[] {
+  return [mono(key), description, <ConfigValue key={key} value={value} />];
+}
+
+function ConfigValue({ value }: { value: unknown }) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span>—</span>;
+    return (
+      <div className="grid gap-1">
+        {value.map((item, index) => (
+          <span key={`${index}-${String(item).slice(0, 24)}`} className="block text-[var(--color-secondary)]">
+            {truncate(item, 240)}
+          </span>
+        ))}
+      </div>
+    );
+  }
+  return <span className="text-[var(--color-secondary)]">{truncate(value, 260)}</span>;
+}
+
+function profileFileName(profileId: string): string {
+  const known: Record<string, string> = {
+    'sdd-default': 'sdd-default.ts',
+    'e2e-monorepo': 'e2e-monorepo.ts',
+    'online-docs': 'online-docs.ts',
+  };
+  return known[profileId] ?? `${profileId}.ts`;
+}
+
+function formatManifest(manifest: Record<string, unknown>): string[] {
+  const enabled = Object.entries(manifest).filter(([, value]) => value === true).map(([key]) => key);
+  const disabled = Object.entries(manifest).filter(([, value]) => value === false).map(([key]) => key);
+  return [
+    `开启：${enabled.length ? enabled.join(', ') : '无'}`,
+    `关闭：${disabled.length ? disabled.join(', ') : '无'}`,
+  ];
+}
+
+function sourceRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
+  if (rules.length === 0) return ['无来源规则'];
+  return rules.map((rule) => [
+    `${stringField(rule, 'ruleId')}：${formatSourceCategory(rule.category)}`,
+    `定位=${formatLocatorType(rule.locatorType)}`,
+    `动作=${formatActions(rule.actions)}`,
+    `根目录=${formatRootSetting(rule)}`,
+    `include=${joinField(rule.includeGlobs)}`,
+    `exclude=${joinField(rule.excludeGlobs)}`,
+  ].join('；'));
+}
+
+function deliveryRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
+  if (rules.length === 0) return ['无交付单元规则'];
+  return rules.map((rule) => [
+    `${stringField(rule, 'ruleId')}：关联 ${joinField(rule.sourceRuleIds)}`,
+    `定位策略=${truncate(rule.locatorStrategy, 100)}`,
+    `标题策略=${formatTitleStrategy(rule.titleStrategy)}`,
+  ].join('；'));
+}
+
+function artifactRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
+  if (rules.length === 0) return ['无产物规则'];
+  return rules.map((rule) => [
+    `${stringField(rule, 'ruleId')}：关联 ${joinField(rule.sourceRuleIds)}`,
+    `默认类型=${stringField(rule, 'defaultArtifactType')}`,
+    `类型模式=${formatArtifactPatterns(rule.typePatterns)}`,
+  ].join('；'));
+}
+
+function capabilityRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
+  if (rules.length === 0) return ['无能力规则'];
+  return rules.map((rule) => [
+    `${stringField(rule, 'ruleId')}：${stringField(rule, 'displayName')}`,
+    `code=${stringField(rule, 'capabilityCode')}`,
+    `来源=${joinField(rule.sourceRuleIds) || formatSourceCategories(rule.sourceCategories)}`,
+    `动作=${formatActions(rule.actions)}`,
+  ].join('；'));
+}
+
+function attributionSummary(policy: Record<string, unknown>): string[] {
+  const sameInteraction = policy.sameInteraction as Record<string, unknown> | undefined;
+  const sameSessionWindow = policy.sameSessionWindow as Record<string, unknown> | undefined;
+  return [
+    `锚点来源：${formatSourceCategories(policy.anchorCategories)}`,
+    `锚点动作：${formatActions(policy.anchorActions)}`,
+    `同 interaction：${formatBoolean(sameInteraction?.enabled)}，优先动作 ${formatActions(sameInteraction?.preferActions)}`,
+    `同 session 窗口：${formatBoolean(sameSessionWindow?.enabled)}，${String(sameSessionWindow?.minutes ?? 0)} 分钟，要求同用户=${formatBoolean(sameSessionWindow?.requireSameUser)}`,
+  ];
+}
+
+function presentationSummary(presentation: ReturnType<typeof normalizeProfilePresentation>): string[] {
+  return [
+    `工作流类型：${formatWorkflowKind(presentation.workflowKind)}`,
+    `看板标题：${presentation.labels.dashboardTitle}`,
+    `交付单元名词：${presentation.labels.deliveryUnitPlural}`,
+    `产物阶段：${presentation.stages.artifactStages.map((stage) => stage.label).join(' -> ') || '无'}`,
+    `用户成熟度阶段：${presentation.stages.maturityStages.map((stage) => stage.label).join(' -> ') || '不展示'}`,
+    `知识覆盖口径：${formatKnowledgeCoverage(presentation.widgets.knowledgeCoverage)}`,
+    `旧 SDD 专属页面：${formatLegacySurfaces(presentation.legacyOnlySurfaces)}`,
+  ];
+}
+
+function resolvedRuleSummaries(rules: ProfileInspectorResponse['runtime']['resolvedSourceRules']): string[] {
+  if (rules.length === 0) return ['无已解析规则'];
+  return rules.map((rule) => [
+    `${rule.ruleId}：${formatSourceCategory(rule.category)}`,
+    `定位=${formatLocatorType(rule.locatorType)}`,
+    `root=${rule.resolvedRoot ?? '模糊匹配 / 远程定位器'}`,
+    `可信度=${formatConfidence(rule.confidence)}`,
+  ].join('；'));
+}
+
+function validationIssuesFor(data: ProfileInspectorResponse, keyword: string): string[] | string {
+  const issues = data.validation.issues
+    .filter((item) => item.message.includes(keyword))
+    .map((item) => `${item.ruleId ?? 'profile'}：${translateValidationMessage(item.message)}`);
+  return issues.length ? issues : '未命中';
+}
+
+function formatRootSetting(rule: Record<string, unknown>): string {
+  const rootEnv = stringField(rule, 'rootEnv');
+  if (rootEnv !== '—') return `$${rootEnv}`;
+  const rootPath = stringField(rule, 'rootPath');
+  if (rootPath !== '—') return rootPath;
+  const fallbackBaseEnv = stringField(rule, 'fallbackBaseEnv');
+  if (fallbackBaseEnv !== '—') return `$${fallbackBaseEnv}/${stringField(rule, 'relativeRoot')}`;
+  return joinField(rule.pathContains) || joinField(rule.pathRegexes);
+}
+
+function formatArtifactPatterns(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return '—';
+  return value.map((item) => {
+    if (!item || typeof item !== 'object') return String(item);
+    const record = item as Record<string, unknown>;
+    return `${stringField(record, 'artifactType')} <- ${joinField(record.include)}`;
+  }).join(', ');
+}
+
+const WORKFLOW_KIND_LABELS: Record<string, string> = {
+  sdd: 'SDD 默认工作流',
+  local_path_monorepo: '本地路径 Monorepo 工作流',
+  online_docs: '在线文档工作流',
+};
+
+const PROJECTION_MODE_LABELS: Record<string, string> = {
+  sdd_bridge: '旧 SDD 桥接',
+  source_backed: '通用来源投影',
+};
+
+const PROFILE_STATUS_LABELS: Record<string, string> = {
+  active: '已启用',
+  disabled: '未启用',
+};
+
+const SOURCE_CATEGORY_LABELS: Record<string, string> = {
+  process_doc: '过程文档',
+  knowledge: '知识库',
+  code: '代码',
+  unknown: '未知',
+};
+
+const LOCATOR_TYPE_LABELS: Record<string, string> = {
+  path: '本地路径',
+  url: 'URL',
+  mcp_doc: 'MCP 文档',
+};
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  read: '读取',
+  grep: '搜索',
+  glob: '列目录',
+  write: '写入',
+  edit: '编辑',
+  update: '更新',
+  delete: '删除',
+};
+
+const ARTIFACT_FUNNEL_LABELS: Record<string, string> = {
+  sdd_stage: '按 SDD 阶段',
+  artifact_type: '按产物类型',
+  none: '不展示',
+};
+
+const KNOWLEDGE_COVERAGE_LABELS: Record<string, string> = {
+  filesystem_scan: '文件系统扫描',
+  recall_facts: '只按召回事实',
+};
+
+const LEGACY_SURFACE_LABELS: Record<string, string> = {
+  semantics: 'SDD 语义映射',
+  dailyReport: 'SDD 日报',
+};
+
+const TITLE_STRATEGY_LABELS: Record<string, string> = {
+  unit_slug: '使用交付单元 slug',
+  file_name: '使用文件名',
+  doc_title: '使用文档标题',
+  none: '不生成标题',
+};
+
+function labelFrom(labels: Record<string, string>, value: unknown): string {
+  if (value == null || value === '') return '—';
+  const key = String(value);
+  return labels[key] ?? key;
+}
+
+function formatProjectionMode(value: string): string {
+  return labelFrom(PROJECTION_MODE_LABELS, value);
+}
+
+function formatProfileStatus(value: string): string {
+  return labelFrom(PROFILE_STATUS_LABELS, value);
+}
+
+function formatWorkflowKind(value: string): string {
+  return labelFrom(WORKFLOW_KIND_LABELS, value);
+}
+
+function formatSourceCategory(value: unknown): string {
+  return labelFrom(SOURCE_CATEGORY_LABELS, value);
+}
+
+function formatSourceCategories(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return '—';
+  return value.map(formatSourceCategory).join(', ');
+}
+
+function formatLocatorType(value: unknown): string {
+  return labelFrom(LOCATOR_TYPE_LABELS, value);
+}
+
+function formatConfidence(value: unknown): string {
+  return labelFrom(CONFIDENCE_LABELS, value);
+}
+
+function formatActions(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return '—';
+  return value.map((item) => labelFrom(ACTION_LABELS, item)).join(', ');
+}
+
+function formatArtifactCoverageFunnel(value: string): string {
+  return labelFrom(ARTIFACT_FUNNEL_LABELS, value);
+}
+
+function formatKnowledgeCoverage(value: string): string {
+  return labelFrom(KNOWLEDGE_COVERAGE_LABELS, value);
+}
+
+function formatLegacySurfaces(values: string[]): string {
+  if (values.length === 0) return '无';
+  return values.map((value) => labelFrom(LEGACY_SURFACE_LABELS, value)).join(', ');
+}
+
+function formatBoolean(value: unknown): string {
+  if (value === true) return '是';
+  if (value === false) return '否';
+  return value == null ? '—' : String(value);
+}
+
+function formatTitleStrategy(value: unknown): string {
+  return labelFrom(TITLE_STRATEGY_LABELS, value);
+}
+
+function translateRuntimeReason(reason: string): string {
+  return reason
+    .replace('missing env', '缺少环境变量')
+    .replace('missing root', '缺少根目录')
+    .replace('not configured', '未配置')
+    .replace('not found', '未找到');
+}
+
+function translateValidationMessage(message: string): string {
+  return message
+    .replace('duplicate sourceRule ruleId', 'sourceRule ruleId 重复')
+    .replace('path rule needs rootEnv, rootPath, fallbackBaseEnv + relativeRoot, pathContains, or pathRegexes', 'path 规则需要 rootEnv、rootPath、fallbackBaseEnv + relativeRoot、pathContains 或 pathRegexes 之一')
+    .replace('url rule needs urlPrefixes or urlRegexes', 'URL 规则需要 urlPrefixes 或 urlRegexes')
+    .replace('mcp_doc rule needs at least one of docIdPatterns / collectionIds / urlPrefixes / docTypes (mcpServer alone is not enough)', 'MCP 文档规则至少需要 docIdPatterns、collectionIds、urlPrefixes 或 docTypes 之一，只有 mcpServer 不足以分类')
+    .replace('deliveryUnitRule references unknown sourceRuleId:', '交付单元规则引用了不存在的 sourceRuleId：')
+    .replace('artifactRule references unknown sourceRuleId:', '产物规则引用了不存在的 sourceRuleId：')
+    .replace('capabilityRule references unknown sourceRuleId:', '能力规则引用了不存在的 sourceRuleId：')
+    .replace('capabilityRule needs sourceRuleIds or sourceCategories', '能力规则需要 sourceRuleIds 或 sourceCategories');
+}

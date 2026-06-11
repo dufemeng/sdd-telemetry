@@ -30,12 +30,54 @@ export type ProfileCapabilityManifest = z.infer<typeof ProfileCapabilityManifest
 export const ProfileStatusSchema = z.enum(['active', 'disabled']);
 export type ProfileStatus = z.infer<typeof ProfileStatusSchema>;
 
+export const ProfilePresentationLabelsSchema = z.object({
+  dashboardTitle: z.string(),
+  deliveryUnitSingular: z.string(),
+  deliveryUnitPlural: z.string(),
+  artifactSingular: z.string(),
+  artifactPlural: z.string(),
+  capabilitySingular: z.string(),
+  capabilityPlural: z.string(),
+  knowledgeSingular: z.string(),
+  knowledgePlural: z.string(),
+});
+export type ProfilePresentationLabels = z.infer<typeof ProfilePresentationLabelsSchema>;
+
+export const ProfileStageDescriptorSchema = z.object({
+  code: z.string(),
+  label: z.string(),
+  order: z.number(),
+  colorToken: z.string().optional(),
+});
+export type ProfileStageDescriptor = z.infer<typeof ProfileStageDescriptorSchema>;
+
+export const ProfilePresentationStagesSchema = z.object({
+  artifactStages: z.array(ProfileStageDescriptorSchema),
+  maturityStages: z.array(ProfileStageDescriptorSchema),
+});
+export type ProfilePresentationStages = z.infer<typeof ProfilePresentationStagesSchema>;
+
+export const ProfilePresentationWidgetsSchema = z.object({
+  artifactCoverageFunnel: z.enum(['sdd_stage', 'artifact_type', 'none']),
+  userMaturity: z.enum(['sdd_maturity', 'none']),
+  knowledgeCoverage: z.enum(['filesystem_scan', 'recall_facts']),
+  callQuality: z.boolean(),
+  matchHealth: z.boolean(),
+  triggerSourceBreakdown: z.boolean(),
+  multiStageDeliveryUnit: z.boolean(),
+});
+export type ProfilePresentationWidgets = z.infer<typeof ProfilePresentationWidgetsSchema>;
+
 export const ProfilePresentationSchema = z.object({
-  workflowKind: z.enum(['sdd', 'local_path_monorepo']),
+  workflowKind: z.enum(['sdd', 'local_path_monorepo', 'online_docs']),
   maturityStages: z.array(z.string()),
   artifactStageOrder: z.array(z.string()),
   hiddenMetrics: z.array(z.string()),
   knowledgeCoverageMode: z.enum(['filesystem_scan', 'recall_facts']),
+  labels: ProfilePresentationLabelsSchema.optional(),
+  stages: ProfilePresentationStagesSchema.optional(),
+  widgets: ProfilePresentationWidgetsSchema.optional(),
+  legacyOnlySurfaces: z.array(z.string()).optional(),
 });
 export type ProfilePresentation = z.infer<typeof ProfilePresentationSchema>;
 
@@ -49,6 +91,86 @@ export const ProfileSummarySchema = z.object({
 export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
 
 export const ProfileSummaryListSchema = z.array(ProfileSummarySchema);
+
+// ── Profile Inspector（只读配置与运行态检查）─────────────────────────────────
+
+const ProfileInspectorRecordSchema = z.record(z.string(), z.unknown());
+
+export const ProfileInspectorProjectionRunSchema = z.object({
+  id: IdSchema,
+  runType: z.string(),
+  status: z.string(),
+  startedAt: ISODateTimeSchema.nullable(),
+  completedAt: ISODateTimeSchema.nullable(),
+  stats: ProfileInspectorRecordSchema,
+  errorMessage: z.string().nullable(),
+});
+export type ProfileInspectorProjectionRun = z.infer<typeof ProfileInspectorProjectionRunSchema>;
+
+export const ProfileInspectorFactCountsSchema = z.object({
+  deliveryUnits: z.number(),
+  artifacts: z.number(),
+  artifactWrites: z.number(),
+  artifactTurns: z.number(),
+  capabilityUsages: z.number(),
+  knowledgeRecalls: z.number(),
+  codeActivities: z.number(),
+});
+export type ProfileInspectorFactCounts = z.infer<typeof ProfileInspectorFactCountsSchema>;
+
+export const ProfileInspectorResolvedSourceRuleSchema = z.object({
+  ruleId: z.string(),
+  locatorType: z.string(),
+  category: z.string(),
+  confidence: z.string(),
+  priority: z.number(),
+  actions: z.array(z.string()),
+  resolvedRoot: z.string().nullable(),
+  description: z.string().nullable(),
+});
+export type ProfileInspectorResolvedSourceRule = z.infer<typeof ProfileInspectorResolvedSourceRuleSchema>;
+
+export const ProfileInspectorResponseSchema = z.object({
+  profile: z.object({
+    profileId: z.string(),
+    displayName: z.string(),
+    status: ProfileStatusSchema,
+    projectionMode: z.enum(['sdd_bridge', 'source_backed']),
+    readSource: z.enum(['legacy_sdd', 'profile_projection']),
+    manifest: ProfileCapabilityManifestSchema,
+    presentation: ProfilePresentationSchema,
+  }),
+  validation: z.object({
+    valid: z.boolean(),
+    issues: z.array(z.object({
+      ruleId: z.string().optional(),
+      message: z.string(),
+    })),
+  }),
+  runtime: z.object({
+    configured: z.boolean(),
+    resolvedRuleCount: z.number(),
+    unresolved: z.array(z.object({
+      ruleId: z.string(),
+      reason: z.string(),
+    })),
+    resolvedSourceRules: z.array(ProfileInspectorResolvedSourceRuleSchema),
+  }),
+  projection: z.object({
+    readMode: z.enum(['projection', 'legacy', 'empty']),
+    currentRun: ProfileInspectorProjectionRunSchema.nullable(),
+    latestRun: ProfileInspectorProjectionRunSchema.nullable(),
+    counts: ProfileInspectorFactCountsSchema,
+  }),
+  rules: z.object({
+    sourceRules: z.array(ProfileInspectorRecordSchema),
+    deliveryUnitRules: z.array(ProfileInspectorRecordSchema),
+    artifactRules: z.array(ProfileInspectorRecordSchema),
+    capabilityRules: z.array(ProfileInspectorRecordSchema),
+    attributionPolicy: ProfileInspectorRecordSchema,
+  }),
+});
+export type ProfileInspectorResponse = z.infer<typeof ProfileInspectorResponseSchema>;
 
 // ── 总览 ─────────────────────────────────────────────────────────────────────
 
@@ -368,6 +490,35 @@ export const ProfileUserDetailSchema = z.object({
   deliveryUnits: z.array(ProfileUserDeliveryUnitSchema),
 });
 export type ProfileUserDetail = z.infer<typeof ProfileUserDetailSchema>;
+
+export const ProfileUserActivityQuerySchema = z.object({
+  deliveryUnitId: IdSchema.optional(),
+  range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('30d'),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+export type ProfileUserActivityQuery = z.infer<typeof ProfileUserActivityQuerySchema>;
+
+export const ProfileUserActivityItemSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['capability', 'knowledge', 'artifact_write', 'artifact_discussion', 'code']),
+  eventTime: ISODateTimeSchema.nullable(),
+  interactionId: IdSchema.nullable(),
+  deliveryUnitId: IdSchema.nullable(),
+  artifactId: IdSchema.nullable(),
+  capabilityUsageId: IdSchema.nullable(),
+  capabilityCode: z.string().nullable(),
+  capabilityDisplayName: z.string().nullable(),
+  rawCapabilityName: z.string().nullable(),
+  title: z.string(),
+  detail: z.string().nullable(),
+  locator: z.string().nullable(),
+});
+export type ProfileUserActivityItem = z.infer<typeof ProfileUserActivityItemSchema>;
+
+export const ProfileUserActivityResponseSchema = z.object({
+  items: z.array(ProfileUserActivityItemSchema),
+});
+export type ProfileUserActivityResponse = z.infer<typeof ProfileUserActivityResponseSchema>;
 
 // ── 知识库分析（knowledge，产品文案叫「知识库」）─────────────────────────────
 

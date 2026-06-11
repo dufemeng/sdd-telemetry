@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateSddSemanticRequest, UpdateSddSemanticRequest, SddSemantic } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
 
-export function useSddSemantics() {
+export function useSddSemantics(enabled = true) {
   return useQuery({
     queryKey: ['sdd-semantics'],
     queryFn: () => requestData<SddSemantic[]>('/api/sdd/semantics'),
     staleTime: 30_000,
+    enabled,
   });
 }
 

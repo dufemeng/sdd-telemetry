@@ -154,10 +154,10 @@ export function useWikiRecallCoverage() {
   });
 }
 
-export function useWikiRecallDomainDocs(repo: string | null, domain: string | null) {
+export function useWikiRecallDomainDocs(repo: string | null, domain: string | null, enabled = true) {
   return useQuery({
     queryKey: ['wiki-recalls', 'docs', repo, domain],
-    enabled: !!repo && !!domain,
+    enabled: enabled && !!repo && !!domain,
     queryFn: () =>
       requestData<WikiDomainDocsResponse>(
         `/api/sdd/wiki-recalls/docs?${toQueryString({ repo: repo!, domain: domain! })}`,

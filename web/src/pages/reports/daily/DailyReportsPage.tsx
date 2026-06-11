@@ -4,6 +4,8 @@ import { useMutation } from '@tanstack/react-query';
 import { requestData } from '@/api/client';
 import type { DailyReportDetailResponse } from '@sdd-telemetry/api';
 import { useAuth } from '@/components/auth/useAuth';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfilePresentation } from '@/pages/profiles/useProfiles';
 import { useLatestDailyReport, useDailyReport } from './useDailyReport';
 import { useDailyReportList } from './useDailyReportList';
 import { DailyReportDocument } from './DailyReportDocument';
@@ -15,17 +17,22 @@ export default function DailyReportsPage() {
   const { date: routeDate } = useParams<{ date?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { profileId } = useShellContext();
+  const profilePresentation = useProfilePresentation(profileId);
+  const isProfileLoaded = Boolean(profilePresentation);
+  const isSddProfile = profilePresentation?.workflowKind === 'sdd';
+  const shouldLoadReport = isProfileLoaded && isSddProfile;
   const [showHistory, setShowHistory] = useState(false);
   const docRef = useRef<HTMLDivElement>(null);
 
   const isLatest = !routeDate || routeDate === 'latest';
-  const latestQuery = useLatestDailyReport();
-  const dateQuery = useDailyReport(isLatest ? undefined : routeDate);
+  const latestQuery = useLatestDailyReport(shouldLoadReport);
+  const dateQuery = useDailyReport(isLatest ? undefined : routeDate, shouldLoadReport);
 
   const report = isLatest ? latestQuery.data : dateQuery.data;
   const loading = isLatest ? latestQuery.isLoading : dateQuery.isLoading;
 
-  const listQuery = useDailyReportList(undefined, undefined, 1, 60);
+  const listQuery = useDailyReportList(undefined, undefined, 1, 60, shouldLoadReport);
 
   const regenMutation = useMutation({
     mutationFn: (targetDate: string) =>
@@ -56,10 +63,31 @@ export default function DailyReportsPage() {
   }, [regenMutation, navigate]);
 
   useEffect(() => {
-    if (isLatest && latestQuery.data?.reportDate) {
+    if (shouldLoadReport && isLatest && latestQuery.data?.reportDate) {
       navigate(`/reports/daily/${latestQuery.data.reportDate}`, { replace: true });
     }
-  }, [isLatest, latestQuery.data?.reportDate, navigate]);
+  }, [isLatest, latestQuery.data?.reportDate, navigate, shouldLoadReport]);
+
+  if (!isProfileLoaded) {
+    return (
+      <div className="daily-report-stage" style={{ position: 'relative' }}>
+        <div className="dr-empty-state">
+          <p>加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSddProfile) {
+    return (
+      <div className="daily-report-stage" style={{ position: 'relative' }}>
+        <div className="dr-empty-state">
+          <h2>SDD 每日简报</h2>
+          <p>当前 profile 使用 source-backed 工作流；日报仍是 SDD 专属报表，不参与当前 profile 的展示。</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="daily-report-stage" style={{ position: 'relative' }}>

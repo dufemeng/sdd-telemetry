@@ -6,15 +6,21 @@ import { DomainDocList } from './components/DomainDocList';
 import { DocRecallDetail } from './components/DocRecallDetail';
 import { useWikiRecallDomainDocs } from './useWikiRecalls';
 import { CARD_STYLE, REPO_LABEL } from './styles';
+import { useShellContext } from '@/components/layout/useShellContext';
+import { useProfilePresentation } from '@/pages/profiles/useProfiles';
 import { formatInteger } from '@/lib/format';
 
 export default function WikiDomainDetailPage() {
   const params = useParams();
   const navigate = useNavigate();
+  const { profileId } = useShellContext();
+  const profilePresentation = useProfilePresentation(profileId);
   const repo = params.repo ?? '';
   const domain = params.domain ? decodeURIComponent(params.domain) : '';
+  const isProfileLoaded = Boolean(profilePresentation);
+  const usesFilesystemCoverage = profilePresentation?.knowledgeCoverageMode === 'filesystem_scan';
 
-  const docsQuery = useWikiRecallDomainDocs(repo, domain);
+  const docsQuery = useWikiRecallDomainDocs(repo, domain, isProfileLoaded && usesFilesystemCoverage);
   const docs = docsQuery.data?.items ?? [];
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
@@ -25,6 +31,38 @@ export default function WikiDomainDetailPage() {
   }, [docs, selectedPath]);
 
   const selectedDoc = docs.find((d) => d.relativePath === selectedPath) ?? null;
+
+  if (!isProfileLoaded) {
+    return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
+  }
+
+  if (!usesFilesystemCoverage) {
+    return (
+      <div className="grid gap-3">
+        <section className="flex items-center gap-3 rounded-[6px] p-[14px]" style={CARD_STYLE}>
+          <button
+            onClick={() => navigate('/sdd/wiki-recalls')}
+            className="inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
+          >
+            <ArrowLeft size={14} /> 知识库分析
+          </button>
+          <span className="text-[var(--color-border)]">/</span>
+          <div className="flex items-center gap-1.5">
+            <BookOpen size={16} style={{ color: 'var(--color-primary)' }} />
+            <h2 className="text-[16px] font-semibold text-[#f5f5f5]">召回事实详情</h2>
+          </div>
+        </section>
+        <section className="rounded-[6px] p-[18px]" style={CARD_STYLE}>
+          <div className="text-[13px] text-[var(--color-secondary)]">
+            当前 profile 使用召回事实口径，不读取旧 SDD 知识库文件系统详情。
+          </div>
+          <p className="mt-2 text-[12px] leading-5 text-[var(--color-muted)]">
+            来源空间与知识领域只用于聚合展示；文档清单、正文与沉睡文档仍属于 filesystem_scan 口径。
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   if (docsQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
