@@ -119,7 +119,7 @@ export default function OverviewPage() {
   const isSddStageFunnel = presentation.widgets.artifactCoverageFunnel === 'sdd_stage';
   const showUserMaturity = presentation.widgets.userMaturity !== 'none' && maturityStages.length > 0;
   const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
-  const fromIso = timeRangeToFromIso(timeRange);
+  const fromIso = useMemo(() => timeRangeToFromIso(timeRange), [timeRange]);
   const analyticsQuery  = useProfileCapabilityAnalytics(profileId, fromIso);
   const usersQuery      = useProfileUsers(profileId, { fromIso, pageSize: 200 });
   const demandsQuery    = useProfileDemands(profileId, fromIso);

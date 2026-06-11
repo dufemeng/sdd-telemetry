@@ -66,6 +66,7 @@ export class ProfilesService {
     const config = this.requireProfile(profileId);
     const validation = validateProfileConfig(config);
     const runtime = resolveRuntimeProfileConfig(config, process.env);
+    const readSource = this.resolveReadSource(config);
     const read = await this.resolveReadMode(profileId);
     const projection = await this.profileProjectionRepository.getInspector(profileId);
 
@@ -75,7 +76,7 @@ export class ProfilesService {
         displayName: config.displayName,
         status: isRuntimeConfiguredWithResolution(config, runtime.unresolved.length) ? config.status : 'disabled',
         projectionMode: config.projectionMode,
-        readSource: this.profileDashboard.readSource,
+        readSource,
         manifest: config.manifest,
         presentation: config.presentation,
       },
@@ -720,11 +721,16 @@ export class ProfilesService {
 
   private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
     const config = this.requireProfile(profileId);
-    if (this.profileDashboard.readSource === 'profile_projection') {
+    if (this.resolveReadSource(config) === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) return { mode: 'projection', runId };
     }
     return config.projectionMode === 'sdd_bridge' ? { mode: 'legacy' } : { mode: 'empty' };
+  }
+
+  private resolveReadSource(config: WorkflowProfileConfig): ReadSource {
+    if (config.projectionMode === 'source_backed') return 'profile_projection';
+    return this.profileDashboard.readSource;
   }
 
   private requireProfile(profileId: string): WorkflowProfileConfig {
