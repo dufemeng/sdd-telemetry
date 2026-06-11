@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { ProfileInspectorResponse } from '@sdd-telemetry/api';
 import { FileJson } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
@@ -53,6 +53,7 @@ export default function ProfileInspectorPage() {
         <PanelDescription>
           这里按拆分后的源码文件展示配置。每行只保留 key、description、value，方便把“这个字段在哪个文件里、它控制什么、当前值是什么”对上。
         </PanelDescription>
+        <SourceRuleOverview data={data} />
         <FileHeader title={configFile.title} filePath={configFile.filePath} />
         <DataTable
           headers={['key', 'description', 'value']}
@@ -61,6 +62,88 @@ export default function ProfileInspectorPage() {
         />
       </Panel>
     </div>
+  );
+}
+
+function SourceRuleOverview({ data }: { data: ProfileInspectorResponse }) {
+  const sourceRules = data.rules.sourceRules.filter((rule) => rule.enabled !== false);
+  const runtimeRules = new Map(data.runtime.resolvedSourceRules.map((rule) => [rule.ruleId, rule]));
+
+  if (sourceRules.length === 0) {
+    return (
+      <section className="mb-4 rounded-[6px]" style={{ border: '1px solid var(--color-border)', background: '#0d0d0d' }}>
+        <div className="px-3 py-2">
+          <div className="text-[12px] font-semibold text-[#f5f5f5]">原始配置规则如何生效</div>
+          <p className="mt-1 text-[12px] leading-5 text-[var(--color-muted)]">
+            当前 profile 不通过 sourceRules 匹配路径。它使用已有 sdd_* 派生表桥接到 profile 看板，清洗链路仍由 worker 自动维护。
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mb-4 rounded-[6px]" style={{ border: '1px solid var(--color-border)', background: '#0d0d0d' }}>
+      <div className="border-b px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-[12px] font-semibold text-[#f5f5f5]">原始配置规则如何生效</div>
+          <span className="rounded-full px-2 py-[2px] text-[10px] text-[var(--color-primary)]" style={{ background: 'rgba(250,255,105,0.10)' }}>
+            {sourceRules.length} 条入口规则
+          </span>
+        </div>
+        <p className="mt-1 max-w-[82ch] text-[12px] leading-5 text-[var(--color-muted)]">
+          用户在 Claude/Codex 里读取、搜索、写入或编辑文件时，工具调用会上报 file_path。worker 先把这些调用清洗成 source_references，再用下面的规则判断它属于过程文档、知识库还是代码，最后进入当前 profile 的投影看板。
+        </p>
+      </div>
+      <div className="divide-y divide-[var(--color-border)]">
+        {sourceRules.map((rule) => {
+          const runtimeRule = runtimeRules.get(stringField(rule, 'ruleId'));
+          return (
+            <div key={stringField(rule, 'ruleId')} className="grid gap-3 px-3 py-3 md:grid-cols-[160px_minmax(0,1fr)_minmax(220px,0.75fr)]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-flex h-[20px] items-center rounded-full px-2 text-[11px] font-medium"
+                    style={categoryBadgeStyle(rule.category)}
+                  >
+                    {formatSourceCategory(rule.category)}
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {stringField(rule, 'ruleId')}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--color-muted)]">识别路径</div>
+                <div className="mt-1 grid gap-1">
+                  {sourcePathSignals(rule, runtimeRule).map((item) => (
+                    <code
+                      key={item}
+                      className="block break-all rounded-[4px] px-2 py-1 text-[12px] text-[var(--color-secondary)]"
+                      style={{ background: '#151515', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {item}
+                    </code>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] leading-4 text-[var(--color-muted)]">
+                  {sourceRootSummary(rule, runtimeRule)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--color-muted)]">用户操作触发</div>
+                <div className="mt-1 text-[12px] leading-5 text-[var(--color-secondary)]">
+                  {formatActions(rule.actions)}
+                </div>
+                <div className="mt-2 text-[11px] leading-4 text-[var(--color-muted)]">
+                  {sourceEffectSummary(rule)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -282,6 +365,84 @@ function sourceRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
     `include=${joinField(rule.includeGlobs)}`,
     `exclude=${joinField(rule.excludeGlobs)}`,
   ].join('；'));
+}
+
+function sourcePathSignals(
+  rule: Record<string, unknown>,
+  runtimeRule: ProfileInspectorResponse['runtime']['resolvedSourceRules'][number] | undefined,
+): string[] {
+  const pathContains = stringArrayField(rule.pathContains).map(cleanPathSignal);
+  if (pathContains.length > 0) return pathContains;
+
+  const urlPrefixes = stringArrayField(rule.urlPrefixes);
+  if (urlPrefixes.length > 0) return urlPrefixes;
+
+  const docIdPatterns = stringArrayField(rule.docIdPatterns);
+  if (docIdPatterns.length > 0) return docIdPatterns.map((item) => `docId: ${item}`);
+
+  if (runtimeRule?.resolvedRoot) return [runtimeRule.resolvedRoot];
+
+  const root = sourceConfiguredRoot(rule);
+  return root ? [root] : ['未配置路径信号'];
+}
+
+function sourceRootSummary(
+  rule: Record<string, unknown>,
+  runtimeRule: ProfileInspectorResponse['runtime']['resolvedSourceRules'][number] | undefined,
+): string {
+  const configuredRoot = sourceConfiguredRoot(rule);
+  const resolvedRoot = runtimeRule?.resolvedRoot;
+  if (resolvedRoot) return `当前环境已解析 root：${resolvedRoot}`;
+  if (configuredRoot) return `可选精确 root：${configuredRoot}。未配置时继续使用上面的路径片段模糊匹配。`;
+  return '当前规则依赖路径片段、URL 前缀或文档 ID 模式匹配，不要求绝对路径。';
+}
+
+function sourceConfiguredRoot(rule: Record<string, unknown>): string {
+  const rootEnv = stringField(rule, 'rootEnv');
+  if (rootEnv !== '—') return `$${rootEnv}`;
+
+  const rootPath = stringField(rule, 'rootPath');
+  if (rootPath !== '—') return rootPath;
+
+  const fallbackBaseEnv = stringField(rule, 'fallbackBaseEnv');
+  if (fallbackBaseEnv !== '—') {
+    const relativeRoot = stringField(rule, 'relativeRoot');
+    return relativeRoot === '—' || relativeRoot === '.' ? `$${fallbackBaseEnv}` : `$${fallbackBaseEnv}/${relativeRoot}`;
+  }
+
+  return '';
+}
+
+function sourceEffectSummary(rule: Record<string, unknown>): string {
+  const category = String(rule.category ?? '');
+  if (category === 'process_doc') {
+    return '写入或编辑过程文档会生成交付单元和产物；这些写入也是知识库读取、代码实施归因时优先寻找的锚点。';
+  }
+  if (category === 'knowledge') {
+    return '读取或搜索知识库会生成知识召回记录，并按最近的过程文档写入归因到交付单元。';
+  }
+  if (category === 'code') {
+    return '写入、编辑、更新或删除代码会生成代码实施记录，并按最近的过程文档写入归因到交付单元。';
+  }
+  return '命中后进入 source-backed 投影，是否进入核心指标由后续 delivery/artifact/capability 规则决定。';
+}
+
+function categoryBadgeStyle(value: unknown): CSSProperties {
+  const category = String(value ?? '');
+  if (category === 'process_doc') return { color: 'var(--color-primary)', background: 'rgba(250,255,105,0.10)' };
+  if (category === 'knowledge') return { color: 'var(--color-good-text)', background: 'var(--color-good-bg)' };
+  if (category === 'code') return { color: 'var(--color-warn-text)', background: 'var(--color-warn-bg)' };
+  return { color: 'var(--color-secondary)', background: 'rgba(255,255,255,0.08)' };
+}
+
+function stringArrayField(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item)).filter(Boolean);
+}
+
+function cleanPathSignal(value: string): string {
+  const withoutLeadingSlash = value.replace(/^\/+/, '');
+  return withoutLeadingSlash.endsWith('/') ? withoutLeadingSlash : `${withoutLeadingSlash}/`;
 }
 
 function deliveryRuleSummaries(rules: Array<Record<string, unknown>>): string[] {
