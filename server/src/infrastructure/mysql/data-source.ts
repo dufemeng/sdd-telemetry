@@ -17,6 +17,9 @@ import { CreateSourceReferences1780000006000 } from './migrations/1780000006000-
 import { CreateProfileProjection1780000007000 } from './migrations/1780000007000-create-profile-projection';
 import { AddProfileQueryIndexes1780000008000 } from './migrations/1780000008000-add-profile-query-indexes';
 import { AddCapabilityTriggerSource1780000009000 } from './migrations/1780000009000-add-capability-trigger-source';
+import { AddSourceReferenceBatch1780000010000 } from './migrations/1780000010000-add-source-reference-batch';
+import { CreateProfileSourceMatches1780000011000 } from './migrations/1780000011000-create-profile-source-matches';
+import { CreateProfileProjectionJobs1780000012000 } from './migrations/1780000012000-create-profile-projection-jobs';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -50,6 +53,9 @@ export function createAppDataSource(): DataSource {
       CreateProfileProjection1780000007000,
       AddProfileQueryIndexes1780000008000,
       AddCapabilityTriggerSource1780000009000,
+      AddSourceReferenceBatch1780000010000,
+      CreateProfileSourceMatches1780000011000,
+      CreateProfileProjectionJobs1780000012000,
     ],
   });
 }

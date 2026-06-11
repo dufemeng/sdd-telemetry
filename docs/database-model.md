@@ -541,7 +541,71 @@ event_id 存在：
 
 保留期：对齐 `sdd_work_item_artifact_writes`。
 
-## 7. Retention
+## 7. Profile Projection Maintenance
+
+Profile 投影维护层把规范事实投成不同 workflow profile 的只读模型。常驻 worker 自动维护，不要求日常手工跑 CLI。
+
+### 7.1 source_references
+
+工具调用中抽取出的 profile 无关 source 事实。`source_batch_id` 记录首次抽取来源 batch，用于 clean batch 后自动标记 dirty profile。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 主键 |
+| `reference_key` | CHAR(64) | NOT NULL, UNIQUE | source fact 幂等 key |
+| `source_batch_id` | BIGINT UNSIGNED | NULL, INDEX | 来源 `otel_ingest_batches.id` |
+| `interaction_id` | BIGINT UNSIGNED | NULL, INDEX | 关联交互 |
+| `tool_call_id` | BIGINT UNSIGNED | NULL, INDEX | 关联工具调用 |
+| `action_type` | VARCHAR(32) | NOT NULL | read / grep / glob / write / edit / update |
+| `locator_type` | VARCHAR(32) | NOT NULL | path / url / mcp_doc / pattern / unknown |
+| `normalized_locator` | VARCHAR(2048) | NULL | 归一化路径或 URL |
+| `event_time` | DATETIME(3) | NULL, INDEX | source 发生时间 |
+| `rule_version` | VARCHAR(32) | NOT NULL | source extractor 版本 |
+
+### 7.2 profile_source_matches
+
+source-backed profile 的匹配物化表。投影时从本表 join `source_references` 读取事实字段；配置 hash 变化或 dirty 投影前会全量重匹配当前 profile。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 主键 |
+| `profile_id` | VARCHAR(191) | NOT NULL, UNIQUE(profile_id, source_reference_key) | Profile ID |
+| `source_reference_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `source_references.id` |
+| `source_reference_key` | CHAR(64) | NOT NULL | source fact key |
+| `matched_rule_id` | VARCHAR(191) | NOT NULL, INDEX | 命中的 source rule |
+| `category` | VARCHAR(32) | NOT NULL | process_doc / knowledge / code |
+| `action_type` | VARCHAR(32) | NOT NULL | 匹配后的标准动作 |
+| `locator_type` | VARCHAR(32) | NOT NULL | 匹配后的定位器类型 |
+| `relative_locator` | VARCHAR(2048) | NULL | root 下相对路径 |
+| `resource_id` | VARCHAR(2048) | NULL | 稳定资源 ID |
+| `source_namespace` | VARCHAR(191) | NULL | repo / doc namespace |
+| `confidence` | VARCHAR(16) | NULL | high / medium / low |
+| `ambiguous` | TINYINT(1) | NOT NULL DEFAULT 0 | 是否存在同优先级歧义 |
+| `metadata_json` | JSON | NULL | 匹配证据 |
+| `rule_version` | VARCHAR(32) | NOT NULL | source-backed rule 版本 |
+
+### 7.3 profile_projection_jobs
+
+Profile 自动投影 job 表，同时承担 CLI 和常驻 worker 的并发互斥。`dirty_seq` 是单调计数器，用于避免 DATETIME 同毫秒比较误清 dirty。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `profile_id` | VARCHAR(191) | PK | Profile ID |
+| `status` | VARCHAR(32) | NOT NULL, INDEX | idle / dirty / running / failed |
+| `dirty_seq` | BIGINT UNSIGNED | NOT NULL DEFAULT 0 | 每次 markDirty 自增 |
+| `running_dirty_seq` | BIGINT UNSIGNED | NULL | claim 时捕获的 dirty_seq |
+| `dirty_since` | DATETIME(3) | NULL | 最早 dirty 时间 |
+| `dirty_until` | DATETIME(3) | NULL | 最近 dirty 时间 |
+| `dirty_reason` | VARCHAR(191) | NULL | 最近 dirty 原因 |
+| `last_resolved_config_hash` | CHAR(64) | NULL | 最近成功投影的运行时配置 hash |
+| `attempts` | INT UNSIGNED | NOT NULL | 当前连续尝试次数 |
+| `max_attempts` | INT UNSIGNED | NOT NULL | 最大尝试次数 |
+| `locked_by` | VARCHAR(191) | NULL | 当前 worker/CLI |
+| `locked_until` | DATETIME(3) | NULL, INDEX | job 锁过期时间 |
+| `last_projection_run_id` | BIGINT UNSIGNED | NULL | 最近成功 run |
+| `last_error` | LONGTEXT | NULL | 最近失败信息 |
+
+## 8. Retention
 
 P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。
 
@@ -557,7 +621,7 @@ P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。
 
 Retention 定时任务建议每天执行一次，每批删除 500-2000 行，避免长事务。
 
-## 8. MySQL 配置建议
+## 9. MySQL 配置建议
 
 ```text
 character_set_server = utf8mb4

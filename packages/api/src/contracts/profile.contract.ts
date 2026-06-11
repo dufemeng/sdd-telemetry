@@ -118,6 +118,27 @@ export const ProfileInspectorFactCountsSchema = z.object({
 });
 export type ProfileInspectorFactCounts = z.infer<typeof ProfileInspectorFactCountsSchema>;
 
+export const ProfileInspectorProjectionJobSchema = z.object({
+  status: z.string(),
+  dirtySeq: z.number(),
+  dirtyReason: z.string().nullable(),
+  attempts: z.number(),
+  maxAttempts: z.number(),
+  lockedBy: z.string().nullable(),
+  lockedUntil: ISODateTimeSchema.nullable(),
+  lastStartedAt: ISODateTimeSchema.nullable(),
+  lastCompletedAt: ISODateTimeSchema.nullable(),
+  lastProjectionRunId: IdSchema.nullable(),
+  lastResolvedConfigHash: z.string().nullable(),
+  lastError: z.string().nullable(),
+});
+export type ProfileInspectorProjectionJob = z.infer<typeof ProfileInspectorProjectionJobSchema>;
+
+export const ProfileInspectorMatchCountsSchema = z.object({
+  sourceMatches: z.number(),
+});
+export type ProfileInspectorMatchCounts = z.infer<typeof ProfileInspectorMatchCountsSchema>;
+
 export const ProfileInspectorResolvedSourceRuleSchema = z.object({
   ruleId: z.string(),
   locatorType: z.string(),
@@ -161,6 +182,8 @@ export const ProfileInspectorResponseSchema = z.object({
     currentRun: ProfileInspectorProjectionRunSchema.nullable(),
     latestRun: ProfileInspectorProjectionRunSchema.nullable(),
     counts: ProfileInspectorFactCountsSchema,
+    job: ProfileInspectorProjectionJobSchema.nullable(),
+    matchCounts: ProfileInspectorMatchCountsSchema,
   }),
   rules: z.object({
     sourceRules: z.array(ProfileInspectorRecordSchema),

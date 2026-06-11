@@ -37,6 +37,7 @@
     "auth:bootstrap-admin": "pnpm --filter @sdd-telemetry/server auth:bootstrap-admin",
     "profile:rebuild-source-references": "pnpm --filter @sdd-telemetry/worker profile:rebuild-source-references",
     "profile:rebuild": "pnpm --filter @sdd-telemetry/worker profile:rebuild",
+    "profile:maintain-once": "pnpm --filter @sdd-telemetry/worker profile:maintain-once",
     "profile:diff": "pnpm --filter @sdd-telemetry/worker profile:diff",
     "profile:link-check": "pnpm --filter @sdd-telemetry/worker profile:link-check"
   },

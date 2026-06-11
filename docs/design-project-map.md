@@ -303,17 +303,29 @@ PROFILE_DASHBOARD_READ_SOURCE=profile_projection
   projectionMode=source_backed -> 返回 empty / data not ready
 ```
 
-所以切换 profile projection 不是改前端开关就完事，必须先：
+所以切换 profile projection 不是改前端开关就完事。常驻 worker 默认会自动维护：
+
+```text
+clean batch
+  -> source_references
+  -> profile_projection_jobs mark dirty
+  -> ProjectionLoop claim job
+  -> source-backed full rematch profile_source_matches
+  -> snapshot projection
+  -> switch profile_current_projection_runs pointer
+```
+
+CLI 只保留为历史回填、强制重建和排障工具：
 
 ```bash
-pnpm profile:rebuild-source-references
+pnpm profile:maintain-once
 pnpm profile:rebuild -- --profile <profileId>
 pnpm profile:diff -- --profile <profileId>
 ```
 
 ### 8.2 source_references
 
-`source_references` 是 profile 化的最小通用事实层。重建入口：
+`source_references` 是 profile 化的最小通用事实层。日常入口是 clean batch 后的自动抽取；历史回填入口是：
 
 ```text
 worker/src/jobs/rebuild-source-references.ts
@@ -333,31 +345,36 @@ worker/src/jobs/rebuild-source-references.ts
 
 ### 8.3 profile projection
 
-Profile rebuild 入口：
+Profile 自动维护入口：
 
 ```text
-worker/src/jobs/profile-rebuild.ts
-  -> getProfileOperators(profileId)
+worker/src/jobs/profile-maintenance/projection-maintainer.ts
+  -> ProjectionJobStore.claimNext()
+  -> ProfileProjectionAdapterRegistry.get(projectionMode)
+  -> prepare profile_source_matches if source_backed
   -> runProfileProjection()
 ```
 
 Projection runner 的安全模型：
 
 ```text
-GET_LOCK(profile_projection:<profileId>)
+profile_projection_jobs row lock
   -> 新建 profile_projection_runs(status=running)
   -> operator 按 projection_run_id 写 profile_* 明细
-  -> 全部成功：
+  -> 全部成功时在同一事务内：
+       校验 locked_by + running_dirty_seq 仍属于当前 worker
        mark run completed
        upsert profile_current_projection_runs current pointer
+       mark job succeeded / idle-or-dirty
   -> 任一失败：
        mark run failed
        current pointer 不动
+       mark job failed if lock owner still matches
 ```
 
 这保证 dashboard 不会读到半截 projection。
 
-operator 分发不应按具体 profileId 写死：
+operator 分发不按具体 profileId 写死：
 
 ```text
 projectionMode=sdd_bridge
@@ -457,15 +474,14 @@ pnpm db:reclean
 Profile projection 验证：
 
 ```bash
-pnpm profile:rebuild-source-references
-pnpm profile:rebuild -- --profile sdd-default
+pnpm profile:maintain-once
 pnpm profile:diff -- --profile sdd-default
 ```
 
-source-backed profile 需要先配置 root，例如：
+source-backed profile 可选配置 root；不配时 e2e-monorepo 仍会用 `nxb-mono-repo/wiki`、`nxb-mono-repo/docs/plan`、`nxb-mono-repo/src` 做模糊路径匹配。
 
 ```bash
-E2E_MONOREPO_ROOT=/absolute/path/to/repo pnpm profile:rebuild -- --profile e2e-monorepo
+E2E_MONOREPO_ROOT=/absolute/path/to/repo pnpm profile:maintain-once
 E2E_MONOREPO_ROOT=/absolute/path/to/repo pnpm profile:diff -- --profile e2e-monorepo
 ```
 

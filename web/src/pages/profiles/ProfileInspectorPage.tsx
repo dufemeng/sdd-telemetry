@@ -199,6 +199,9 @@ function buildConfigFileView(
         configRow('root 解析优先级', '本地路径规则如何找到真实根目录。', 'env[rootEnv] -> rootPath -> env[fallbackBaseEnv] + relativeRoot -> pathContains/pathRegexes 模糊匹配'),
         configRow('resolvedSourceRules', '当前环境已经可用于匹配 source_references 的规则。', resolvedRuleSummaries(data.runtime.resolvedSourceRules)),
         configRow('unresolved', '启用但当前环境不可解析的规则。', data.runtime.unresolved.length === 0 ? '无' : data.runtime.unresolved.map((item) => `${item.ruleId}: ${translateRuntimeReason(item.reason)}`)),
+        configRow('profile_projection_jobs', '后台自动维护这个 profile 的投影任务状态。', projectionJobSummary(data)),
+        configRow('profile_source_matches', 'source-backed profile 的来源匹配物化结果，投影前会全量重匹配。', `${formatInteger(data.projection.matchCounts.sourceMatches)} 条匹配`),
+        configRow('last_resolved_config_hash', '运行时配置 hash，包含 env 解析后的真实 root，用来发现配置变化。', data.projection.job?.lastResolvedConfigHash ?? '尚未成功投影'),
         configRow('sort order', '多条规则同时可用时的排序。', 'confidence 高优先，然后 priority 大优先，然后 ruleId 字典序'),
       ],
     };
@@ -342,11 +345,35 @@ function resolvedRuleSummaries(rules: ProfileInspectorResponse['runtime']['resol
   ].join('；'));
 }
 
+function projectionJobSummary(data: ProfileInspectorResponse): string[] {
+  const job = data.projection.job;
+  if (!job) return ['尚未创建维护任务'];
+  return [
+    `状态：${formatProjectionJobStatus(job.status)}`,
+    `dirtySeq：${formatInteger(job.dirtySeq)}`,
+    `原因：${job.dirtyReason ?? '—'}`,
+    `尝试次数：${formatInteger(job.attempts)} / ${formatInteger(job.maxAttempts)}`,
+    `最近完成：${job.lastCompletedAt ?? '—'}`,
+    `最近 run：${job.lastProjectionRunId ?? '—'}`,
+    `错误：${job.lastError ? truncate(job.lastError, 120) : '—'}`,
+  ];
+}
+
 function validationIssuesFor(data: ProfileInspectorResponse, keyword: string): string[] | string {
   const issues = data.validation.issues
     .filter((item) => item.message.includes(keyword))
     .map((item) => `${item.ruleId ?? 'profile'}：${translateValidationMessage(item.message)}`);
   return issues.length ? issues : '未命中';
+}
+
+function formatProjectionJobStatus(value: string): string {
+  const labels: Record<string, string> = {
+    idle: '空闲',
+    dirty: '等待投影',
+    running: '投影中',
+    failed: '失败待重试',
+  };
+  return labels[value] ?? value;
 }
 
 function formatRootSetting(rule: Record<string, unknown>): string {

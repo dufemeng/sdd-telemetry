@@ -2,7 +2,6 @@ import path from 'node:path';
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
   getProfileConfig,
-  resolveRuntimeProfileConfig,
   type ArtifactRule,
   type CapabilityRule,
   type DeliveryUnitRule,
@@ -10,7 +9,7 @@ import {
   type WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { selectAttributionAnchor, type AttributionAnchor, type AttributionResult } from './source-registry/attribution';
-import { globMatch, matchSourceReference } from './source-registry/matcher';
+import { globMatch } from './source-registry/matcher';
 import {
   isReadAction,
   isWriteAction,
@@ -42,6 +41,20 @@ interface SourceReferenceRow extends RowDataPacket {
   space_id: string | null;
   collection_id: string | null;
   doc_type: string | null;
+}
+
+interface MatchedSourceReferenceRow extends SourceReferenceRow {
+  matched_rule_id: string;
+  match_category: string;
+  match_action_type: string;
+  match_locator_type: string;
+  match_normalized_locator: string | null;
+  relative_locator: string | null;
+  resource_id: string | null;
+  source_namespace: string | null;
+  confidence: string | null;
+  ambiguous: number | boolean | string | null;
+  metadata_json: unknown;
 }
 
 interface MatchedFact {
@@ -215,18 +228,49 @@ async function loadProjectionInput(ctx: ProjectionContext): Promise<{
 }> {
   const config = getProfileConfig(ctx.profileId);
   if (!config) throw new Error(`missing profile config: ${ctx.profileId}`);
-  const resolved = resolveRuntimeProfileConfig(config, process.env);
-  if (resolved.unresolved.length > 0) {
-    throw new Error(`unresolved source rules for ${ctx.profileId}: ${resolved.unresolved.map((r) => r.ruleId).join(', ')}`);
-  }
-
-  const facts = await loadSourceReferenceFacts(ctx.pool);
-  const matchedFacts: MatchedFact[] = [];
-  for (const fact of facts) {
-    const match = matchSourceReference(fact, resolved.rules, ctx.profileId);
-    if (match) matchedFacts.push({ fact, match });
-  }
+  const matchedFacts = await loadMatchedSourceFacts(ctx.pool, ctx.profileId);
   return { config, matchedFacts };
+}
+
+async function loadMatchedSourceFacts(pool: Pool, profileId: string): Promise<MatchedFact[]> {
+  const [rows] = await pool.query<MatchedSourceReferenceRow[]>(
+    `SELECT s.id AS source_reference_id, s.reference_key AS source_reference_key,
+            s.tool_call_id, s.interaction_id, s.event_id, s.user_id, s.session_id, s.prompt_id,
+            s.action_type, s.locator_type, s.normalized_locator, s.event_time,
+            s.mcp_server, s.mcp_tool_name, s.doc_id, s.url, s.title, s.space_id, s.collection_id, s.doc_type,
+            m.matched_rule_id, m.category AS match_category, m.action_type AS match_action_type,
+            m.locator_type AS match_locator_type, m.normalized_locator AS match_normalized_locator,
+            m.relative_locator, m.resource_id, m.source_namespace, m.confidence,
+            m.ambiguous, m.metadata_json
+     FROM profile_source_matches m
+     JOIN source_references s ON s.id = m.source_reference_id
+     WHERE m.profile_id = ?
+     ORDER BY s.id ASC`,
+    [profileId],
+  );
+
+  return rows.map((row) => {
+    const fact = toSourceReferenceFact(row);
+    return {
+      fact,
+      match: {
+        profileId,
+        sourceReferenceId: fact.sourceReferenceId,
+        sourceReferenceKey: fact.sourceReferenceKey,
+        ruleId: row.matched_rule_id,
+        confidence: (row.confidence ?? 'medium') as MatchedSource['confidence'],
+        ambiguous: toBoolean(row.ambiguous),
+        category: row.match_category as MatchedSource['category'],
+        actionType: row.match_action_type as MatchedSource['actionType'],
+        locatorType: row.match_locator_type as MatchedSource['locatorType'],
+        normalizedLocator: row.match_normalized_locator ?? fact.normalizedLocator ?? '',
+        sourceNamespace: row.source_namespace,
+        resourceId: row.resource_id,
+        relativeLocator: row.relative_locator,
+        metadata: parseJsonRecord(row.metadata_json),
+      },
+    };
+  });
 }
 
 export async function loadSourceReferenceFacts(pool: Pool): Promise<SourceReferenceFact[]> {
@@ -239,7 +283,11 @@ export async function loadSourceReferenceFacts(pool: Pool): Promise<SourceRefere
      ORDER BY id ASC`,
   );
 
-  return rows.map((row) => ({
+  return rows.map(toSourceReferenceFact);
+}
+
+function toSourceReferenceFact(row: SourceReferenceRow): SourceReferenceFact {
+  return {
     sourceReferenceId: Number(row.source_reference_id),
     sourceReferenceKey: String(row.source_reference_key),
     toolCallId: nullableNumber(row.tool_call_id),
@@ -260,7 +308,7 @@ export async function loadSourceReferenceFacts(pool: Pool): Promise<SourceRefere
     spaceId: row.space_id,
     collectionId: row.collection_id,
     docType: row.doc_type,
-  }));
+  };
 }
 
 export function buildDeliveryPlan(
@@ -665,4 +713,22 @@ function evidence(item: MatchedFact, extra: Record<string, unknown> = {}): Recor
 
 function nullableNumber(value: number | null): number | null {
   return value == null ? null : Number(value);
+}
+
+function toBoolean(value: number | boolean | string | null): boolean {
+  return value === true || value === 1 || value === '1';
+}
+
+function parseJsonRecord(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
 }

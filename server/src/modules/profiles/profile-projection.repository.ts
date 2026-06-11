@@ -20,6 +20,8 @@ import type {
   ProfileOverview,
   ProfileOverviewQuery,
   ProfileInspectorFactCounts,
+  ProfileInspectorMatchCounts,
+  ProfileInspectorProjectionJob,
   ProfileInspectorProjectionRun,
   ProfileUserDeliveryUnit,
   ProfileUserActivityItem,
@@ -73,6 +75,8 @@ export interface ProfileProjectionInspector {
   currentRun: ProfileInspectorProjectionRun | null;
   latestRun: ProfileInspectorProjectionRun | null;
   counts: ProfileInspectorFactCounts;
+  job: ProfileInspectorProjectionJob | null;
+  matchCounts: ProfileInspectorMatchCounts;
 }
 
 @Provide('profileProjectionRepository')
@@ -127,8 +131,51 @@ export class ProfileProjectionRepository {
 
     const currentRun = currentRows[0] ? toProjectionRun(currentRows[0]) : null;
     const latestRun = latestRows[0] ? toProjectionRun(latestRows[0]) : null;
-    const counts = currentRun ? await this.getFactCounts(profileId, Number(currentRun.id)) : emptyFactCounts();
-    return { currentRun, latestRun, counts };
+    const [counts, job, matchCounts] = await Promise.all([
+      currentRun ? this.getFactCounts(profileId, Number(currentRun.id)) : emptyFactCounts(),
+      this.getProjectionJob(profileId),
+      this.getMatchCounts(profileId),
+    ]);
+    return { currentRun, latestRun, counts, job, matchCounts };
+  }
+
+  private async getProjectionJob(profileId: string): Promise<ProfileInspectorProjectionJob | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT status, dirty_seq, dirty_reason, attempts, max_attempts, locked_by, locked_until,
+              last_started_at, last_completed_at, last_projection_run_id, last_resolved_config_hash, last_error
+       FROM profile_projection_jobs
+       WHERE profile_id = ?
+       LIMIT 1`,
+      [profileId],
+    )) as Array<Record<string, unknown>>;
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      status: String(row.status ?? ''),
+      dirtySeq: toNumber(row.dirty_seq),
+      dirtyReason: (row.dirty_reason as string | null) ?? null,
+      attempts: toNumber(row.attempts),
+      maxAttempts: toNumber(row.max_attempts),
+      lockedBy: (row.locked_by as string | null) ?? null,
+      lockedUntil: toIsoDate(row.locked_until),
+      lastStartedAt: toIsoDate(row.last_started_at),
+      lastCompletedAt: toIsoDate(row.last_completed_at),
+      lastProjectionRunId: row.last_projection_run_id == null ? null : toStringId(row.last_projection_run_id),
+      lastResolvedConfigHash: (row.last_resolved_config_hash as string | null) ?? null,
+      lastError: (row.last_error as string | null) ?? null,
+    };
+  }
+
+  private async getMatchCounts(profileId: string): Promise<ProfileInspectorMatchCounts> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT COUNT(*) AS v
+       FROM profile_source_matches
+       WHERE profile_id = ?`,
+      [profileId],
+    )) as CountRow[];
+    return { sourceMatches: toNumber(rows[0]?.v) };
   }
 
   private async getFactCounts(profileId: string, runId: number): Promise<ProfileInspectorFactCounts> {

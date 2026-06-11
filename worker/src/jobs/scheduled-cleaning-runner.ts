@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import { withTransaction } from '../infrastructure/mysql/client';
 import { cleanBatch, TerminalCleaningError } from './cleaning-worker';
 import { OutboxRepository } from './outbox.repository';
+import { maintainProfilesAfterCleanBatch } from './profile-maintenance/projection-maintainer';
 
 export interface ScheduledCleaningOptions {
   pool: Pool;
@@ -57,10 +58,19 @@ export async function runScheduledCleaning(
     result.claimed += 1;
 
     try {
-      await cleanBatch({ batchId: claimed.batchId }, {
+      const cleanResult = await cleanBatch({ batchId: claimed.batchId }, {
         pool: options.pool,
         logger: options.logger,
       });
+      await maintainProfilesAfterCleanBatch(
+        { pool: options.pool, logger: options.logger },
+        {
+          batchId: claimed.batchId,
+          // 如果上次 clean 已经成功但 maintenance 失败，outbox 重试时 batch 会是 parsed/skipped。
+          // 这时仍要标记 profile dirty，避免“清洗成功、投影维护丢失”的真空。
+          derivedCount: cleanResult.skipped ? 1 : cleanResult.derivedCount,
+        },
+      );
       await markOutboxSucceeded(options.pool, claimed);
       result.succeeded += 1;
     } catch (error) {

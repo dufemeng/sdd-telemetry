@@ -105,6 +105,8 @@ export class ProfilesService {
         currentRun: projection.currentRun,
         latestRun: projection.latestRun,
         counts: projection.counts,
+        job: projection.job,
+        matchCounts: projection.matchCounts,
       },
       rules: {
         sourceRules: config.sourceRules.map((rule) => ({ ...rule })),

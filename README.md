@@ -272,6 +272,7 @@ pnpm db:verify                           # 验证 schema
 pnpm db:reclean                          # 一键重置派生层 + 用最新语义映射重清洗（推荐）
 pnpm db:reset-derived                    # 低层：只清空派生表 + 重排队列，不跑 worker
 pnpm --filter @sdd-telemetry/worker once # 单次清洗 worker 冒烟
+pnpm profile:maintain-once               # 单次 Profile source match + projection 维护
 pnpm auth:bootstrap-admin -- --username admin --display-name 管理员 # 首位超级管理员
 ```
 
@@ -281,8 +282,33 @@ pnpm auth:bootstrap-admin -- --username admin --display-name 管理员 # 首位�
 Claude Code 插件
   └─ POST /api/ingest/otlp-logs
         └─ 写 otel_raw_payloads + ingest_outbox（事务）
-              └─ worker 轮询 outbox → 清洗 → 写 sdd_* 派生表
-                    └─ Dashboard 查询派生表展示
+              └─ worker 轮询 outbox
+                    ├─ 清洗 → 写 sdd_* 派生表
+                    ├─ 抽取 source_references
+                    ├─ 标记 dirty profile
+                    └─ Profile ProjectionLoop 自动生成 profile_* current run
+                          └─ Dashboard 查询当前 profile 投影展示
+```
+
+Profile 投影维护默认开启：
+
+```bash
+PROFILE_PROJECTION_ENABLED=true          # 默认 true
+PROFILE_PROJECTION_INTERVAL_MS=30000     # 后台投影轮询间隔
+PROFILE_PROJECTION_LOCK_SECONDS=300      # 同一 profile 投影 job 锁
+PROFILE_PROJECTION_MAX_JOBS_PER_TICK=3   # 每轮最多投影几个 profile
+```
+
+`profile:rebuild-source-references`、`profile:rebuild`、`profile:maintain-once` 保留为历史回填、强制重建和排障工具；日常 prompt 后不需要手动执行。
+
+端到端 monorepo profile 默认按路径片段识别 `nxb-mono-repo/wiki/`、`nxb-mono-repo/docs/plan/`、`nxb-mono-repo/src/`，不要求每个用户配置自己的绝对路径。单机精确验证或服务器路径固定时可选配置：
+
+```bash
+E2E_MONOREPO_ROOT=/absolute/path/to/nxb-mono-repo
+# 或分别覆盖
+E2E_PLAN_ROOT=/absolute/path/to/nxb-mono-repo/docs/plan
+E2E_KNOWLEDGE_ROOT=/absolute/path/to/nxb-mono-repo/wiki
+E2E_CODE_ROOT=/absolute/path/to/nxb-mono-repo/src
 ```
 
 ## Claude Code OTel 推荐配置
