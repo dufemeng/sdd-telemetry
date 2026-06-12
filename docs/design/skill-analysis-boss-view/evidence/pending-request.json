@@ -1,0 +1,5 @@
+{
+  "slug": "skill-analysis-boss-view",
+  "createdAt": "2026-06-10T09:23:12.668Z",
+  "request": "结合 git log 和项目数据库，把技能分析 tab 从运维视角改造成老板视角，只关注数据洞察和下一步决策，设计技能分析 tab"
+}

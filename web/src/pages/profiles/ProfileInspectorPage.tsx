@@ -53,6 +53,7 @@ export default function ProfileInspectorPage() {
         <PanelDescription>
           这里按拆分后的源码文件展示配置。每行只保留 key、description、value，方便把“这个字段在哪个文件里、它控制什么、当前值是什么”对上。
         </PanelDescription>
+        <ProjectionDiagnostics data={data} />
         <SourceRuleOverview data={data} />
         <FileHeader title={configFile.title} filePath={configFile.filePath} />
         <DataTable
@@ -62,6 +63,60 @@ export default function ProfileInspectorPage() {
         />
       </Panel>
     </div>
+  );
+}
+
+function ProjectionDiagnostics({ data }: { data: ProfileInspectorResponse }) {
+  const job = data.projection.job;
+  const currentRun = data.projection.currentRun;
+  const lastError = job?.lastError ?? currentRun?.errorMessage ?? data.projection.latestRun?.errorMessage ?? null;
+  const items = [
+    {
+      label: 'profile_source_matches',
+      value: formatInteger(data.projection.matchCounts.sourceMatches),
+      detail: 'source-backed profile 的路径规则命中数',
+      tone: data.projection.matchCounts.sourceMatches > 0 ? 'good' : 'warn',
+    },
+    {
+      label: 'profile_projection_jobs',
+      value: job ? formatProjectionJobStatus(job.status) : '尚未创建',
+      detail: job ? `dirtySeq ${formatInteger(job.dirtySeq)} · attempts ${formatInteger(job.attempts)}/${formatInteger(job.maxAttempts)}` : 'worker 尚未维护过该 profile',
+      tone: job?.status === 'failed' ? 'bad' : job?.status === 'dirty' || job?.status === 'running' ? 'warn' : 'good',
+    },
+    {
+      label: 'last_error',
+      value: lastError ? '有错误' : '无',
+      detail: lastError ? truncate(lastError, 160) : '最近一次投影没有记录错误',
+      tone: lastError ? 'bad' : 'good',
+    },
+    {
+      label: 'currentRun',
+      value: currentRun ? `#${currentRun.id}` : '无',
+      detail: currentRun ? `${currentRun.status} · ${currentRun.completedAt ?? currentRun.startedAt ?? '无时间'}` : '普通看板会返回空数据，直到 current pointer 存在',
+      tone: currentRun ? 'good' : 'warn',
+    },
+  ];
+
+  return (
+    <section className="mb-4 grid gap-2 md:grid-cols-4">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="rounded-[6px] px-3 py-2"
+          style={{ border: `1px solid ${diagnosticToneBorder(item.tone)}`, background: diagnosticToneBackground(item.tone) }}
+        >
+          <div className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+            {item.label}
+          </div>
+          <div className="mt-1 text-[14px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+            {item.value}
+          </div>
+          <div className="mt-1 min-h-[32px] text-[11px] leading-4 text-[var(--color-muted)]">
+            {item.detail}
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -433,6 +488,20 @@ function categoryBadgeStyle(value: unknown): CSSProperties {
   if (category === 'knowledge') return { color: 'var(--color-good-text)', background: 'var(--color-good-bg)' };
   if (category === 'code') return { color: 'var(--color-warn-text)', background: 'var(--color-warn-bg)' };
   return { color: 'var(--color-secondary)', background: 'rgba(255,255,255,0.08)' };
+}
+
+function diagnosticToneBackground(tone: string): string {
+  if (tone === 'good') return 'rgba(34,197,94,0.06)';
+  if (tone === 'warn') return 'rgba(245,158,11,0.08)';
+  if (tone === 'bad') return 'rgba(239,68,68,0.12)';
+  return '#101010';
+}
+
+function diagnosticToneBorder(tone: string): string {
+  if (tone === 'good') return 'rgba(34,197,94,0.22)';
+  if (tone === 'warn') return 'rgba(245,158,11,0.26)';
+  if (tone === 'bad') return 'rgba(255,180,171,0.30)';
+  return 'var(--color-border)';
 }
 
 function stringArrayField(value: unknown): string[] {

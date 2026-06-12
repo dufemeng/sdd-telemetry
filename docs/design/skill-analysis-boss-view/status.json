@@ -1,0 +1,28 @@
+{
+  "slug": "skill-analysis-boss-view",
+  "title": "skill-analysis-boss-view",
+  "state": "draft",
+  "lastUpdated": "2026-06-10T09:23:12.671Z",
+  "selectedOption": null,
+  "artifacts": {
+    "pendingRequest": "docs/design/skill-analysis-boss-view/evidence/pending-request.json",
+    "initInterviewEvidence": null,
+    "surfaceEvidence": null,
+    "brainstormDialogueEvidence": null,
+    "directionsEvidence": null,
+    "selectionEvidence": null,
+    "gateLog": "docs/design/skill-analysis-boss-view/evidence/gate-log.ndjson",
+    "workbench": null,
+    "optionA": null,
+    "optionB": null,
+    "optionC": null,
+    "designContract": null,
+    "implementationHandoff": null,
+    "qaPlan": null,
+    "qaReport": null
+  },
+  "sourceSummary": null,
+  "currentSurface": null,
+  "changeType": null,
+  "notes": "Managed by bfds-gate.mjs."
+}

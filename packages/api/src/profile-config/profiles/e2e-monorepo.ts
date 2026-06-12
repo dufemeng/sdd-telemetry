@@ -30,7 +30,7 @@ import {
  */
 export const e2eMonorepoProfile: WorkflowProfileConfig = {
   profileId: E2E_MONOREPO_PROFILE_ID,
-  displayName: '端到端 Monorepo 工作流',
+  displayName: '农小宝工作流',
   status: 'active',
   projectionMode: 'source_backed',
   manifest: {

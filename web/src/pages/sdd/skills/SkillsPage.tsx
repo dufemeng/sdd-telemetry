@@ -53,19 +53,20 @@ type Metric = {
   current: number | null;
   previous: number | null;
 };
-type SkillFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
+type CapabilityFilter = Extract<UsageMatchFilter, 'all' | 'unmatched'>;
 
 export default function SkillsPage() {
   const { timeRange, profileId } = useShellContext();
   const fromIso = useMemo(() => timeRangeToFromIso(timeRange), [timeRange]);
   const presentation = useProfilePresentationModel(profileId);
+  const isSddWorkflow = presentation.workflowKind === 'sdd';
   const showCallQuality = presentation.widgets.callQuality;
   const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
   const showMatchHealth = presentation.widgets.matchHealth;
   const analyticsQuery = useProfileCapabilityAnalytics(profileId, fromIso);
   const timeseriesQuery = useProfileCapabilityTimeseries(profileId, fromIso);
   const [keyword, setKeyword] = useState('');
-  const [matched, setMatched] = useState<SkillFilter>('all');
+  const [matched, setMatched] = useState<CapabilityFilter>('all');
   const [page, setPage] = useState(1);
   const [selectedRawCapabilityName, setSelectedRawCapabilityName] = useState<string | null>(null);
   const debouncedKeyword = useDebouncedValue(keyword, 300);
@@ -116,7 +117,9 @@ export default function SkillsPage() {
         <div>
           <h2 className="text-[28px] font-semibold leading-9 text-[#f5f5f5]">{presentation.labels.capabilityPlural}分析</h2>
           <p className="mt-1 text-[13px] text-[var(--color-secondary)]">
-            近 {timeRange} · 关键{presentation.labels.capabilityPlural}、调用规模与研发行为分布
+            {isSddWorkflow
+              ? `近 ${timeRange} · SDD Skill 激活、调用规模与需求覆盖`
+              : `近 ${timeRange} · 按 Profile 规则归类的研发行为，不等同于 Claude Code Skill`}
           </p>
         </div>
       </div>
@@ -262,9 +265,9 @@ export default function SkillsPage() {
                   <StatusBadge status="已匹配" variant="good" />
                 </div>
                 <div className="flex flex-wrap gap-[6px] pl-[10px]">
-                  <SkillChip icon={Zap} value={`${formatInteger(item.usageCount)} 次`} />
-                  <SkillChip icon={UserRound} value={`${formatInteger(item.userCount)} 人`} />
-                  <SkillChip icon={GitBranch} value={`${formatInteger(item.deliveryUnitCount)} ${presentation.labels.deliveryUnitSingular}`} />
+                  <MetricChip icon={Zap} value={`${formatInteger(item.usageCount)} 次`} />
+                  <MetricChip icon={UserRound} value={`${formatInteger(item.userCount)} 人`} />
+                  <MetricChip icon={GitBranch} value={`${formatInteger(item.deliveryUnitCount)} ${presentation.labels.deliveryUnitSingular}`} />
                 </div>
                 {item.conversionRate !== null ? (
                   <div className="grid gap-[6px] pl-[10px]">
@@ -295,7 +298,14 @@ export default function SkillsPage() {
         >
           <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
             <Layers3 size={18} />
-            <h3 className="text-[14px] font-semibold text-[#f5f5f5]">{presentation.labels.capabilitySingular}一览</h3>
+            <div>
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">{presentation.labels.capabilitySingular}一览</h3>
+              <p className="mt-[2px] text-[11px] text-[var(--color-muted)]">
+                {isSddWorkflow
+                  ? '来自 SDD skill 语义映射后的调用记录。'
+                  : '来自 Profile 配置的 capabilityRules，将文件读写行为归类为工作流能力。'}
+              </p>
+            </div>
           </div>
           <div
             className="flex items-center gap-2 h-[28px] px-[10px] w-[260px] rounded-[4px]"
@@ -443,8 +453,8 @@ export default function SkillsPage() {
             ) : null
           }
           row={selectedItem ?? { rawCapabilityName: selectedRawCapabilityName }}
-          overview={selectedItem ? toOverviewFields(selectedItem) : []}
-          fields={selectedItem ? toDetailFields(selectedItem) : []}
+          overview={selectedItem ? toOverviewFields(selectedItem, presentation.labels.deliveryUnitSingular) : []}
+          fields={selectedItem ? toDetailFields(selectedItem, presentation.labels.capabilitySingular) : []}
           rawData={{ summary: selectedItem, usages: usageQuery.data?.items ?? [] }}
           loading={usageQuery.isLoading}
           error={usageQuery.error instanceof Error ? usageQuery.error.message : null}
@@ -535,7 +545,7 @@ function QualityCount({
   );
 }
 
-function SkillChip({ icon: Icon, value }: { icon: LucideIcon; value: string }) {
+function MetricChip({ icon: Icon, value }: { icon: LucideIcon; value: string }) {
   return (
     <span
       className="inline-flex items-center gap-[4px] text-[11px] text-[var(--color-secondary)] px-[6px] py-[2px] rounded-[4px]"
@@ -552,11 +562,11 @@ function FilterTabs({
   onChange,
   showUnmatched,
 }: {
-  active: SkillFilter;
-  onChange: (value: SkillFilter) => void;
+  active: CapabilityFilter;
+  onChange: (value: CapabilityFilter) => void;
   showUnmatched: boolean;
 }) {
-  const tabs: Array<{ key: SkillFilter; label: string }> = [
+  const tabs: Array<{ key: CapabilityFilter; label: string }> = [
     { key: 'all', label: '全部' },
     ...(showUnmatched ? [{ key: 'unmatched' as const, label: '未匹配' }] : []),
   ];
@@ -738,20 +748,26 @@ function formatSourceLocator(locator: string | null | undefined): string | null 
   return locator.replace(/^.*\/(docs\/|wiki\/|src\/)/, '$1');
 }
 
-function toOverviewFields(item: ProfileCapabilityUsageSummaryItem): RowInspectorField[] {
+function toOverviewFields(
+  item: ProfileCapabilityUsageSummaryItem,
+  deliveryUnitLabel: string,
+): RowInspectorField[] {
   return [
     { label: '调用', value: formatInteger(item.usageCount), mono: true },
     { label: '用户', value: formatInteger(item.activeUserCount), mono: true },
     { label: '会话', value: formatInteger(item.sessionCount), mono: true },
-    { label: '覆盖需求', value: formatInteger(item.deliveryUnitCount), mono: true },
+    { label: `覆盖${deliveryUnitLabel}`, value: formatInteger(item.deliveryUnitCount), mono: true },
   ];
 }
 
-function toDetailFields(item: ProfileCapabilityUsageSummaryItem): RowInspectorField[] {
+function toDetailFields(
+  item: ProfileCapabilityUsageSummaryItem,
+  capabilityLabel: string,
+): RowInspectorField[] {
   return [
-    { label: '语义名称', value: item.capabilityDisplayName ?? '—' },
-    { label: '语义代码', value: item.capabilityCode ?? '—', copyValue: item.capabilityCode, mono: true },
-    { label: '原始技能名', value: item.rawCapabilityName, copyValue: item.rawCapabilityName, mono: true },
+    { label: `${capabilityLabel}名称`, value: item.capabilityDisplayName ?? '—' },
+    { label: `${capabilityLabel}代码`, value: item.capabilityCode ?? '—', copyValue: item.capabilityCode, mono: true },
+    { label: `原始${capabilityLabel}标识`, value: item.rawCapabilityName, copyValue: item.rawCapabilityName, mono: true },
     { label: '最近调用', value: formatDateTime(item.lastSeenAt), mono: true },
     { label: '首次出现', value: formatDateTime(item.firstSeenAt), mono: true },
   ];

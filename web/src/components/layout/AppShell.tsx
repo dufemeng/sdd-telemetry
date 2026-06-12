@@ -37,7 +37,7 @@ export function AppShell() {
         background: 'var(--color-base)',
       }}
     >
-      <Sidebar />
+      <Sidebar profileId={profileId} />
       <TopBar
         timeRange={timeRange}
         onTimeRangeChange={setTimeRange}

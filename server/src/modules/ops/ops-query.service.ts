@@ -85,22 +85,21 @@ export class OpsQueryService {
     const columns = toOpsColumns(await this.opsQueryRepository.listColumnsForTables([tableName]));
     const columnNames = columns.map(column => column.columnName);
     const columnSet = new Set(columnNames);
-    const orderBy = columnNames.includes(query.orderBy ?? '') ? query.orderBy : 'id';
+    const orderBy = columnNames.includes(query.orderBy ?? '')
+      ? query.orderBy!
+      : defaultOrderColumn(columns);
     const direction = query.order === 'asc' ? 'ASC' : 'DESC';
     const clauses: string[] = [];
     const params: unknown[] = [];
 
     appendFilterGroupClauses(query.filters, columnSet, clauses, params);
 
-    if (query.cursor && orderBy === 'id') {
+    if (query.cursor && orderBy === 'id' && columnSet.has('id')) {
       clauses.push(`id ${query.order === 'asc' ? '>' : '<'} ?`);
       params.push(query.cursor);
     }
 
-    const orderSql =
-      orderBy === 'id'
-        ? `ORDER BY \`${orderBy}\` ${direction}`
-        : `ORDER BY \`${orderBy}\` ${direction}, \`id\` ${direction}`;
+    const orderSql = buildOrderSql(orderBy, direction, columns);
 
     const rows = await this.opsQueryRepository.listTableRows({
       tableName,
@@ -133,7 +132,7 @@ export class OpsQueryService {
         return nextRow;
       }),
       nextCursor:
-        rows.length > query.limit && orderBy === 'id' ? toStringId(visibleRows.at(-1)?.id) : null,
+        rows.length > query.limit && orderBy === 'id' && columnSet.has('id') ? toStringId(visibleRows.at(-1)?.id) : null,
     };
   }
 
@@ -484,6 +483,31 @@ function groupColumnsByTable(rows: ColumnRow[]): Map<string, OpsColumn[]> {
 
 function toOpsColumns(rows: ColumnRow[]): OpsColumn[] {
   return rows.map(row => toOpsColumn(row));
+}
+
+function defaultOrderColumn(columns: OpsColumn[]): string {
+  const names = new Set(columns.map(column => column.columnName));
+  if (names.has('id')) return 'id';
+  if (names.has('gmt_modified')) return 'gmt_modified';
+  if (names.has('gmt_create')) return 'gmt_create';
+  return columns.find(column => column.key === 'PRI')?.columnName ?? columns[0]?.columnName ?? '';
+}
+
+function buildOrderSql(orderBy: string, direction: 'ASC' | 'DESC', columns: OpsColumn[]): string {
+  if (!orderBy) return '';
+  const columnNames = new Set(columns.map(column => column.columnName));
+  if (!columnNames.has(orderBy)) return '';
+
+  const primaryColumn = columns.find(column => column.key === 'PRI')?.columnName;
+  const tieBreaker = orderBy !== 'id' && columnNames.has('id')
+    ? 'id'
+    : primaryColumn && primaryColumn !== orderBy
+      ? primaryColumn
+      : null;
+
+  const parts = [`\`${orderBy}\` ${direction}`];
+  if (tieBreaker) parts.push(`\`${tieBreaker}\` ${direction}`);
+  return `ORDER BY ${parts.join(', ')}`;
 }
 
 function toOpsColumn(row: ColumnRow): OpsColumn {

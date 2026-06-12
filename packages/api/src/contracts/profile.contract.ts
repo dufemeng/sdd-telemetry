@@ -281,7 +281,7 @@ export const ProfileArtifactTimelineResponseSchema = z.object({
 });
 export type ProfileArtifactTimelineResponse = z.infer<typeof ProfileArtifactTimelineResponseSchema>;
 
-// ── 能力分析（capability，产品文案叫「技能分析」）─────────────────────────────
+// ── 能力分析（capability；SDD profile 可展示为「技能」，source-backed profile 展示为「能力」）──
 
 export const ProfileCapabilityAnalyticsQuerySchema = TimeRangeQuerySchema;
 export type ProfileCapabilityAnalyticsQuery = z.infer<typeof ProfileCapabilityAnalyticsQuerySchema>;

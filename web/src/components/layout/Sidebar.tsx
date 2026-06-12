@@ -6,6 +6,7 @@ import {
   GitBranch, Layers3, ListFilter, Newspaper, Search, Settings, Settings2, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth/useAuth';
+import { useProfilePresentationModel } from '@/pages/profiles/useProfiles';
 
 const ACTIVE_NAV_TRANSITION: Transition = { type: 'spring', stiffness: 300, damping: 30 };
 
@@ -56,9 +57,11 @@ const ADMIN_NAV_GROUP = {
   ],
 } as const;
 
-export function Sidebar() {
+export function Sidebar({ profileId }: { profileId: string }) {
   const { user } = useAuth();
+  const presentation = useProfilePresentationModel(profileId);
   const groups = user.role === 'super_admin' ? [...NAV_GROUPS, ADMIN_NAV_GROUP] : NAV_GROUPS;
+  const capabilityAnalysisLabel = `${presentation.labels.capabilityPlural}分析`;
 
   return (
     <aside
@@ -94,55 +97,58 @@ export function Sidebar() {
               <div className="px-[18px] pb-[6px] pt-[8px] text-[10px] font-bold tracking-[0.05em] text-[var(--color-muted)] uppercase">
                 {group.label}
               </div>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={'end' in item ? item.end : false}
-                  className={({ isActive }) =>
-                    [
-                      'group relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[6px]',
-                      'text-[13px] text-left transition-all duration-200',
-                      isActive
-                        ? 'text-[var(--color-primary)]'
-                        : 'text-[var(--color-secondary)] hover:text-[#f5f5f5] hover:bg-[#202016]',
-                    ].join(' ')
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      {isActive && (
-                        <>
-                          <motion.span
-                            layoutId="sidebar-active-bg"
-                            className="absolute inset-0 rounded-[6px] bg-[#2b2b20]"
-                            transition={ACTIVE_NAV_TRANSITION}
-                            aria-hidden="true"
-                          />
-                          <motion.span
-                            layoutId="sidebar-active-pill"
-                            className="absolute left-0 top-[9px] z-20 h-4 w-1 rounded-r-full bg-[var(--color-primary)]"
-                            transition={ACTIVE_NAV_TRANSITION}
-                            aria-hidden="true"
-                          />
-                          <span
-                            className="absolute right-3 z-10 w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse"
-                            aria-hidden="true"
-                          />
-                        </>
-                      )}
-                      <item.icon
-                        size={18}
-                        className={[
-                          'relative z-10 flex-none transition-transform duration-200',
-                          isActive ? 'scale-110' : 'group-hover:scale-[1.04]',
-                        ].join(' ')}
-                      />
-                      <span className="relative z-10 truncate">{item.label}</span>
-                    </>
-                  )}
-                </NavLink>
-              ))}
+              {group.items.map((item) => {
+                const label = item.to === '/sdd/skills' ? capabilityAnalysisLabel : item.label;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={'end' in item ? item.end : false}
+                    className={({ isActive }) =>
+                      [
+                        'group relative flex items-center gap-3 w-[calc(100%-16px)] min-h-[34px] mx-2 px-3 rounded-[6px]',
+                        'text-[13px] text-left transition-all duration-200',
+                        isActive
+                          ? 'text-[var(--color-primary)]'
+                          : 'text-[var(--color-secondary)] hover:text-[#f5f5f5] hover:bg-[#202016]',
+                      ].join(' ')
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <>
+                            <motion.span
+                              layoutId="sidebar-active-bg"
+                              className="absolute inset-0 rounded-[6px] bg-[#2b2b20]"
+                              transition={ACTIVE_NAV_TRANSITION}
+                              aria-hidden="true"
+                            />
+                            <motion.span
+                              layoutId="sidebar-active-pill"
+                              className="absolute left-0 top-[9px] z-20 h-4 w-1 rounded-r-full bg-[var(--color-primary)]"
+                              transition={ACTIVE_NAV_TRANSITION}
+                              aria-hidden="true"
+                            />
+                            <span
+                              className="absolute right-3 z-10 w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse"
+                              aria-hidden="true"
+                            />
+                          </>
+                        )}
+                        <item.icon
+                          size={18}
+                          className={[
+                            'relative z-10 flex-none transition-transform duration-200',
+                            isActive ? 'scale-110' : 'group-hover:scale-[1.04]',
+                          ].join(' ')}
+                        />
+                        <span className="relative z-10 truncate">{label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
             </div>
           ))}
         </LayoutGroup>
