@@ -98,10 +98,13 @@ const ProfileInspectorRecordSchema = z.record(z.string(), z.unknown());
 
 export const ProfileInspectorProjectionRunSchema = z.object({
   id: IdSchema,
+  profileConfigVersionId: IdSchema.nullable().optional(),
   runType: z.string(),
   status: z.string(),
   startedAt: ISODateTimeSchema.nullable(),
   completedAt: ISODateTimeSchema.nullable(),
+  projectionDefinitionHash: z.string().nullable().optional(),
+  resolvedConfigHash: z.string().nullable().optional(),
   stats: ProfileInspectorRecordSchema,
   errorMessage: z.string().nullable(),
 });
@@ -119,6 +122,7 @@ export const ProfileInspectorFactCountsSchema = z.object({
 export type ProfileInspectorFactCounts = z.infer<typeof ProfileInspectorFactCountsSchema>;
 
 export const ProfileInspectorProjectionJobSchema = z.object({
+  targetConfigVersionId: IdSchema.nullable().optional(),
   status: z.string(),
   dirtySeq: z.number(),
   dirtyReason: z.string().nullable(),
@@ -129,6 +133,7 @@ export const ProfileInspectorProjectionJobSchema = z.object({
   lastStartedAt: ISODateTimeSchema.nullable(),
   lastCompletedAt: ISODateTimeSchema.nullable(),
   lastProjectionRunId: IdSchema.nullable(),
+  lastProfileConfigVersionId: IdSchema.nullable().optional(),
   lastResolvedConfigHash: z.string().nullable(),
   lastError: z.string().nullable(),
 });
@@ -165,6 +170,9 @@ export const ProfileInspectorResponseSchema = z.object({
     valid: z.boolean(),
     issues: z.array(z.object({
       ruleId: z.string().optional(),
+      code: z.string().optional(),
+      severity: z.enum(['error', 'warning']).optional(),
+      path: z.string().optional(),
       message: z.string(),
     })),
   }),

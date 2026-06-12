@@ -3,6 +3,7 @@ import {
   E2E_MONOREPO_PROFILE_ID,
   ONLINE_DOCS_PROFILE_ID,
   SDD_DEFAULT_PROFILE_ID,
+  WorkflowProfileConfigSchema,
   getProfileConfig,
   resolveRuntimeProfileConfig,
   validateProfileConfig,
@@ -28,6 +29,12 @@ describe('profile config projectionMode + shipped configs', () => {
     expect(validateProfileConfig(sdd).valid).toBe(true);
     expect(validateProfileConfig(e2eMonorepo).valid).toBe(true);
     expect(validateProfileConfig(onlineDocs).valid).toBe(true);
+  });
+
+  it('all shipped configs parse as workflow profile config schema', () => {
+    expect(WorkflowProfileConfigSchema.parse(sdd).profileId).toBe(SDD_DEFAULT_PROFILE_ID);
+    expect(WorkflowProfileConfigSchema.parse(e2eMonorepo).profileId).toBe(E2E_MONOREPO_PROFILE_ID);
+    expect(WorkflowProfileConfigSchema.parse(onlineDocs).profileId).toBe(ONLINE_DOCS_PROFILE_ID);
   });
 });
 
@@ -133,6 +140,13 @@ describe('validateProfileConfig rejects malformed configs', () => {
       sourceRules: [{ locatorType: 'path', ruleId: 'noroot', category: 'code', priority: 1, confidence: 'high', enabled: true, actions: ['read'] }],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
+  });
+
+  it('returns schema issues for invalid raw config json', () => {
+    const result = validateProfileConfig({ profileId: 'broken' });
+    expect(result.valid).toBe(false);
+    expect(result.issues.some((issue) => issue.code === 'schema_invalid')).toBe(true);
+    expect(result.issues.some((issue) => issue.path === 'displayName')).toBe(true);
   });
 
   it('accepts path rule with fuzzy pathContains instead of root', () => {

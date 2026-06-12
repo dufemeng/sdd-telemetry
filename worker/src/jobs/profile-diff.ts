@@ -1,11 +1,11 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import {
-  getProfileConfig,
   resolveRuntimeProfileConfig,
   type CapabilityRule,
   type WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { createMysqlPool } from '../infrastructure/mysql/client';
+import { createProfileConfigCatalog } from './profile-config-catalog';
 import { matchSourceReference } from './profile-projection/source-registry/matcher';
 import {
   isReadAction,
@@ -35,11 +35,12 @@ async function scalar(pool: Pool, sql: string, params: unknown[] = []): Promise<
 
 async function main(): Promise<void> {
   const profileId = parseProfileArg();
-  const config = getProfileConfig(profileId);
-  if (!config) throw new Error(`profile config not found: ${profileId}`);
-
   const pool = createMysqlPool();
   try {
+    const snapshot = await createProfileConfigCatalog(pool).getPublished(profileId);
+    const config = snapshot?.config;
+    if (!config) throw new Error(`profile config not found: ${profileId}`);
+
     const runId = await scalar(
       pool,
       'SELECT current_projection_run_id AS v FROM profile_current_projection_runs WHERE profile_id=?',

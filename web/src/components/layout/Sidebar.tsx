@@ -53,6 +53,7 @@ const ADMIN_NAV_GROUP = {
   items: [
     { to: '/ops/resources', label: '服务质量', icon: Activity },
     { to: '/ops/database', label: '数据检索', icon: Database },
+    { to: '/admin/profile-configs', label: 'Profile 管理', icon: Settings2 },
     { to: '/admin/users', label: '成员管理', icon: ShieldCheck },
   ],
 } as const;

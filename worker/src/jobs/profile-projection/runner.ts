@@ -1,5 +1,6 @@
 import type { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
 import type { Logger } from 'pino';
+import type { WorkflowProfileConfig } from '@sdd-telemetry/api';
 import { withTransaction } from '../../infrastructure/mysql/client';
 
 /**
@@ -35,6 +36,8 @@ export function createIdRegistry(): ProjectionIdRegistry {
 export interface ProjectionContext {
   pool: Pool;
   profileId: string;
+  profileConfig: WorkflowProfileConfig;
+  profileConfigVersionId: string | null;
   projectionRunId: number;
   logger: Logger;
   registry: ProjectionIdRegistry;
@@ -59,6 +62,10 @@ export async function runProfileProjection(opts: {
   pool: Pool;
   logger: Logger;
   profileId: string;
+  profileConfig: WorkflowProfileConfig;
+  profileConfigVersionId?: string | null;
+  projectionDefinitionHash?: string | null;
+  resolvedConfigHash?: string | null;
   operators?: ProjectionOperator[];
   extraStats?: Record<string, unknown>;
   publishGuard?: (connection: PoolConnection, runId: number, stats: Record<string, unknown>) => Promise<void>;
@@ -66,7 +73,12 @@ export async function runProfileProjection(opts: {
   const { pool, logger, profileId } = opts;
   const operators = opts.operators ?? PROFILE_PROJECTION_OPERATORS;
 
-  const runId = await insertRun(pool, profileId);
+  const runId = await insertRun(pool, {
+    profileId,
+    profileConfigVersionId: opts.profileConfigVersionId ?? null,
+    projectionDefinitionHash: opts.projectionDefinitionHash ?? null,
+    resolvedConfigHash: opts.resolvedConfigHash ?? null,
+  });
   try {
     const stats: Record<string, unknown> = { ...(opts.extraStats ?? {}) };
     const registry = createIdRegistry();
@@ -74,6 +86,8 @@ export async function runProfileProjection(opts: {
       stats[operator.name] = await operator.run({
         pool,
         profileId,
+        profileConfig: opts.profileConfig,
+        profileConfigVersionId: opts.profileConfigVersionId ?? null,
         projectionRunId: runId,
         logger,
         registry,
@@ -98,11 +112,26 @@ export async function runProfileProjection(opts: {
   }
 }
 
-async function insertRun(pool: Pool, profileId: string): Promise<number> {
+async function insertRun(
+  pool: Pool,
+  input: {
+    profileId: string;
+    profileConfigVersionId: string | null;
+    projectionDefinitionHash: string | null;
+    resolvedConfigHash: string | null;
+  },
+): Promise<number> {
   const [result] = await pool.query<ResultSetHeader>(
-    `INSERT INTO profile_projection_runs (profile_id, run_type, status, started_at)
-     VALUES (?, 'full', 'running', NOW(3))`,
-    [profileId],
+    `INSERT INTO profile_projection_runs
+       (profile_id, profile_config_version_id, run_type, status, started_at,
+        projection_definition_hash, resolved_config_hash)
+     VALUES (?, ?, 'full', 'running', NOW(3), ?, ?)`,
+    [
+      input.profileId,
+      input.profileConfigVersionId,
+      input.projectionDefinitionHash,
+      input.resolvedConfigHash,
+    ],
   );
   return result.insertId;
 }

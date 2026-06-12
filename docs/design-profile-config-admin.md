@@ -196,6 +196,13 @@ ALTER TABLE profile_source_matches
 
 不能让 `(profile_id, profile_config_version_id, source_reference_key)` 中的 version 为空；MySQL unique index 会允许多行 NULL，破坏 rematch 幂等性。
 
+当前第一阶段实现可以先落地为兼容迁移：
+
+- 先新增 `profile_config_version_id` nullable 字段和索引，不立即改旧唯一键。
+- seed 后尽量回填历史 run/job/match 的 published version id。
+- 在唯一键仍是 `(profile_id, source_reference_key)` 时，worker rematch 必须按 `profile_id` 全量替换 `profile_source_matches`，否则新旧版本会因旧唯一键冲突。
+- 后续补一段收紧迁移：确认所有行都已回填后，把 `profile_source_matches.profile_config_version_id` 改为 `NOT NULL`，再把唯一键升级为 `(profile_id, profile_config_version_id, source_reference_key)`。
+
 ### Rule 存储选择：JSON 而不是拆表
 
 `sourceRules / capabilityRules / deliveryUnitRules / artifactRules / presentation` 不建议第一期拆表。
@@ -683,7 +690,7 @@ presentation normalize 逻辑只保留一份：
 - 给 projection runs、jobs、source matches 增加配置版本字段。
 - seed 三个内置 profile。
 - 回填现有 projection run / source matches 的 version id。
-- 回填后把 `profile_source_matches.profile_config_version_id` 改成 `NOT NULL` 并重建唯一键。
+- 第一阶段保留旧唯一键并让 worker 按 profile 全量替换 matches；第二阶段回填确认后把 `profile_source_matches.profile_config_version_id` 改成 `NOT NULL` 并重建唯一键。
 
 ### Step 3：抽象 ProfileConfigCatalog
 
@@ -728,9 +735,9 @@ presentation normalize 逻辑只保留一份：
 1. 静态 registry 残留：如果某个 operator 或 service 仍直接调用 `getProfileConfig()`，DB 发布不会生效。实施后必须 `rg "getProfileConfig|listProfileConfigs"` 检查调用点。
 2. 坏配置清空看板：必须坚持 serving pointer 只在 projection 成功后切换。
 3. `profileId` 被误改：API 和 DB 都不提供 update profile_id；复制 profile 必须创建新 ID。
-4. nullable version 破坏幂等：`profile_source_matches.profile_config_version_id` 必须最终 `NOT NULL`，否则 MySQL unique index 不能保护重复 match。
-5. rematch 覆盖诊断数据：`profile_source_matches` 需要带 config version，否则 pending 发布会覆盖 serving 版本的 match 诊断。
-6. 状态漂移：lifecycle 只能由 `profile_configs.lifecycle_status` 拥有，`config_json.status` 只能是派生兼容字段。
+4. nullable version 破坏幂等：`profile_source_matches.profile_config_version_id` 必须最终 `NOT NULL`，否则 MySQL unique index 不能保护重复 match。第一阶段未收紧前，不允许按版本局部 delete + insert。
+5. rematch 覆盖诊断数据：第一阶段仍按 profile 覆盖 matches；要支持 pending/serving 双版本诊断，必须先完成非空版本列和唯一键升级。
+6. 状态漂移：lifecycle 只能由 `profile_configs.status` 拥有；`config_json.status` 作为兼容字段必须由发布流程同步写入，不能独立编辑。
 7. hash 混淆：version 表保存 definition hash，worker job/run 保存 resolved hash，不能把 env resolved roots 写进发布版本 hash。
 8. preview 成本：全量 dry-run 可能慢，第一期可以限制时间窗和样本量，同时返回“sampled=true”。
 9. 并发编辑：draft 需要 revision 或 ETag，保存时带 `baseVersionId/draftRevision`，避免后保存覆盖先保存。
@@ -759,19 +766,19 @@ presentation normalize 逻辑只保留一份：
 ### 后端集成测试
 
 - DB seed 后 catalog 读取结果与 TS registry hash 一致。
-- `profile_configs.lifecycle_status` 是唯一 lifecycle source；`config_json.status` 不可独立编辑。
+- `profile_configs.status` 是 lifecycle source；`config_json.status` 由发布流程同步写入，不可独立编辑。
 - `projection_definition_hash` 不随 env root 变化，`resolved_config_hash` 随 env root 变化。
 - draft save / validate / preview / publish 流程。
 - publish active source-backed 后只更新 published target，不立即切 serving。
 - worker success 后切 serving/current pointer。
 - worker failure 后 serving/current pointer 不变。
 - rollback 切回历史 version/run。
-- `/api/admin/profiles` 需要 super_admin。
+- `/api/admin/profile-configs` 需要 super_admin。
 
 ### Worker 测试
 
-- source-backed rematch 写入带 config version 的 `profile_source_matches`。
-- `profile_source_matches.profile_config_version_id` 非空，唯一键能阻止同一 version 下重复 source match。
+- source-backed rematch 写入带 config version 的 `profile_source_matches`；第一阶段在旧唯一键下按 profile 全量替换。
+- 第二阶段完成后，`profile_source_matches.profile_config_version_id` 非空，唯一键能阻止同一 version 下重复 source match。
 - operators 从 `ctx.config` 读取规则，不访问静态 registry。
 - server repository 不访问静态 registry，presentation/stage 由 service 参数传入。
 - clean batch source reference 变化只按 projectionMode mark dirty。

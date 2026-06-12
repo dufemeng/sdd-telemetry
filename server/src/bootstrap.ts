@@ -17,6 +17,8 @@ import { SddQueryService } from './modules/sdd/sdd-query.service';
 import { SddWriteRepository } from './modules/sdd/sdd-write.repository';
 import { ProfilesService } from './modules/profiles/profiles.service';
 import { ProfileProjectionRepository } from './modules/profiles/profile-projection.repository';
+import { ProfileConfigRepository } from './modules/profiles/profile-config.repository';
+import { ProfileConfigAdminService } from './modules/profiles/profile-config-admin.service';
 import { DailyReportRepository } from './modules/reports/daily-report.repository';
 import { DailyReportService } from './modules/reports/daily-report.service';
 import { DailyReportScheduler } from './modules/reports/daily-report-scheduler';
@@ -43,6 +45,8 @@ void Bootstrap.configure({
     SddWriteRepository,
     ProfilesService,
     ProfileProjectionRepository,
+    ProfileConfigRepository,
+    ProfileConfigAdminService,
     DailyReportRepository,
     DailyReportService,
     DailyReportScheduler,

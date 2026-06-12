@@ -313,17 +313,16 @@ function buildConfigFileView(
 
   if (group === 'registry') {
     return {
-      title: 'Profile 注册表',
-      filePath: 'packages/api/src/profile-config/profile-registry.ts',
+      title: 'Profile 配置目录',
+      filePath: 'packages/api/src/profile-config/profile-catalog.ts',
       rows: [
-        configRow('PROFILE_REGISTRY', '把 profileId 映射到具体配置文件。', [
-          'sdd-default -> profiles/sdd-default.ts',
-          'e2e-monorepo -> profiles/e2e-monorepo.ts',
-          'online-docs -> profiles/online-docs.ts',
+        configRow('ProfileConfigCatalog', '读取数据库 published 配置，并在缺失时回退内置模板。', [
+          'DB published -> profile_config_versions.config_json',
+          'fallback -> packages/api/src/profile-config/profiles/*.ts',
         ]),
-        configRow('getProfileConfig(profileId)', 'server/worker 按当前 profileId 取完整配置。', `当前返回 ${data.profile.profileId}`),
-        configRow('listProfileConfigs()', 'Profile 下拉框和配置列表读取所有已注册 profile。', '返回 registry 中的全部配置'),
-        configRow('当前文件', '当前页面正在展示的 profile 实例文件。', `profiles/${profileFileName(data.profile.profileId)}`),
+        configRow('getPublished(profileId)', 'server/worker 按当前 profileId 取已发布配置快照。', `当前返回 ${data.profile.profileId}`),
+        configRow('listPublished()', 'Profile 下拉框和配置列表读取 published 配置集合。', 'DB 优先，builtin fallback 补齐'),
+        configRow('内置模板', '数据库未 seed 或回滚时的兼容模板。', `profiles/${profileFileName(data.profile.profileId)}`),
       ],
     };
   }

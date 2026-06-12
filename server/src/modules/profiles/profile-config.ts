@@ -1,9 +1,10 @@
 export {
   SDD_DEFAULT_PROFILE_ID,
-  getProfileConfig,
-  listProfileConfigs,
+  ProfileConfigCatalog,
   resolveRuntimeProfileConfig,
   validateProfileConfig,
+  type ProfileConfigSnapshot,
+  type ProfileConfigStore,
   type LocalPathSourceRule,
   type SourceRule,
   type SourceRuleBase,

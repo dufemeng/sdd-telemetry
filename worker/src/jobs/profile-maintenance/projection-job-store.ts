@@ -5,6 +5,7 @@ export type ProjectionJobStatus = 'idle' | 'dirty' | 'running' | 'failed';
 
 export interface ProjectionJob {
   profileId: string;
+  targetConfigVersionId: string | null;
   status: ProjectionJobStatus;
   dirtySeq: number;
   runningDirtySeq: number;
@@ -13,11 +14,13 @@ export interface ProjectionJob {
   dirtyReason: string | null;
   lockedBy: string | null;
   lastCompletedAt: Date | null;
+  lastProfileConfigVersionId: string | null;
   lastResolvedConfigHash: string | null;
 }
 
 interface ProjectionJobRow extends RowDataPacket {
   profile_id: string;
+  target_config_version_id: number | string | null;
   status: ProjectionJobStatus;
   dirty_seq: number | string;
   running_dirty_seq: number | string | null;
@@ -26,6 +29,7 @@ interface ProjectionJobRow extends RowDataPacket {
   dirty_reason: string | null;
   locked_by: string | null;
   last_completed_at: Date | null;
+  last_profile_config_version_id: number | string | null;
   last_resolved_config_hash: string | null;
   locked_until: Date | null;
 }
@@ -33,14 +37,16 @@ interface ProjectionJobRow extends RowDataPacket {
 export interface MarkDirtyInput {
   profileId: string;
   reason: string;
+  targetConfigVersionId?: string | null;
   maxAttempts?: number;
 }
 
 export class ProjectionJobStore {
   async get(pool: Pool, profileId: string): Promise<ProjectionJob | null> {
     const [rows] = await pool.query<ProjectionJobRow[]>(
-      `SELECT profile_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
-              dirty_reason, locked_by, locked_until, last_completed_at, last_resolved_config_hash
+      `SELECT profile_id, target_config_version_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
+              dirty_reason, locked_by, locked_until, last_completed_at,
+              last_profile_config_version_id, last_resolved_config_hash
        FROM profile_projection_jobs
        WHERE profile_id = ?`,
       [profileId],
@@ -52,9 +58,11 @@ export class ProjectionJobStore {
     const maxAttempts = input.maxAttempts ?? Number(process.env.PROFILE_PROJECTION_MAX_ATTEMPTS ?? 20);
     await pool.query(
       `INSERT INTO profile_projection_jobs
-         (profile_id, status, dirty_seq, dirty_since, dirty_until, dirty_reason, max_attempts, next_retry_at)
-       VALUES (?, 'dirty', 1, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), ?, ?, NULL)
+         (profile_id, target_config_version_id, status, dirty_seq, dirty_since, dirty_until,
+          dirty_reason, max_attempts, next_retry_at)
+       VALUES (?, ?, 'dirty', 1, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3), ?, ?, NULL)
        ON DUPLICATE KEY UPDATE
+         target_config_version_id = VALUES(target_config_version_id),
          dirty_seq = dirty_seq + 1,
          status = CASE WHEN status = 'running' THEN status ELSE 'dirty' END,
          dirty_since = COALESCE(dirty_since, CURRENT_TIMESTAMP(3)),
@@ -65,15 +73,16 @@ export class ProjectionJobStore {
          next_retry_at = NULL,
          last_error = NULL,
          gmt_modified = CURRENT_TIMESTAMP(3)`,
-      [input.profileId, input.reason, maxAttempts],
+      [input.profileId, input.targetConfigVersionId ?? null, input.reason, maxAttempts],
     );
   }
 
   async claimNext(pool: Pool, workerId: string, lockSeconds: number): Promise<ProjectionJob | null> {
     return withTransaction(pool, async (connection) => {
       const [rows] = await connection.query<ProjectionJobRow[]>(
-        `SELECT profile_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
-                dirty_reason, locked_by, locked_until, last_completed_at, last_resolved_config_hash
+        `SELECT profile_id, target_config_version_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
+                dirty_reason, locked_by, locked_until, last_completed_at,
+                last_profile_config_version_id, last_resolved_config_hash
          FROM profile_projection_jobs
          WHERE (
              status IN ('dirty', 'failed')
@@ -105,8 +114,9 @@ export class ProjectionJobStore {
   ): Promise<ProjectionJob | null> {
     return withTransaction(pool, async (connection) => {
       const [rows] = await connection.query<ProjectionJobRow[]>(
-        `SELECT profile_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
-                dirty_reason, locked_by, locked_until, last_completed_at, last_resolved_config_hash
+        `SELECT profile_id, target_config_version_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
+                dirty_reason, locked_by, locked_until, last_completed_at,
+                last_profile_config_version_id, last_resolved_config_hash
          FROM profile_projection_jobs
          WHERE profile_id = ?
          FOR UPDATE`,
@@ -129,6 +139,7 @@ export class ProjectionJobStore {
       workerId: string;
       runningDirtySeq: number;
       projectionRunId: number;
+      profileConfigVersionId: string | null;
       resolvedConfigHash: string;
     },
   ): Promise<void> {
@@ -146,6 +157,7 @@ export class ProjectionJobStore {
            last_started_at = last_started_at,
            last_completed_at = CURRENT_TIMESTAMP(3),
            last_projection_run_id = ?,
+           last_profile_config_version_id = ?,
            last_resolved_config_hash = ?,
            last_error = NULL,
            gmt_modified = CURRENT_TIMESTAMP(3)
@@ -159,6 +171,7 @@ export class ProjectionJobStore {
         input.runningDirtySeq,
         input.runningDirtySeq,
         input.projectionRunId,
+        input.profileConfigVersionId,
         input.resolvedConfigHash,
         input.profileId,
         input.workerId,
@@ -240,6 +253,7 @@ function toJob(row: ProjectionJobRow): ProjectionJob {
   const dirtySeq = Number(row.dirty_seq);
   return {
     profileId: String(row.profile_id),
+    targetConfigVersionId: row.target_config_version_id == null ? null : String(row.target_config_version_id),
     status: row.status,
     dirtySeq,
     runningDirtySeq: row.running_dirty_seq == null ? dirtySeq : Number(row.running_dirty_seq),
@@ -248,6 +262,7 @@ function toJob(row: ProjectionJobRow): ProjectionJob {
     dirtyReason: row.dirty_reason,
     lockedBy: row.locked_by,
     lastCompletedAt: row.last_completed_at,
+    lastProfileConfigVersionId: row.last_profile_config_version_id == null ? null : String(row.last_profile_config_version_id),
     lastResolvedConfigHash: row.last_resolved_config_hash,
   };
 }

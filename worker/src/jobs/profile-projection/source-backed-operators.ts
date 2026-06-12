@@ -1,7 +1,6 @@
 import path from 'node:path';
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
-  getProfileConfig,
   type ArtifactRule,
   type CapabilityRule,
   type DeliveryUnitRule,
@@ -226,13 +225,20 @@ async function loadProjectionInput(ctx: ProjectionContext): Promise<{
   config: WorkflowProfileConfig;
   matchedFacts: MatchedFact[];
 }> {
-  const config = getProfileConfig(ctx.profileId);
-  if (!config) throw new Error(`missing profile config: ${ctx.profileId}`);
-  const matchedFacts = await loadMatchedSourceFacts(ctx.pool, ctx.profileId);
+  const config = ctx.profileConfig;
+  const matchedFacts = await loadMatchedSourceFacts(ctx.pool, ctx.profileId, ctx.profileConfigVersionId);
   return { config, matchedFacts };
 }
 
-async function loadMatchedSourceFacts(pool: Pool, profileId: string): Promise<MatchedFact[]> {
+async function loadMatchedSourceFacts(
+  pool: Pool,
+  profileId: string,
+  profileConfigVersionId: string | null,
+): Promise<MatchedFact[]> {
+  const versionClause = profileConfigVersionId
+    ? 'm.profile_config_version_id = ?'
+    : 'm.profile_config_version_id IS NULL';
+  const params = profileConfigVersionId ? [profileId, profileConfigVersionId] : [profileId];
   const [rows] = await pool.query<MatchedSourceReferenceRow[]>(
     `SELECT s.id AS source_reference_id, s.reference_key AS source_reference_key,
             s.tool_call_id, s.interaction_id, s.event_id, s.user_id, s.session_id, s.prompt_id,
@@ -244,9 +250,9 @@ async function loadMatchedSourceFacts(pool: Pool, profileId: string): Promise<Ma
             m.ambiguous, m.metadata_json
      FROM profile_source_matches m
      JOIN source_references s ON s.id = m.source_reference_id
-     WHERE m.profile_id = ?
+     WHERE m.profile_id = ? AND ${versionClause}
      ORDER BY s.id ASC`,
-    [profileId],
+    params,
   );
 
   return rows.map((row) => {

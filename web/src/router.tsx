@@ -37,6 +37,7 @@ const ResourcesPage     = lazy(() => import('./pages/ops/resources/ResourcesPage
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
 const LoginPage         = lazy(() => import('./pages/auth/LoginPage'));
 const AuthUsersPage     = lazy(() => import('./pages/admin/users/AuthUsersPage'));
+const ProfileConfigAdminPage = lazy(() => import('./pages/admin/profile-configs/ProfileConfigAdminPage'));
 const DailyReportsPage  = lazy(() => import('./pages/reports/daily/DailyReportsPage'));
 
 export const router = createBrowserRouter([
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
               { path: 'ops/database', element: wrap(DatabasePage), errorElement: <RouteError /> },
               { path: 'ops/resources', element: wrap(ResourcesPage), errorElement: <RouteError /> },
               { path: 'admin/users', element: wrap(AuthUsersPage), errorElement: <RouteError /> },
+              { path: 'admin/profile-configs', element: wrap(ProfileConfigAdminPage), errorElement: <RouteError /> },
             ],
           },
           { path: '*',                    element: <RouteError /> },

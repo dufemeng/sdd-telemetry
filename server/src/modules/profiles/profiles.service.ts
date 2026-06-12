@@ -29,12 +29,12 @@ import type {
 import { ApiHttpError } from '../../common/auth/api-http-error';
 import { SddQueryService } from '../sdd/sdd-query.service';
 import {
-  getProfileConfig,
-  listProfileConfigs,
+  ProfileConfigCatalog,
   resolveRuntimeProfileConfig,
   validateProfileConfig,
   type WorkflowProfileConfig,
 } from './profile-config';
+import { ProfileConfigRepository } from './profile-config.repository';
 import { ProfileProjectionRepository } from './profile-projection.repository';
 import {
   collapseProfileUserActivityItems,
@@ -55,19 +55,23 @@ export class ProfilesService {
   @Inject('profileProjectionRepository')
   profileProjectionRepository!: ProfileProjectionRepository;
 
+  @Inject('profileConfigRepository')
+  profileConfigRepository!: ProfileConfigRepository;
+
   @Config('profileDashboard')
   profileDashboard!: { readSource: ReadSource };
 
-  listProfiles(): ProfileSummary[] {
-    return listProfileConfigs().map(toSummary);
+  async listProfiles(): Promise<ProfileSummary[]> {
+    const snapshots = await this.profileConfigCatalog().listPublished();
+    return snapshots.map((snapshot) => toSummary(snapshot.config));
   }
 
-  getManifest(profileId: string): ProfileCapabilityManifest {
-    return this.requireProfile(profileId).manifest;
+  async getManifest(profileId: string): Promise<ProfileCapabilityManifest> {
+    return (await this.requireProfile(profileId)).manifest;
   }
 
   async getInspector(profileId: string): Promise<ProfileInspectorResponse> {
-    const config = this.requireProfile(profileId);
+    const config = await this.requireProfile(profileId);
     const validation = validateProfileConfig(config);
     const runtime = resolveRuntimeProfileConfig(config, process.env);
     const readSource = this.resolveReadSource(config);
@@ -184,7 +188,7 @@ export class ProfilesService {
     demandId: string,
   ): Promise<ProfileDemandDetail> {
     const read = await this.resolveReadMode(profileId);
-    const manifest = getProfileConfig(profileId)!.manifest;
+    const manifest = (await this.requireProfile(profileId)).manifest;
     if (!manifest.deliveryUnits) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'deliveryUnits not supported for this profile');
     }
@@ -233,7 +237,7 @@ export class ProfilesService {
     artifactId: string,
   ): Promise<ProfileArtifactTimelineItem[]> {
     const read = await this.resolveReadMode(profileId);
-    const manifest = getProfileConfig(profileId)!.manifest;
+    const manifest = (await this.requireProfile(profileId)).manifest;
     if (!manifest.artifactTimeline) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'artifactTimeline not supported for this profile');
     }
@@ -266,10 +270,11 @@ export class ProfilesService {
     profileId: string,
     query: ProfileOverviewQuery,
   ): Promise<ProfileCapabilityAnalytics> {
+    const config = await this.requireProfile(profileId);
     const read = await this.resolveReadMode(profileId);
 
     if (read.mode === 'projection') {
-      return this.profileProjectionRepository.getCapabilityAnalytics(profileId, read.runId, query);
+      return this.profileProjectionRepository.getCapabilityAnalytics(profileId, read.runId, query, config.presentation);
     }
     if (read.mode === 'empty') return emptyCapabilityAnalytics();
 
@@ -398,10 +403,11 @@ export class ProfilesService {
     profileId: string,
     query: ProfileUsersQuery,
   ): Promise<{ items: ProfileUserItem[]; total: number; page: number; pageSize: number }> {
+    const config = await this.requireProfile(profileId);
     const read = await this.resolveReadMode(profileId);
 
     if (read.mode === 'projection') {
-      const { items, total } = await this.profileProjectionRepository.listUsers(profileId, read.runId, query);
+      const { items, total } = await this.profileProjectionRepository.listUsers(profileId, read.runId, query, config.presentation);
       return { items, total, page: query.page, pageSize: query.pageSize };
     }
     if (read.mode === 'empty') return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
@@ -448,14 +454,15 @@ export class ProfilesService {
     profileId: string,
     userId: string,
   ): Promise<ProfileUserDetail> {
+    const config = await this.requireProfile(profileId);
     const read = await this.resolveReadMode(profileId);
-    const manifest = getProfileConfig(profileId)!.manifest;
+    const manifest = config.manifest;
     if (!manifest.capabilityUsage) {
       throw new ApiHttpError(501, 'UNSUPPORTED', 'users not supported for this profile');
     }
 
     if (read.mode === 'projection') {
-      const detail = await this.profileProjectionRepository.getUserDetail(profileId, read.runId, userId);
+      const detail = await this.profileProjectionRepository.getUserDetail(profileId, read.runId, userId, config.presentation);
       if (detail) return detail;
       throw new ApiHttpError(404, 'USER_NOT_FOUND', `user not found: ${userId}`);
     }
@@ -724,7 +731,7 @@ export class ProfilesService {
   }
 
   private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
-    const config = this.requireProfile(profileId);
+    const config = await this.requireProfile(profileId);
     if (this.resolveReadSource(config) === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) return { mode: 'projection', runId };
@@ -737,12 +744,16 @@ export class ProfilesService {
     return this.profileDashboard.readSource;
   }
 
-  private requireProfile(profileId: string): WorkflowProfileConfig {
-    const config = getProfileConfig(profileId);
-    if (!config) {
+  private async requireProfile(profileId: string): Promise<WorkflowProfileConfig> {
+    const snapshot = await this.profileConfigCatalog().getPublished(profileId);
+    if (!snapshot) {
       throw new ApiHttpError(404, 'PROFILE_NOT_FOUND', `profile not found: ${profileId}`);
     }
-    return config;
+    return snapshot.config;
+  }
+
+  private profileConfigCatalog(): ProfileConfigCatalog {
+    return new ProfileConfigCatalog(this.profileConfigRepository);
   }
 }
 

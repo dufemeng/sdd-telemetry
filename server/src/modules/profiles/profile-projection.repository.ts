@@ -1,5 +1,5 @@
 import { Config, Inject, Provide } from '@midwayjs/core';
-import { getProfileConfig, normalizeProfilePresentation } from '@sdd-telemetry/api';
+import { normalizeProfilePresentation } from '@sdd-telemetry/api';
 import type {
   ProfileArtifactTimelineItem,
   ProfileCapabilityAnalytics,
@@ -19,6 +19,7 @@ import type {
   ProfileKnowledgeTimelinePoint,
   ProfileOverview,
   ProfileOverviewQuery,
+  ProfilePresentation,
   ProfileInspectorFactCounts,
   ProfileInspectorMatchCounts,
   ProfileInspectorProjectionJob,
@@ -111,7 +112,8 @@ export class ProfileProjectionRepository {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const [currentRows, latestRows] = await Promise.all([
       dataSource.query(
-        `SELECT r.id, r.run_type, r.status, r.started_at, r.completed_at, r.stats_json, r.error_message
+        `SELECT r.id, r.profile_config_version_id, r.run_type, r.status, r.started_at, r.completed_at,
+                r.projection_definition_hash, r.resolved_config_hash, r.stats_json, r.error_message
          FROM profile_current_projection_runs c
          JOIN profile_projection_runs r
            ON r.id = c.current_projection_run_id
@@ -120,7 +122,8 @@ export class ProfileProjectionRepository {
         [profileId],
       ) as Promise<Array<Record<string, unknown>>>,
       dataSource.query(
-        `SELECT r.id, r.run_type, r.status, r.started_at, r.completed_at, r.stats_json, r.error_message
+        `SELECT r.id, r.profile_config_version_id, r.run_type, r.status, r.started_at, r.completed_at,
+                r.projection_definition_hash, r.resolved_config_hash, r.stats_json, r.error_message
          FROM profile_projection_runs r
          WHERE r.profile_id = ?
          ORDER BY r.id DESC
@@ -142,8 +145,9 @@ export class ProfileProjectionRepository {
   private async getProjectionJob(profileId: string): Promise<ProfileInspectorProjectionJob | null> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
-      `SELECT status, dirty_seq, dirty_reason, attempts, max_attempts, locked_by, locked_until,
-              last_started_at, last_completed_at, last_projection_run_id, last_resolved_config_hash, last_error
+      `SELECT target_config_version_id, status, dirty_seq, dirty_reason, attempts, max_attempts,
+              locked_by, locked_until, last_started_at, last_completed_at, last_projection_run_id,
+              last_profile_config_version_id, last_resolved_config_hash, last_error
        FROM profile_projection_jobs
        WHERE profile_id = ?
        LIMIT 1`,
@@ -152,6 +156,7 @@ export class ProfileProjectionRepository {
     const row = rows[0];
     if (!row) return null;
     return {
+      targetConfigVersionId: row.target_config_version_id == null ? null : toStringId(row.target_config_version_id),
       status: String(row.status ?? ''),
       dirtySeq: toNumber(row.dirty_seq),
       dirtyReason: (row.dirty_reason as string | null) ?? null,
@@ -162,6 +167,7 @@ export class ProfileProjectionRepository {
       lastStartedAt: toIsoDate(row.last_started_at),
       lastCompletedAt: toIsoDate(row.last_completed_at),
       lastProjectionRunId: row.last_projection_run_id == null ? null : toStringId(row.last_projection_run_id),
+      lastProfileConfigVersionId: row.last_profile_config_version_id == null ? null : toStringId(row.last_profile_config_version_id),
       lastResolvedConfigHash: (row.last_resolved_config_hash as string | null) ?? null,
       lastError: (row.last_error as string | null) ?? null,
     };
@@ -456,9 +462,10 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: ProfileOverviewQuery,
+    presentationConfig: ProfilePresentation | undefined,
   ): Promise<ProfileCapabilityAnalytics> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const presentation = normalizeProfilePresentation(getProfileConfig(profileId)?.presentation);
+    const presentation = normalizeProfilePresentation(presentationConfig);
     const multiStageArtifactTypes = presentation.stages.artifactStages.map((stage) => stage.code);
 
     const buildClauses = (extra: string[] = []): { clauses: string[]; params: unknown[] } => {
@@ -829,6 +836,7 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: ProfileUsersQuery,
+    presentationConfig: ProfilePresentation | undefined,
   ): Promise<{ items: ProfileUserItem[]; total: number }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const offset = (query.page - 1) * query.pageSize;
@@ -905,7 +913,7 @@ export class ProfileProjectionRepository {
       ],
     )) as Array<Record<string, unknown>>;
 
-    const maturityStageCodes = this.getMaturityStageCodes(profileId);
+    const maturityStageCodes = this.getMaturityStageCodes(presentationConfig);
     const maturityByUser = await this.loadMaturityMap(runId, itemRows.map((r) => toStringId(r.user_id)));
 
     const items: ProfileUserItem[] = itemRows.map((row) => {
@@ -1042,15 +1050,15 @@ export class ProfileProjectionRepository {
     return { stages, completionRate, rampDays };
   }
 
-  private getMaturityStageCodes(profileId: string): string[] {
-    return normalizeProfilePresentation(getProfileConfig(profileId)?.presentation)
-      .stages.maturityStages.map((stage) => stage.code);
+  private getMaturityStageCodes(presentationConfig: ProfilePresentation | undefined): string[] {
+    return normalizeProfilePresentation(presentationConfig).stages.maturityStages.map((stage) => stage.code);
   }
 
   async getUserDetail(
     profileId: string,
     runId: number,
     userId: string,
+    presentationConfig: ProfilePresentation | undefined,
   ): Promise<ProfileUserDetail | null> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
 
@@ -1077,11 +1085,12 @@ export class ProfileProjectionRepository {
       this.getUserDeliveryUnits(runId, userId),
       this.loadMaturityMap(runId, [userId]),
     ]);
+    const maturityStageCodes = this.getMaturityStageCodes(presentationConfig);
 
     const maturityResult = this.computeMaturity(
       maturityByUser.get(userId) ?? new Map(),
       profileActivity.firstSeenAt,
-      this.getMaturityStageCodes(profileId),
+      maturityStageCodes,
     );
     const rampDays = maturityResult.rampDays;
 
@@ -1619,10 +1628,13 @@ export class ProfileProjectionRepository {
 function toProjectionRun(row: Record<string, unknown>): ProfileInspectorProjectionRun {
   return {
     id: toStringId(row.id),
+    profileConfigVersionId: row.profile_config_version_id == null ? null : toStringId(row.profile_config_version_id),
     runType: String(row.run_type ?? ''),
     status: String(row.status ?? ''),
     startedAt: toIsoDate(row.started_at),
     completedAt: toIsoDate(row.completed_at),
+    projectionDefinitionHash: (row.projection_definition_hash as string | null) ?? null,
+    resolvedConfigHash: (row.resolved_config_hash as string | null) ?? null,
     stats: toRecord(row.stats_json),
     errorMessage: (row.error_message as string | null) ?? null,
   };

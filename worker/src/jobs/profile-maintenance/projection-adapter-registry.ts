@@ -22,6 +22,7 @@ export interface ProfileProjectionAdapter {
     pool: Pool;
     config: WorkflowProfileConfig;
     runtime: RuntimeResolution;
+    profileConfigVersionId: string | null;
   }): Promise<ProjectionPrepareResult>;
 }
 
@@ -42,11 +43,13 @@ class SourceBackedProjectionAdapter implements ProfileProjectionAdapter {
     pool: Pool;
     config: WorkflowProfileConfig;
     runtime: RuntimeResolution;
+    profileConfigVersionId: string | null;
   }): Promise<ProjectionPrepareResult> {
     const sourceRematch = await rematchProfileSourceReferences(
       input.pool,
       input.config,
       input.runtime,
+      input.profileConfigVersionId,
     );
     return { stats: { sourceRematch } };
   }

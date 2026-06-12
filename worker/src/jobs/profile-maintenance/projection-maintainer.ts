@@ -1,13 +1,13 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { Logger } from 'pino';
 import {
-  getProfileConfig,
-  listProfileConfigs,
   resolveRuntimeProfileConfig,
+  type ProfileConfigSnapshot,
   type WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { runProfileProjection, type ProjectionRunResult } from '../profile-projection/runner';
 import { SourceReferenceWriter, type SourceReferenceWriteStats } from '../source-reference/writer';
+import { createProfileConfigCatalog } from '../profile-config-catalog';
 import { profileProjectionAdapterRegistry } from './projection-adapter-registry';
 import { resolvedProfileConfigHash } from './profile-config-hash';
 import { ProjectionJobStore, type ProjectionJob } from './projection-job-store';
@@ -52,22 +52,24 @@ export async function maintainProfilesAfterCleanBatch(
   const dirtyProfiles = new Set<string>();
 
   if (input.derivedCount > 0) {
-    for (const profile of activeProfilesByMode('sdd_bridge')) {
+    for (const snapshot of await activeProfilesByMode(options.pool, 'sdd_bridge')) {
       await jobStore.markDirty(options.pool, {
-        profileId: profile.profileId,
+        profileId: snapshot.config.profileId,
         reason: `clean_batch:${input.batchId}:sdd_facts`,
+        targetConfigVersionId: snapshot.configVersionId,
       });
-      dirtyProfiles.add(profile.profileId);
+      dirtyProfiles.add(snapshot.config.profileId);
     }
   }
 
   if (sourceReferences.extracted > 0 || sourceReferences.affectedRows > 0) {
-    for (const profile of activeProfilesByMode('source_backed')) {
+    for (const snapshot of await activeProfilesByMode(options.pool, 'source_backed')) {
       await jobStore.markDirty(options.pool, {
-        profileId: profile.profileId,
+        profileId: snapshot.config.profileId,
         reason: `clean_batch:${input.batchId}:source_references`,
+        targetConfigVersionId: snapshot.configVersionId,
       });
-      dirtyProfiles.add(profile.profileId);
+      dirtyProfiles.add(snapshot.config.profileId);
     }
   }
 
@@ -123,9 +125,11 @@ export async function rebuildProfileThroughMaintainer(options: {
   lockSeconds?: number;
 }): Promise<ProjectionRunResult> {
   const lockSeconds = options.lockSeconds ?? Number(process.env.PROFILE_PROJECTION_LOCK_SECONDS ?? 300);
+  const snapshot = await createProfileConfigCatalog(options.pool).getPublished(options.profileId);
   await jobStore.markDirty(options.pool, {
     profileId: options.profileId,
     reason: 'manual_rebuild',
+    targetConfigVersionId: snapshot?.configVersionId ?? null,
   });
 
   const job = await jobStore.claimProfile(options.pool, options.profileId, options.workerId, lockSeconds);
@@ -149,15 +153,22 @@ export async function rebuildProfileThroughMaintainer(options: {
 
 async function markConfigChangedProfilesDirty(pool: Pool): Promise<number> {
   let count = 0;
-  for (const profile of activeProfiles()) {
+  for (const snapshot of await activeProfiles(pool)) {
+    const profile = snapshot.config;
     const runtime = resolveRuntimeProfileConfig(profile, process.env);
     const hash = resolvedProfileConfigHash(profile, runtime);
     const job = await jobStore.get(pool, profile.profileId);
-    const reason = `${job ? 'config_changed' : 'initial_projection'}:${hash}`;
-    if (!job || (job.lastResolvedConfigHash !== hash && job.dirtyReason !== reason)) {
+    const versionKey = snapshot.configVersionId ?? 'builtin';
+    const reason = `${job ? 'config_changed' : 'initial_projection'}:${versionKey}:${hash}`;
+    if (
+      !job ||
+      job.lastResolvedConfigHash !== hash ||
+      job.lastProfileConfigVersionId !== snapshot.configVersionId
+    ) {
       await jobStore.markDirty(pool, {
         profileId: profile.profileId,
         reason,
+        targetConfigVersionId: snapshot.configVersionId,
       });
       count += 1;
     }
@@ -167,13 +178,15 @@ async function markConfigChangedProfilesDirty(pool: Pool): Promise<number> {
 
 async function markStaleFactProfilesDirty(pool: Pool): Promise<number> {
   let count = 0;
-  for (const profile of activeProfiles()) {
+  for (const snapshot of await activeProfiles(pool)) {
+    const profile = snapshot.config;
     const job = await jobStore.get(pool, profile.profileId);
     if (!job || job.status !== 'idle') continue;
     if (!job.lastCompletedAt) {
       await jobStore.markDirty(pool, {
         profileId: profile.profileId,
         reason: 'stale_facts:no_completed_at',
+        targetConfigVersionId: snapshot.configVersionId,
       });
       count += 1;
       continue;
@@ -184,6 +197,7 @@ async function markStaleFactProfilesDirty(pool: Pool): Promise<number> {
       await jobStore.markDirty(pool, {
         profileId: profile.profileId,
         reason: `stale_facts:${profile.projectionMode}`,
+        targetConfigVersionId: snapshot.configVersionId,
       });
       count += 1;
     }
@@ -196,7 +210,8 @@ async function projectClaimedJob(
   logger: Logger,
   job: ProjectionJob,
 ): Promise<ProjectionRunResult> {
-  const config = getProfileConfig(job.profileId);
+  const snapshot = await createProfileConfigCatalog(pool).getPublished(job.profileId);
+  const config = snapshot?.config;
   if (!config || config.status !== 'active') {
     throw new Error(`unknown or inactive profile: ${job.profileId}`);
   }
@@ -204,13 +219,22 @@ async function projectClaimedJob(
   const runtime = resolveRuntimeProfileConfig(config, process.env);
   const resolvedConfigHash = resolvedProfileConfigHash(config, runtime);
   const adapter = profileProjectionAdapterRegistry.get(config.projectionMode);
-  const prepared = await adapter.prepare({ pool, config, runtime });
+  const prepared = await adapter.prepare({
+    pool,
+    config,
+    runtime,
+    profileConfigVersionId: snapshot.configVersionId,
+  });
   if (adapter.operators.length === 0) throw new Error(`unconfigured projection mode: ${config.projectionMode}`);
 
   const projectionInput = {
     pool,
     logger,
     profileId: job.profileId,
+    profileConfig: config,
+    profileConfigVersionId: snapshot.configVersionId,
+    projectionDefinitionHash: snapshot.definitionHash,
+    resolvedConfigHash,
     operators: adapter.operators,
     ...(prepared.stats ? { extraStats: prepared.stats } : {}),
     publishGuard: async (connection: PoolConnection, runId: number) => {
@@ -219,6 +243,7 @@ async function projectClaimedJob(
         workerId: job.lockedBy ?? '',
         runningDirtySeq: job.runningDirtySeq,
         projectionRunId: runId,
+        profileConfigVersionId: snapshot.configVersionId,
         resolvedConfigHash,
       });
     },
@@ -228,12 +253,16 @@ async function projectClaimedJob(
   return result;
 }
 
-function activeProfiles(): WorkflowProfileConfig[] {
-  return listProfileConfigs().filter((profile) => profile.status === 'active');
+async function activeProfiles(pool: Pool): Promise<ProfileConfigSnapshot[]> {
+  return (await createProfileConfigCatalog(pool).listPublished())
+    .filter((snapshot) => snapshot.config.status === 'active');
 }
 
-function activeProfilesByMode(mode: WorkflowProfileConfig['projectionMode']): WorkflowProfileConfig[] {
-  return activeProfiles().filter((profile) => profile.projectionMode === mode);
+async function activeProfilesByMode(
+  pool: Pool,
+  mode: WorkflowProfileConfig['projectionMode'],
+): Promise<ProfileConfigSnapshot[]> {
+  return (await activeProfiles(pool)).filter((snapshot) => snapshot.config.projectionMode === mode);
 }
 
 function retrySeconds(attempts: number): number {

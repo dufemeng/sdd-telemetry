@@ -57,14 +57,14 @@ export class ProfilesController {
 
   @Get('/')
   async list() {
-    const data: ProfileSummary[] = this.profilesService.listProfiles();
+    const data: ProfileSummary[] = await this.profilesService.listProfiles();
     return ok(parseWithSchema(ProfileSummaryListSchema, data));
   }
 
   @Get('/:profileId/manifest')
   async manifest() {
     const profileId = this.ctx.params.profileId as string;
-    const data: ProfileCapabilityManifest = this.profilesService.getManifest(profileId);
+    const data: ProfileCapabilityManifest = await this.profilesService.getManifest(profileId);
     return ok(parseWithSchema(ProfileCapabilityManifestSchema, data));
   }
 

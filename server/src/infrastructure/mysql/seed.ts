@@ -1,3 +1,10 @@
+import { createHash } from 'node:crypto';
+import {
+  canonicalProfileConfigJson,
+  listProfileConfigs,
+  type WorkflowProfileConfig,
+} from '@sdd-telemetry/api';
+import type { DataSource } from 'typeorm';
 import { createAppDataSource } from './data-source';
 
 interface SeedSemantic {
@@ -203,6 +210,7 @@ export async function seedDatabase(dataSource = createAppDataSource()): Promise<
       }
     }
 
+    await seedBuiltinProfileConfigs(dataSource);
   } finally {
     if (shouldOwnDataSource) {
       await dataSource.destroy();
@@ -220,9 +228,137 @@ async function main(): Promise<void> {
     await dataSource.destroy();
   }
 
-  console.info(`[sdd-telemetry] seeded ${seedSemantics.length} SDD semantics`);
+  console.info(`[sdd-telemetry] seeded ${seedSemantics.length} SDD semantics and builtin profiles`);
 }
 
 if (require.main === module) {
   void main();
+}
+
+async function seedBuiltinProfileConfigs(dataSource: DataSource): Promise<void> {
+  if (!(await tableExists(dataSource, 'profile_configs'))) return;
+
+  for (const config of listProfileConfigs()) {
+    const versionId = await upsertBuiltinProfileConfig(dataSource, config);
+    await dataSource.query(
+      `INSERT INTO profile_config_events
+        (profile_id, profile_config_version_id, event_type, event_json, gmt_create)
+       VALUES (?, ?, 'builtin_seed', ?, CURRENT_TIMESTAMP(3))`,
+      [
+        config.profileId,
+        versionId,
+        JSON.stringify({
+          profileId: config.profileId,
+          displayName: config.displayName,
+          projectionMode: config.projectionMode,
+        }),
+      ],
+    );
+  }
+
+  await backfillProfileConfigVersionIds(dataSource);
+}
+
+async function upsertBuiltinProfileConfig(
+  dataSource: DataSource,
+  config: WorkflowProfileConfig,
+): Promise<string> {
+  const configJson = canonicalProfileConfigJson(config);
+  const definitionHash = sha256(configJson);
+
+  await dataSource.query(
+    `INSERT INTO profile_configs
+      (profile_id, display_name, status, projection_mode, origin, gmt_create, gmt_modified)
+     VALUES (?, ?, ?, ?, 'builtin', CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+     ON DUPLICATE KEY UPDATE
+       display_name = VALUES(display_name),
+       status = VALUES(status),
+       projection_mode = VALUES(projection_mode),
+       origin = 'builtin',
+       archived_at = NULL,
+       gmt_modified = CURRENT_TIMESTAMP(3)`,
+    [config.profileId, config.displayName, config.status, config.projectionMode],
+  );
+
+  const existingRows = (await dataSource.query(
+    `SELECT id
+     FROM profile_config_versions
+     WHERE profile_id = ? AND definition_hash = ? AND version_status = 'published'
+     ORDER BY id DESC
+     LIMIT 1`,
+    [config.profileId, definitionHash],
+  )) as Array<{ id: string | number }>;
+
+  let versionId = existingRows[0]?.id == null ? null : String(existingRows[0].id);
+  if (!versionId) {
+    const nextRows = (await dataSource.query(
+      `SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version_no
+       FROM profile_config_versions
+       WHERE profile_id = ?`,
+      [config.profileId],
+    )) as Array<{ next_version_no: number | string }>;
+    const versionNo = Number(nextRows[0]?.next_version_no ?? 1);
+    const result = (await dataSource.query(
+      `INSERT INTO profile_config_versions
+        (profile_id, version_no, version_status, config_json, definition_hash,
+         created_reason, published_at, notes, gmt_create, gmt_modified)
+       VALUES (?, ?, 'published', ?, ?, 'builtin_seed',
+               CURRENT_TIMESTAMP(3), 'seeded from builtin TypeScript profile',
+               CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))`,
+      [config.profileId, versionNo, configJson, definitionHash],
+    )) as { insertId?: string | number };
+    versionId = String(result.insertId);
+
+    await dataSource.query(
+      `UPDATE profile_config_versions
+       SET version_status = 'archived', gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE profile_id = ? AND version_status = 'published' AND id <> ?`,
+      [config.profileId, versionId],
+    );
+  }
+
+  await dataSource.query(
+    `UPDATE profile_configs
+     SET published_version_id = ?, draft_version_id = NULL, gmt_modified = CURRENT_TIMESTAMP(3)
+     WHERE profile_id = ?`,
+    [versionId, config.profileId],
+  );
+  return versionId;
+}
+
+async function backfillProfileConfigVersionIds(dataSource: DataSource): Promise<void> {
+  await dataSource.query(
+    `UPDATE profile_source_matches m
+     JOIN profile_configs c ON c.profile_id = m.profile_id
+     SET m.profile_config_version_id = c.published_version_id
+     WHERE m.profile_config_version_id IS NULL
+       AND c.published_version_id IS NOT NULL`,
+  );
+  await dataSource.query(
+    `UPDATE profile_projection_jobs j
+     JOIN profile_configs c ON c.profile_id = j.profile_id
+     SET j.target_config_version_id = COALESCE(j.target_config_version_id, c.published_version_id),
+         j.last_profile_config_version_id = COALESCE(j.last_profile_config_version_id, c.published_version_id)
+     WHERE c.published_version_id IS NOT NULL`,
+  );
+  await dataSource.query(
+    `UPDATE profile_projection_runs r
+     JOIN profile_configs c ON c.profile_id = r.profile_id
+     JOIN profile_config_versions v ON v.id = c.published_version_id
+     SET r.profile_config_version_id = COALESCE(r.profile_config_version_id, c.published_version_id),
+         r.projection_definition_hash = COALESCE(r.projection_definition_hash, v.definition_hash)
+     WHERE c.published_version_id IS NOT NULL`,
+  );
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+async function tableExists(dataSource: DataSource, table: string): Promise<boolean> {
+  const rows = (await dataSource.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=? LIMIT 1`,
+    [table],
+  )) as unknown[];
+  return rows.length > 0;
 }
