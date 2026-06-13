@@ -23,6 +23,9 @@ export async function rematchProfileSourceReferences(
   if (runtime.unresolved.length > 0) {
     throw new Error(`unresolved source rules for ${config.profileId}: ${runtime.unresolved.map((r) => r.ruleId).join(', ')}`);
   }
+  if (!profileConfigVersionId) {
+    throw new Error(`source-backed profile requires a persisted config version: ${config.profileId}`);
+  }
 
   const facts = await loadSourceReferenceFacts(pool);
   const matches: MatchedSource[] = [];
@@ -32,9 +35,10 @@ export async function rematchProfileSourceReferences(
   }
 
   await withTransaction(pool, async (connection) => {
-    // 当前唯一键仍是 (profile_id, source_reference_key)。在下一阶段把
-    // profile_config_version_id 回填为 NOT NULL 并升级唯一键前，按 profile 替换可避免新旧版本冲突。
-    await connection.query('DELETE FROM profile_source_matches WHERE profile_id = ?', [config.profileId]);
+    await connection.query(
+      'DELETE FROM profile_source_matches WHERE profile_id = ? AND profile_config_version_id = ?',
+      [config.profileId, profileConfigVersionId],
+    );
     for (const match of matches) {
       await insertMatch(connection, match, profileConfigVersionId);
     }

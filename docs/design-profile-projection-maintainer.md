@@ -38,7 +38,7 @@ OTel raw payload
 - 投影策略改为 snapshot-only。每次成功投影都生成新的 completed run，然后切换 current pointer；失败时 pointer 不变。
 - `sdd_bridge` profile 不依赖 source rules 触发 dirty。清洗批次只要产出 `sdd_*` 派生事实，就标记所有 active `sdd_bridge` profile 为 dirty。
 - source-backed profile 的配置 hash 以运行时解析结果为准，必须包含 env 解析后的 root、fallback base、rules、projection mode 和 adapter version。
-- 配置 hash 变化时，先对该 profile 全量重匹配 `source_references` 并重写 `profile_source_matches`，再执行 snapshot 投影。
+- 配置 hash 变化时，先按 `profile_id + profile_config_version_id` 重匹配 `source_references` 并写入隔离的 `profile_source_matches`，再执行 snapshot 投影。
 - worker 锁模型统一使用 `profile_projection_jobs` 行级 job lock；新维护链路不再叠加 `GET_LOCK`。
 - CLI 强制重建也必须先 mark dirty 再 claim `profile_projection_jobs`，不能绕过 job lock 直接调用 adapter。
 - dirty 竞态使用单调递增的 `dirty_seq` / `running_dirty_seq`，不使用 DATETIME 比较判断是否误清。
@@ -371,7 +371,7 @@ config hash 由运行时解析后的 profile config 中影响投影的字段计�
 如果 `resolvedConfigHash !== profile_projection_jobs.last_resolved_config_hash`：
 
 1. markDirty(profileId, reason=`config_changed`)。
-2. 对该 profile 全量重匹配历史 `source_references`，先删除或覆盖旧 `profile_source_matches`。
+2. 对目标配置版本全量重匹配历史 `source_references`，只删除或覆盖同一 `profile_id + profile_config_version_id` 下的 `profile_source_matches`。
 3. 执行 snapshot projection。
 4. 成功后更新 `last_resolved_config_hash`。
 
@@ -423,8 +423,8 @@ dirty 触发必须面向抽象，不面向 profileId。
 
 触发来源：
 
-- `sdd_bridge`：clean batch 产出任何 `sdd_interactions`、`sdd_interaction_tool_calls`、`sdd_interaction_texts`、`sdd_skill_usages` 等 SDD 派生事实时，标记所有 active `sdd_bridge` profile。
-- `source_backed`：clean batch 产出或更新 `source_references` 后，标记所有 active source-backed profile。ProjectionLoop claim job 后先对该 profile 全量重匹配 `profile_source_matches`，再投影。
+- `sdd_bridge`：clean batch 产出任何 `sdd_interactions`、`sdd_interaction_tool_calls`、`sdd_interaction_texts`、`sdd_skill_usages` 等 SDD 派生事实时，标记所有 active published target `sdd_bridge` profile。
+- `source_backed`：clean batch 产出或更新 `source_references` 后，标记所有 active published target source-backed profile。ProjectionLoop claim job 后先按目标配置版本重匹配 `profile_source_matches`，再投影；pending target 不能被后续 dirty 覆盖回旧 serving version。
 - `config_changed`：projection loop 发现 resolved config hash 与上次成功投影 hash 不一致时，标记该 profile，并先执行全量 rematch。
 
 这样 `sdd-default`、`e2e-monorepo` 和未来 profile 的 dirty 判断都由 projection mode 和 source rule 能力决定，不由 worker 硬编码 profileId。
@@ -526,7 +526,7 @@ server/src/infrastructure/mysql/migrations/
 `source-backed-operators.ts` 当前每次投影都重新 load source facts 并 match。新实现应改成：
 
 - clean batch 阶段只抽取 `source_references` 并标记 source-backed profile dirty。
-- ProjectionLoop claim dirty source-backed profile 后，先全量重匹配该 profile 的历史 `source_references`，把匹配结果写入 `profile_source_matches`。
+- ProjectionLoop claim dirty source-backed profile 后，先按 `profile_id + profile_config_version_id` 全量重匹配历史 `source_references`，把匹配结果写入该配置版本隔离的 `profile_source_matches`。
 - source-backed projection 消费 `profile_source_matches`。
 
 这样做的收益：
@@ -712,7 +712,7 @@ GET /api/profiles/:profileId/inspector
 5. 配置变化：
    - 修改 env root 或 fallback base。
    - 断言 `resolvedConfigHash` 变化。
-   - 断言对应 profile 的 `profile_source_matches` 被全量重匹配。
+   - 断言对应 profile 目标配置版本的 `profile_source_matches` 被全量重匹配。
    - 断言 current pointer 切到新的 completed snapshot run。
 
 6. dirty 竞态：

@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   E2E_MONOREPO_PROFILE_ID,
   ONLINE_DOCS_PROFILE_ID,
+  ProfileConfigCatalog,
   SDD_DEFAULT_PROFILE_ID,
   WorkflowProfileConfigSchema,
   getProfileConfig,
@@ -92,6 +93,22 @@ describe('resolveRuntimeProfileConfig root resolution', () => {
     expect(res.rules[0]!.rule.priority).toBe(100);
     const priorities = res.rules.map((r) => r.rule.priority);
     expect([...priorities]).toEqual([...priorities].sort((a, b) => b - a));
+  });
+});
+
+describe('ProfileConfigCatalog serving semantics', () => {
+  it('loads runtime configs through serving store methods', async () => {
+    const store = {
+      listServingProfileConfigs: vi.fn().mockResolvedValue([]),
+      getServingProfileConfig: vi.fn().mockResolvedValue(null),
+    };
+    const catalog = new ProfileConfigCatalog(store);
+
+    await catalog.listServing();
+    await catalog.getServing(SDD_DEFAULT_PROFILE_ID);
+
+    expect(store.listServingProfileConfigs).toHaveBeenCalledTimes(1);
+    expect(store.getServingProfileConfig).toHaveBeenCalledWith(SDD_DEFAULT_PROFILE_ID);
   });
 });
 

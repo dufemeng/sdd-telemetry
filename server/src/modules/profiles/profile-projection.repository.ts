@@ -134,10 +134,11 @@ export class ProfileProjectionRepository {
 
     const currentRun = currentRows[0] ? toProjectionRun(currentRows[0]) : null;
     const latestRun = latestRows[0] ? toProjectionRun(latestRows[0]) : null;
+    const currentConfigVersionId = currentRun?.profileConfigVersionId ?? null;
     const [counts, job, matchCounts] = await Promise.all([
       currentRun ? this.getFactCounts(profileId, Number(currentRun.id)) : emptyFactCounts(),
       this.getProjectionJob(profileId),
-      this.getMatchCounts(profileId),
+      this.getMatchCounts(profileId, currentConfigVersionId),
     ]);
     return { currentRun, latestRun, counts, job, matchCounts };
   }
@@ -173,13 +174,18 @@ export class ProfileProjectionRepository {
     };
   }
 
-  private async getMatchCounts(profileId: string): Promise<ProfileInspectorMatchCounts> {
+  private async getMatchCounts(
+    profileId: string,
+    profileConfigVersionId: string | null,
+  ): Promise<ProfileInspectorMatchCounts> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const versionClause = profileConfigVersionId ? ' AND profile_config_version_id = ?' : '';
+    const params = profileConfigVersionId ? [profileId, profileConfigVersionId] : [profileId];
     const rows = (await dataSource.query(
       `SELECT COUNT(*) AS v
        FROM profile_source_matches
-       WHERE profile_id = ?`,
-      [profileId],
+       WHERE profile_id = ?${versionClause}`,
+      params,
     )) as CountRow[];
     return { sourceMatches: toNumber(rows[0]?.v) };
   }

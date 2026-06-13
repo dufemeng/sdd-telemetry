@@ -30,6 +30,10 @@ import {
   AuthSessionUserSchema,
   AuthUserSchema,
   HealthzSchema,
+  ProfileConfigAdminListResponseSchema,
+  ProfileConfigPreviewResponseSchema,
+  getProfileConfig,
+  SDD_DEFAULT_PROFILE_ID,
   createApiResponseSchema,
 } from '@sdd-telemetry/api';
 import { hashPassword } from '../../src/modules/auth/auth-crypto';
@@ -261,6 +265,11 @@ describe('API Contract Tests', () => {
         headers: { Cookie: viewerCookie! },
       });
       expect(ops.status).toBe(403);
+
+      const profileConfigs = await fetch(`${BASE}/api/admin/profile-configs`, {
+        headers: { Cookie: viewerCookie! },
+      });
+      expect(profileConfigs.status).toBe(403);
     });
 
     it('does not allow disabling the last active super_admin', async () => {
@@ -288,6 +297,30 @@ describe('API Contract Tests', () => {
     }
 
     await cleanupContractData();
+  });
+
+  describe('Profile Config Admin API', () => {
+    it('GET /api/admin/profile-configs — rejects anonymous access before route handling', async () => {
+      const { status } = await api('GET', '/api/admin/profile-configs', undefined, false);
+      expect(status).toBe(401);
+    });
+
+    it('GET /api/admin/profile-configs — lists persisted or builtin profile configs', async () => {
+      const { status, body } = await api('GET', '/api/admin/profile-configs');
+      expect(status).toBe(200);
+      const data = validateContract('ProfileConfigAdminList', body, ProfileConfigAdminListResponseSchema);
+      expect(data.items.some((item) => item.profileId === SDD_DEFAULT_PROFILE_ID)).toBe(true);
+    });
+
+    it('POST /api/admin/profile-configs/preview — validates a profile config without publishing it', async () => {
+      const config = getProfileConfig(SDD_DEFAULT_PROFILE_ID);
+      expect(config).toBeTruthy();
+      const { status, body } = await api('POST', '/api/admin/profile-configs/preview', { config });
+      expect(status).toBe(200);
+      const data = validateContract('ProfileConfigPreview', body, ProfileConfigPreviewResponseSchema);
+      expect(data.validation.valid).toBe(true);
+      expect(data.definitionHash).toMatch(/^[a-f0-9]{64}$/);
+    });
   });
 
   describe('Ingest API', () => {

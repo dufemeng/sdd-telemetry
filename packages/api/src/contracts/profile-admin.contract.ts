@@ -30,9 +30,13 @@ export const ProfileConfigAdminSummarySchema = z.object({
   source: z.enum(['database', 'builtin']),
   publishedVersionId: z.string().nullable(),
   publishedVersionNo: z.number().nullable(),
+  servingVersionId: z.string().nullable(),
+  servingVersionNo: z.number().nullable(),
   draftVersionId: z.string().nullable(),
   definitionHash: z.string().nullable(),
+  servingDefinitionHash: z.string().nullable(),
   publishedAt: ISODateTimeSchema.nullable(),
+  servingAt: ISODateTimeSchema.nullable(),
   updatedAt: ISODateTimeSchema.nullable(),
 });
 export type ProfileConfigAdminSummary = z.infer<typeof ProfileConfigAdminSummarySchema>;

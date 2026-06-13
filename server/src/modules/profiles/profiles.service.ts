@@ -62,7 +62,7 @@ export class ProfilesService {
   profileDashboard!: { readSource: ReadSource };
 
   async listProfiles(): Promise<ProfileSummary[]> {
-    const snapshots = await this.profileConfigCatalog().listPublished();
+    const snapshots = await this.profileConfigCatalog().listServing();
     return snapshots.map((snapshot) => toSummary(snapshot.config));
   }
 
@@ -732,6 +732,7 @@ export class ProfilesService {
 
   private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
     const config = await this.requireProfile(profileId);
+    if (config.status !== 'active') return { mode: 'empty' };
     if (this.resolveReadSource(config) === 'profile_projection') {
       const runId = await this.profileProjectionRepository.getCurrentRunId(profileId);
       if (runId != null) return { mode: 'projection', runId };
@@ -745,7 +746,7 @@ export class ProfilesService {
   }
 
   private async requireProfile(profileId: string): Promise<WorkflowProfileConfig> {
-    const snapshot = await this.profileConfigCatalog().getPublished(profileId);
+    const snapshot = await this.profileConfigCatalog().getServing(profileId);
     if (!snapshot) {
       throw new ApiHttpError(404, 'PROFILE_NOT_FOUND', `profile not found: ${profileId}`);
     }

@@ -21,21 +21,22 @@ export class ProfileConfigAdminService {
   profileConfigRepository!: ProfileConfigRepository;
 
   async list(): Promise<{ items: ProfileConfigAdminSummary[] }> {
-    const [database, published] = await Promise.all([
+    const [database, fallback] = await Promise.all([
       this.profileConfigRepository.listAdminSummaries(),
-      this.catalog().listPublished(),
+      this.catalog().listServing(),
     ]);
-    return { items: mergeSummaries(database, published) };
+    return { items: mergeSummaries(database, fallback) };
   }
 
   async getDetail(profileId: string): Promise<ProfileConfigAdminDetail> {
-    const [draft, published, versions, list] = await Promise.all([
+    const [draft, publishedTarget, fallbackServing, versions, list] = await Promise.all([
       this.profileConfigRepository.getDraftProfileConfig(profileId),
-      this.catalog().getPublished(profileId),
+      this.profileConfigRepository.getPublishedProfileConfig(profileId),
+      this.catalog().getServing(profileId),
       this.profileConfigRepository.listVersions(profileId),
       this.list(),
     ]);
-    const snapshot = draft ?? published;
+    const snapshot = draft ?? publishedTarget ?? fallbackServing;
     if (!snapshot) {
       throw new ApiHttpError(404, 'PROFILE_NOT_FOUND', `profile not found: ${profileId}`);
     }
@@ -118,7 +119,8 @@ export class ProfileConfigAdminService {
 
   private async loadDraftOrPublishedConfig(profileId: string): Promise<WorkflowProfileConfig> {
     const snapshot = await this.profileConfigRepository.getDraftProfileConfig(profileId)
-      ?? await this.catalog().getPublished(profileId);
+      ?? await this.profileConfigRepository.getPublishedProfileConfig(profileId)
+      ?? await this.catalog().getServing(profileId);
     if (!snapshot) {
       throw new ApiHttpError(404, 'PROFILE_NOT_FOUND', `profile not found: ${profileId}`);
     }
@@ -177,9 +179,13 @@ function summaryFromSnapshot(snapshot: ProfileConfigSnapshot): ProfileConfigAdmi
     source: snapshot.source,
     publishedVersionId: snapshot.configVersionId,
     publishedVersionNo: snapshot.versionNo,
+    servingVersionId: snapshot.configVersionId,
+    servingVersionNo: snapshot.versionNo,
     draftVersionId: null,
     definitionHash: snapshot.definitionHash,
+    servingDefinitionHash: snapshot.definitionHash,
     publishedAt: snapshot.publishedAt,
+    servingAt: snapshot.publishedAt,
     updatedAt: snapshot.publishedAt,
   };
 }

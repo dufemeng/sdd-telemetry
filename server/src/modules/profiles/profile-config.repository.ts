@@ -34,9 +34,13 @@ interface ProfileConfigAdminRow {
   origin: ProfileConfigOrigin;
   published_version_id: number | string | null;
   published_version_no: number | string | null;
+  serving_version_id: number | string | null;
+  serving_version_no: number | string | null;
   draft_version_id: number | string | null;
   definition_hash: string | null;
+  serving_definition_hash: string | null;
   published_at: Date | string | null;
+  serving_at: Date | string | null;
   gmt_modified: Date | string | null;
 }
 
@@ -55,7 +59,7 @@ export class ProfileConfigRepository implements ProfileConfigStore {
   @Inject('mysqlDataSourceManager')
   mysqlDataSourceManager!: MysqlDataSourceManager;
 
-  async listPublishedProfileConfigs(): Promise<ProfileConfigSnapshot[]> {
+  async listServingProfileConfigs(): Promise<ProfileConfigSnapshot[]> {
     try {
       const dataSource = await this.mysqlDataSourceManager.getDataSource();
       const rows = (await dataSource.query(
@@ -63,7 +67,7 @@ export class ProfileConfigRepository implements ProfileConfigStore {
                 v.id AS config_version_id, v.version_no, v.definition_hash, v.published_at, v.config_json
          FROM profile_configs c
          JOIN profile_config_versions v
-           ON v.id = c.published_version_id
+           ON v.id = c.serving_version_id
           AND v.version_status = 'published'
          ORDER BY c.profile_id ASC`,
       )) as PublishedProfileConfigRow[];
@@ -74,7 +78,7 @@ export class ProfileConfigRepository implements ProfileConfigStore {
     }
   }
 
-  async getPublishedProfileConfig(profileId: string): Promise<ProfileConfigSnapshot | null> {
+  async getServingProfileConfig(profileId: string): Promise<ProfileConfigSnapshot | null> {
     try {
       const dataSource = await this.mysqlDataSourceManager.getDataSource();
       const rows = (await dataSource.query(
@@ -82,7 +86,7 @@ export class ProfileConfigRepository implements ProfileConfigStore {
                 v.id AS config_version_id, v.version_no, v.definition_hash, v.published_at, v.config_json
          FROM profile_configs c
          JOIN profile_config_versions v
-           ON v.id = c.published_version_id
+           ON v.id = c.serving_version_id
           AND v.version_status = 'published'
          WHERE c.profile_id = ?
          LIMIT 1`,
@@ -95,15 +99,22 @@ export class ProfileConfigRepository implements ProfileConfigStore {
     }
   }
 
+  async getPublishedProfileConfig(profileId: string): Promise<ProfileConfigSnapshot | null> {
+    return getVersionPointerProfileConfig(this, profileId, 'published_version_id');
+  }
+
   async listAdminSummaries(): Promise<ProfileConfigAdminSummary[]> {
     try {
       const dataSource = await this.mysqlDataSourceManager.getDataSource();
       const rows = (await dataSource.query(
         `SELECT c.profile_id, c.display_name, c.status, c.projection_mode, c.origin,
-                c.published_version_id, v.version_no AS published_version_no, c.draft_version_id,
-                v.definition_hash, v.published_at, c.gmt_modified
+                c.published_version_id, published.version_no AS published_version_no,
+                c.serving_version_id, serving.version_no AS serving_version_no,
+                c.draft_version_id, published.definition_hash, serving.definition_hash AS serving_definition_hash,
+                published.published_at, serving.published_at AS serving_at, c.gmt_modified
          FROM profile_configs c
-         LEFT JOIN profile_config_versions v ON v.id = c.published_version_id
+         LEFT JOIN profile_config_versions published ON published.id = c.published_version_id
+         LEFT JOIN profile_config_versions serving ON serving.id = c.serving_version_id
          ORDER BY c.profile_id ASC`,
       )) as ProfileConfigAdminRow[];
       return rows.map(toAdminSummary);
@@ -245,16 +256,12 @@ export class ProfileConfigRepository implements ProfileConfigStore {
         ],
       )) as { insertId?: string | number };
       const publishedVersionId = String(result.insertId);
-
-      await manager.query(
-        `UPDATE profile_config_versions
-         SET version_status = 'archived', gmt_modified = CURRENT_TIMESTAMP(3)
-         WHERE profile_id = ? AND version_status = 'published' AND id <> ?`,
-        [input.config.profileId, publishedVersionId],
-      );
+      const shouldServeImmediately = input.config.status !== 'active'
+        || input.config.projectionMode === 'sdd_bridge';
       await manager.query(
         `UPDATE profile_configs
          SET display_name = ?, status = ?, projection_mode = ?, published_version_id = ?,
+             serving_version_id = CASE WHEN ? THEN ? ELSE serving_version_id END,
              draft_version_id = NULL, archived_at = NULL, gmt_modified = CURRENT_TIMESTAMP(3)
          WHERE profile_id = ?`,
         [
@@ -262,11 +269,13 @@ export class ProfileConfigRepository implements ProfileConfigStore {
           input.config.status,
           input.config.projectionMode,
           publishedVersionId,
+          shouldServeImmediately ? 1 : 0,
+          publishedVersionId,
           input.config.profileId,
         ],
       );
 
-      if (input.config.status === 'active') {
+      if (input.config.status === 'active' && input.config.projectionMode === 'source_backed') {
         await markProjectionDirty(manager, input.config.profileId, publishedVersionId, `profile_config_published:${publishedVersionId}`);
       }
 
@@ -302,6 +311,31 @@ function toSnapshot(row: PublishedProfileConfigRow): ProfileConfigSnapshot {
   };
 }
 
+async function getVersionPointerProfileConfig(
+  repository: ProfileConfigRepository,
+  profileId: string,
+  pointerColumn: 'published_version_id' | 'serving_version_id',
+): Promise<ProfileConfigSnapshot | null> {
+  try {
+    const dataSource = await repository.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT c.profile_id, c.origin,
+              v.id AS config_version_id, v.version_no, v.definition_hash, v.published_at, v.config_json
+       FROM profile_configs c
+       JOIN profile_config_versions v
+         ON v.id = c.${pointerColumn}
+        AND v.version_status = 'published'
+       WHERE c.profile_id = ?
+       LIMIT 1`,
+      [profileId],
+    )) as PublishedProfileConfigRow[];
+    return rows[0] ? toSnapshot(rows[0]) : null;
+  } catch (error) {
+    if (isMissingProfileConfigTable(error)) return null;
+    throw error;
+  }
+}
+
 function toAdminSummary(row: ProfileConfigAdminRow): ProfileConfigAdminSummary {
   return {
     profileId: String(row.profile_id),
@@ -312,9 +346,13 @@ function toAdminSummary(row: ProfileConfigAdminRow): ProfileConfigAdminSummary {
     source: 'database',
     publishedVersionId: row.published_version_id == null ? null : String(row.published_version_id),
     publishedVersionNo: row.published_version_no == null ? null : Number(row.published_version_no),
+    servingVersionId: row.serving_version_id == null ? null : String(row.serving_version_id),
+    servingVersionNo: row.serving_version_no == null ? null : Number(row.serving_version_no),
     draftVersionId: row.draft_version_id == null ? null : String(row.draft_version_id),
     definitionHash: row.definition_hash,
+    servingDefinitionHash: row.serving_definition_hash,
     publishedAt: toIsoDate(row.published_at),
+    servingAt: toIsoDate(row.serving_at),
     updatedAt: toIsoDate(row.gmt_modified),
   };
 }
@@ -343,12 +381,12 @@ async function upsertProfileConfigRow(
 ): Promise<void> {
   await manager.query(
     `INSERT INTO profile_configs
-      (profile_id, display_name, status, projection_mode, origin, gmt_create, gmt_modified)
+     (profile_id, display_name, status, projection_mode, origin, gmt_create, gmt_modified)
      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
      ON DUPLICATE KEY UPDATE
-       display_name = VALUES(display_name),
-       status = VALUES(status),
-       projection_mode = VALUES(projection_mode),
+       display_name = IF(published_version_id IS NULL AND serving_version_id IS NULL, VALUES(display_name), display_name),
+       status = IF(published_version_id IS NULL AND serving_version_id IS NULL, VALUES(status), status),
+       projection_mode = IF(published_version_id IS NULL AND serving_version_id IS NULL, VALUES(projection_mode), projection_mode),
        origin = VALUES(origin),
        gmt_modified = CURRENT_TIMESTAMP(3)`,
     [config.profileId, config.displayName, config.status, config.projectionMode, origin],

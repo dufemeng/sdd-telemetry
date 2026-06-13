@@ -183,6 +183,21 @@ export class ProjectionJobStore {
     }
   }
 
+  async markServingVersion(
+    connection: PoolConnection,
+    input: {
+      profileId: string;
+      profileConfigVersionId: string;
+    },
+  ): Promise<void> {
+    await connection.query(
+      `UPDATE profile_configs
+       SET serving_version_id = ?, gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE profile_id = ?`,
+      [input.profileConfigVersionId, input.profileId],
+    );
+  }
+
   async markFailed(
     pool: Pool,
     input: {

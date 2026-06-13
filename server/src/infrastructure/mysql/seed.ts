@@ -239,30 +239,57 @@ async function seedBuiltinProfileConfigs(dataSource: DataSource): Promise<void> 
   if (!(await tableExists(dataSource, 'profile_configs'))) return;
 
   for (const config of listProfileConfigs()) {
-    const versionId = await upsertBuiltinProfileConfig(dataSource, config);
-    await dataSource.query(
-      `INSERT INTO profile_config_events
-        (profile_id, profile_config_version_id, event_type, event_json, gmt_create)
-       VALUES (?, ?, 'builtin_seed', ?, CURRENT_TIMESTAMP(3))`,
-      [
-        config.profileId,
-        versionId,
-        JSON.stringify({
-          profileId: config.profileId,
-          displayName: config.displayName,
-          projectionMode: config.projectionMode,
-        }),
-      ],
-    );
+    const result = await bootstrapBuiltinProfileConfig(dataSource, config);
+    if (result.created) {
+      await dataSource.query(
+        `INSERT INTO profile_config_events
+          (profile_id, profile_config_version_id, event_type, event_json, gmt_create)
+         VALUES (?, ?, 'builtin_seed', ?, CURRENT_TIMESTAMP(3))`,
+        [
+          config.profileId,
+          result.versionId,
+          JSON.stringify({
+            profileId: config.profileId,
+            displayName: config.displayName,
+            projectionMode: config.projectionMode,
+          }),
+        ],
+      );
+    }
   }
 
   await backfillProfileConfigVersionIds(dataSource);
+  await completeProfileSourceMatchVersioning(dataSource);
 }
 
-async function upsertBuiltinProfileConfig(
+async function bootstrapBuiltinProfileConfig(
   dataSource: DataSource,
   config: WorkflowProfileConfig,
-): Promise<string> {
+): Promise<{ versionId: string; created: boolean }> {
+  const existingRows = (await dataSource.query(
+    `SELECT profile_id, published_version_id, serving_version_id
+     FROM profile_configs
+     WHERE profile_id = ?
+     LIMIT 1`,
+    [config.profileId],
+  )) as Array<{
+    published_version_id: string | number | null;
+    serving_version_id?: string | number | null;
+  }>;
+  const existing = existingRows[0];
+  const publishedVersionId = existing?.published_version_id == null ? null : String(existing.published_version_id);
+  if (publishedVersionId) {
+    await dataSource.query(
+      `UPDATE profile_configs
+       SET origin = 'builtin',
+           serving_version_id = COALESCE(serving_version_id, published_version_id),
+           gmt_modified = CURRENT_TIMESTAMP(3)
+       WHERE profile_id = ?`,
+      [config.profileId],
+    );
+    return { versionId: publishedVersionId, created: false };
+  }
+
   const configJson = canonicalProfileConfigJson(config);
   const definitionHash = sha256(configJson);
 
@@ -271,16 +298,12 @@ async function upsertBuiltinProfileConfig(
       (profile_id, display_name, status, projection_mode, origin, gmt_create, gmt_modified)
      VALUES (?, ?, ?, ?, 'builtin', CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
      ON DUPLICATE KEY UPDATE
-       display_name = VALUES(display_name),
-       status = VALUES(status),
-       projection_mode = VALUES(projection_mode),
        origin = 'builtin',
-       archived_at = NULL,
        gmt_modified = CURRENT_TIMESTAMP(3)`,
     [config.profileId, config.displayName, config.status, config.projectionMode],
   );
 
-  const existingRows = (await dataSource.query(
+  const matchingVersionRows = (await dataSource.query(
     `SELECT id
      FROM profile_config_versions
      WHERE profile_id = ? AND definition_hash = ? AND version_status = 'published'
@@ -289,7 +312,7 @@ async function upsertBuiltinProfileConfig(
     [config.profileId, definitionHash],
   )) as Array<{ id: string | number }>;
 
-  let versionId = existingRows[0]?.id == null ? null : String(existingRows[0].id);
+  let versionId = matchingVersionRows[0]?.id == null ? null : String(matchingVersionRows[0].id);
   if (!versionId) {
     const nextRows = (await dataSource.query(
       `SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version_no
@@ -308,47 +331,68 @@ async function upsertBuiltinProfileConfig(
       [config.profileId, versionNo, configJson, definitionHash],
     )) as { insertId?: string | number };
     versionId = String(result.insertId);
-
-    await dataSource.query(
-      `UPDATE profile_config_versions
-       SET version_status = 'archived', gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE profile_id = ? AND version_status = 'published' AND id <> ?`,
-      [config.profileId, versionId],
-    );
   }
 
   await dataSource.query(
     `UPDATE profile_configs
-     SET published_version_id = ?, draft_version_id = NULL, gmt_modified = CURRENT_TIMESTAMP(3)
+     SET display_name = ?, status = ?, projection_mode = ?,
+         published_version_id = ?, serving_version_id = COALESCE(serving_version_id, ?),
+         draft_version_id = NULL, archived_at = NULL, gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE profile_id = ?`,
-    [versionId, config.profileId],
+    [config.displayName, config.status, config.projectionMode, versionId, versionId, config.profileId],
   );
-  return versionId;
+  return { versionId, created: true };
 }
 
 async function backfillProfileConfigVersionIds(dataSource: DataSource): Promise<void> {
   await dataSource.query(
     `UPDATE profile_source_matches m
      JOIN profile_configs c ON c.profile_id = m.profile_id
-     SET m.profile_config_version_id = c.published_version_id
+     SET m.profile_config_version_id = COALESCE(c.serving_version_id, c.published_version_id)
      WHERE m.profile_config_version_id IS NULL
-       AND c.published_version_id IS NOT NULL`,
+       AND COALESCE(c.serving_version_id, c.published_version_id) IS NOT NULL`,
   );
   await dataSource.query(
     `UPDATE profile_projection_jobs j
      JOIN profile_configs c ON c.profile_id = j.profile_id
      SET j.target_config_version_id = COALESCE(j.target_config_version_id, c.published_version_id),
-         j.last_profile_config_version_id = COALESCE(j.last_profile_config_version_id, c.published_version_id)
-     WHERE c.published_version_id IS NOT NULL`,
+         j.last_profile_config_version_id = COALESCE(j.last_profile_config_version_id, c.serving_version_id, c.published_version_id)
+     WHERE COALESCE(c.serving_version_id, c.published_version_id) IS NOT NULL`,
   );
   await dataSource.query(
     `UPDATE profile_projection_runs r
      JOIN profile_configs c ON c.profile_id = r.profile_id
-     JOIN profile_config_versions v ON v.id = c.published_version_id
-     SET r.profile_config_version_id = COALESCE(r.profile_config_version_id, c.published_version_id),
+     JOIN profile_config_versions v ON v.id = COALESCE(c.serving_version_id, c.published_version_id)
+     SET r.profile_config_version_id = COALESCE(r.profile_config_version_id, c.serving_version_id, c.published_version_id),
          r.projection_definition_hash = COALESCE(r.projection_definition_hash, v.definition_hash)
-     WHERE c.published_version_id IS NOT NULL`,
+     WHERE COALESCE(c.serving_version_id, c.published_version_id) IS NOT NULL`,
   );
+}
+
+async function completeProfileSourceMatchVersioning(dataSource: DataSource): Promise<void> {
+  if (!(await tableExists(dataSource, 'profile_source_matches'))) return;
+  if (!(await columnExists(dataSource, 'profile_source_matches', 'profile_config_version_id'))) return;
+  const unresolvedRows = (await dataSource.query(
+    'SELECT COUNT(*) AS count FROM profile_source_matches WHERE profile_config_version_id IS NULL',
+  )) as Array<{ count: number | string }>;
+  if (Number(unresolvedRows[0]?.count ?? 0) > 0) return;
+
+  const columns = await indexColumns(dataSource, 'profile_source_matches', 'uk_profile_source_matches_ref');
+  if (columns.join(',') !== 'profile_id,profile_config_version_id,source_reference_key') {
+    await dropIndexIfExists(dataSource, 'profile_source_matches', 'uk_profile_source_matches_ref');
+    await dataSource.query(
+      `ALTER TABLE profile_source_matches
+       ADD UNIQUE KEY uk_profile_source_matches_ref
+       (profile_id, profile_config_version_id, source_reference_key)`,
+    );
+  }
+
+  const column = await columnDefinition(dataSource, 'profile_source_matches', 'profile_config_version_id');
+  if (column?.is_nullable === 'YES') {
+    await dataSource.query(
+      'ALTER TABLE profile_source_matches MODIFY COLUMN profile_config_version_id BIGINT UNSIGNED NOT NULL',
+    );
+  }
 }
 
 function sha256(value: string): string {
@@ -361,4 +405,44 @@ async function tableExists(dataSource: DataSource, table: string): Promise<boole
     [table],
   )) as unknown[];
   return rows.length > 0;
+}
+
+async function columnExists(dataSource: DataSource, table: string, column: string): Promise<boolean> {
+  return Boolean(await columnDefinition(dataSource, table, column));
+}
+
+async function columnDefinition(
+  dataSource: DataSource,
+  table: string,
+  column: string,
+): Promise<{ is_nullable: 'YES' | 'NO' } | null> {
+  const rows = (await dataSource.query(
+    `SELECT is_nullable
+     FROM information_schema.columns
+     WHERE table_schema=DATABASE() AND table_name=? AND column_name=?
+     LIMIT 1`,
+    [table, column],
+  )) as Array<{ is_nullable: 'YES' | 'NO' }>;
+  return rows[0] ?? null;
+}
+
+async function dropIndexIfExists(dataSource: DataSource, table: string, index: string): Promise<void> {
+  const rows = (await dataSource.query(
+    `SELECT 1 FROM information_schema.statistics
+     WHERE table_schema=DATABASE() AND table_name=? AND index_name=? LIMIT 1`,
+    [table, index],
+  )) as unknown[];
+  if (rows.length === 0) return;
+  await dataSource.query(`ALTER TABLE \`${table}\` DROP INDEX \`${index}\``);
+}
+
+async function indexColumns(dataSource: DataSource, table: string, index: string): Promise<string[]> {
+  const rows = (await dataSource.query(
+    `SELECT column_name AS columnName
+     FROM information_schema.statistics
+     WHERE table_schema=DATABASE() AND table_name=? AND index_name=?
+     ORDER BY seq_in_index ASC`,
+    [table, index],
+  )) as Array<{ columnName: string }>;
+  return rows.map((row) => row.columnName);
 }

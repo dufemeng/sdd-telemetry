@@ -251,7 +251,7 @@ export interface ProfileConfigCatalog {
 实现：
 
 - `BuiltinProfileConfigCatalog`：读取现有 TS registry。
-- `DbProfileConfigCatalog`：读取 `profile_configs.serving_version_id` 或 `published_version_id`。
+- `DbProfileConfigCatalog`：读侧只读取 `profile_configs.serving_version_id`；`published_version_id` 仅作为管理员最新发布目标，由 worker 投影成功后再切 serving。
 - `CompositeProfileConfigCatalog`：DB 优先，builtin fallback。
 
 模块归属必须保持 framework-free：
@@ -452,8 +452,8 @@ ProjectionLoop
 
 source reference clean batch 仍按 projection mode 标 dirty：
 
-- `sdd_bridge`：SDD 派生事实变化后标记所有 active serving sdd_bridge profile。
-- `source_backed`：`source_references` 变化后标记所有 active source-backed profile。
+- `sdd_bridge`：SDD 派生事实变化后标记所有 active published target sdd_bridge profile；sdd_bridge 发布会立即切 serving，因此通常 target 与 serving 相同。
+- `source_backed`：`source_references` 变化后标记所有 active published target source-backed profile，避免 pending target 被后续 clean batch 覆盖回旧 serving version。
 
 这里仍只判断 `projectionMode`，不判断 `sdd-default`、`e2e-monorepo`、`农小宝`。
 
@@ -736,7 +736,7 @@ presentation normalize 逻辑只保留一份：
 2. 坏配置清空看板：必须坚持 serving pointer 只在 projection 成功后切换。
 3. `profileId` 被误改：API 和 DB 都不提供 update profile_id；复制 profile 必须创建新 ID。
 4. nullable version 破坏幂等：`profile_source_matches.profile_config_version_id` 必须最终 `NOT NULL`，否则 MySQL unique index 不能保护重复 match。第一阶段未收紧前，不允许按版本局部 delete + insert。
-5. rematch 覆盖诊断数据：第一阶段仍按 profile 覆盖 matches；要支持 pending/serving 双版本诊断，必须先完成非空版本列和唯一键升级。
+5. rematch 覆盖诊断数据：必须先完成 `profile_source_matches.profile_config_version_id` 非空回填和 `(profile_id, profile_config_version_id, source_reference_key)` 唯一键升级；rematch 只能覆盖同一配置版本。
 6. 状态漂移：lifecycle 只能由 `profile_configs.status` 拥有；`config_json.status` 作为兼容字段必须由发布流程同步写入，不能独立编辑。
 7. hash 混淆：version 表保存 definition hash，worker job/run 保存 resolved hash，不能把 env resolved roots 写进发布版本 hash。
 8. preview 成本：全量 dry-run 可能慢，第一期可以限制时间窗和样本量，同时返回“sampled=true”。

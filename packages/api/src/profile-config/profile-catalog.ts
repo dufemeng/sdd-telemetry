@@ -17,22 +17,30 @@ export interface ProfileConfigSnapshot {
 }
 
 export interface ProfileConfigStore {
-  listPublishedProfileConfigs(): Promise<ProfileConfigSnapshot[]>;
-  getPublishedProfileConfig(profileId: string): Promise<ProfileConfigSnapshot | null>;
+  listServingProfileConfigs(): Promise<ProfileConfigSnapshot[]>;
+  getServingProfileConfig(profileId: string): Promise<ProfileConfigSnapshot | null>;
 }
 
 export class ProfileConfigCatalog {
   constructor(private readonly store?: ProfileConfigStore) {}
 
-  async listPublished(): Promise<ProfileConfigSnapshot[]> {
-    const database = this.store ? await this.store.listPublishedProfileConfigs() : [];
+  async listServing(): Promise<ProfileConfigSnapshot[]> {
+    const database = this.store ? await this.store.listServingProfileConfigs() : [];
     return mergeWithBuiltinFallback(database);
   }
 
-  async getPublished(profileId: string): Promise<ProfileConfigSnapshot | null> {
-    const database = this.store ? await this.store.getPublishedProfileConfig(profileId) : null;
+  async getServing(profileId: string): Promise<ProfileConfigSnapshot | null> {
+    const database = this.store ? await this.store.getServingProfileConfig(profileId) : null;
     if (database) return database;
     return builtinProfileConfigSnapshot(profileId);
+  }
+
+  async listPublished(): Promise<ProfileConfigSnapshot[]> {
+    return this.listServing();
+  }
+
+  async getPublished(profileId: string): Promise<ProfileConfigSnapshot | null> {
+    return this.getServing(profileId);
   }
 }
 

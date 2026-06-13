@@ -59,7 +59,7 @@ export default function ProfileConfigAdminPage() {
                 variant={item.status === 'active' ? 'good' : 'bad'}
               />,
               modeText(item.projectionMode),
-              item.publishedVersionNo ? `v${item.publishedVersionNo}` : item.source === 'builtin' ? 'builtin' : '-',
+              versionText(item),
             ],
           }))}
           selectedRowKey={selected}
@@ -120,7 +120,16 @@ function ProfileEditor({
   if (!config) {
     return (
       <Panel title="Profile 编辑" icon={<FileJson size={18} />}>
-        <button className={PRIMARY_BUTTON_CLASS} type="button" onClick={() => setConfig(emptyProfileConfig())}>
+        <button
+          className={PRIMARY_BUTTON_CLASS}
+          type="button"
+          onClick={() => {
+            const next = emptyProfileConfig();
+            setConfig(next);
+            setAdvancedText(JSON.stringify(next, null, 2));
+            previewMutation.reset();
+          }}
+        >
           <CopyPlus size={14} /> 新建 Profile
         </button>
       </Panel>
@@ -130,6 +139,7 @@ function ProfileEditor({
 
   function update(patch: Partial<WorkflowProfileConfig>) {
     setConfig((current) => current ? { ...current, ...patch } as WorkflowProfileConfig : current);
+    previewMutation.reset();
   }
 
   function submitDraft() {
@@ -165,6 +175,7 @@ function ProfileEditor({
     } as WorkflowProfileConfig;
     setConfig(next);
     setAdvancedText(JSON.stringify(next, null, 2));
+    previewMutation.reset();
     onSelect(null);
   }
 
@@ -173,12 +184,14 @@ function ProfileEditor({
       const parsed = JSON.parse(advancedText) as WorkflowProfileConfig;
       setConfig(parsed);
       setJsonError(null);
+      previewMutation.reset();
     } catch (err) {
       setJsonError(err instanceof Error ? err.message : String(err));
     }
   }
 
   const preview = previewMutation.data;
+  const canPublish = Boolean(preview?.validation.valid && preview.runtime.configured);
 
   return (
     <Panel
@@ -195,7 +208,7 @@ function ProfileEditor({
           <button className={BUTTON_CLASS} type="button" disabled={pending} onClick={submitDraft}>
             <Save size={14} /> 保存草稿
           </button>
-          <button className={PRIMARY_BUTTON_CLASS} type="button" disabled={pending} onClick={submitPublish}>
+          <button className={PRIMARY_BUTTON_CLASS} type="button" disabled={pending || !canPublish} onClick={submitPublish}>
             <Rocket size={14} /> 发布
           </button>
         </div>
@@ -702,6 +715,13 @@ function emptyToUndefined(value: string): string | undefined {
 
 function modeText(mode: WorkflowProfileConfig['projectionMode']): string {
   return mode === 'sdd_bridge' ? 'SDD Bridge' : 'Source Backed';
+}
+
+function versionText(item: ProfileConfigAdminSummary): string {
+  if (!item.publishedVersionNo && item.source === 'builtin') return 'builtin';
+  const published = item.publishedVersionNo ? `发布 v${item.publishedVersionNo}` : '未发布';
+  const serving = item.servingVersionNo ? `服务 v${item.servingVersionNo}` : '未服务';
+  return published === serving.replace('服务', '发布') ? published : `${published} / ${serving}`;
 }
 
 function manifestLabel(key: keyof WorkflowProfileConfig['manifest']): string {

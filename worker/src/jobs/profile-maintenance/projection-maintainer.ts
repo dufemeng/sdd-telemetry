@@ -7,7 +7,11 @@ import {
 } from '@sdd-telemetry/api';
 import { runProfileProjection, type ProjectionRunResult } from '../profile-projection/runner';
 import { SourceReferenceWriter, type SourceReferenceWriteStats } from '../source-reference/writer';
-import { createProfileConfigCatalog } from '../profile-config-catalog';
+import {
+  createProfileConfigCatalog,
+  getProfileConfigVersionSnapshot,
+  listProjectionTargetProfileConfigs,
+} from '../profile-config-catalog';
 import { profileProjectionAdapterRegistry } from './projection-adapter-registry';
 import { resolvedProfileConfigHash } from './profile-config-hash';
 import { ProjectionJobStore, type ProjectionJob } from './projection-job-store';
@@ -52,7 +56,7 @@ export async function maintainProfilesAfterCleanBatch(
   const dirtyProfiles = new Set<string>();
 
   if (input.derivedCount > 0) {
-    for (const snapshot of await activeProfilesByMode(options.pool, 'sdd_bridge')) {
+    for (const snapshot of await activeProjectionTargetsByMode(options.pool, 'sdd_bridge')) {
       await jobStore.markDirty(options.pool, {
         profileId: snapshot.config.profileId,
         reason: `clean_batch:${input.batchId}:sdd_facts`,
@@ -63,7 +67,7 @@ export async function maintainProfilesAfterCleanBatch(
   }
 
   if (sourceReferences.extracted > 0 || sourceReferences.affectedRows > 0) {
-    for (const snapshot of await activeProfilesByMode(options.pool, 'source_backed')) {
+    for (const snapshot of await activeProjectionTargetsByMode(options.pool, 'source_backed')) {
       await jobStore.markDirty(options.pool, {
         profileId: snapshot.config.profileId,
         reason: `clean_batch:${input.batchId}:source_references`,
@@ -125,7 +129,7 @@ export async function rebuildProfileThroughMaintainer(options: {
   lockSeconds?: number;
 }): Promise<ProjectionRunResult> {
   const lockSeconds = options.lockSeconds ?? Number(process.env.PROFILE_PROJECTION_LOCK_SECONDS ?? 300);
-  const snapshot = await createProfileConfigCatalog(options.pool).getPublished(options.profileId);
+  const snapshot = await createProfileConfigCatalog(options.pool).getServing(options.profileId);
   await jobStore.markDirty(options.pool, {
     profileId: options.profileId,
     reason: 'manual_rebuild',
@@ -153,17 +157,23 @@ export async function rebuildProfileThroughMaintainer(options: {
 
 async function markConfigChangedProfilesDirty(pool: Pool): Promise<number> {
   let count = 0;
-  for (const snapshot of await activeProfiles(pool)) {
+  for (const snapshot of await activeProjectionTargets(pool)) {
     const profile = snapshot.config;
     const runtime = resolveRuntimeProfileConfig(profile, process.env);
     const hash = resolvedProfileConfigHash(profile, runtime);
     const job = await jobStore.get(pool, profile.profileId);
     const versionKey = snapshot.configVersionId ?? 'builtin';
     const reason = `${job ? 'config_changed' : 'initial_projection'}:${versionKey}:${hash}`;
+    const alreadyTargetingSnapshot = job
+      && job.status !== 'idle'
+      && job.targetConfigVersionId === snapshot.configVersionId;
     if (
-      !job ||
-      job.lastResolvedConfigHash !== hash ||
-      job.lastProfileConfigVersionId !== snapshot.configVersionId
+      !alreadyTargetingSnapshot
+      && (
+        !job
+        || job.lastResolvedConfigHash !== hash
+        || job.lastProfileConfigVersionId !== snapshot.configVersionId
+      )
     ) {
       await jobStore.markDirty(pool, {
         profileId: profile.profileId,
@@ -178,7 +188,7 @@ async function markConfigChangedProfilesDirty(pool: Pool): Promise<number> {
 
 async function markStaleFactProfilesDirty(pool: Pool): Promise<number> {
   let count = 0;
-  for (const snapshot of await activeProfiles(pool)) {
+  for (const snapshot of await activeProjectionTargets(pool)) {
     const profile = snapshot.config;
     const job = await jobStore.get(pool, profile.profileId);
     if (!job || job.status !== 'idle') continue;
@@ -210,7 +220,9 @@ async function projectClaimedJob(
   logger: Logger,
   job: ProjectionJob,
 ): Promise<ProjectionRunResult> {
-  const snapshot = await createProfileConfigCatalog(pool).getPublished(job.profileId);
+  const snapshot = job.targetConfigVersionId
+    ? await getProfileConfigVersionSnapshot(pool, job.profileId, job.targetConfigVersionId)
+    : await createProfileConfigCatalog(pool).getServing(job.profileId);
   const config = snapshot?.config;
   if (!config || config.status !== 'active') {
     throw new Error(`unknown or inactive profile: ${job.profileId}`);
@@ -225,6 +237,10 @@ async function projectClaimedJob(
     runtime,
     profileConfigVersionId: snapshot.configVersionId,
   });
+  const sourceRematch = prepared.stats?.sourceRematch as { matched?: number } | undefined;
+  if (config.projectionMode === 'source_backed' && Number(sourceRematch?.matched ?? 0) === 0) {
+    throw new Error(`source-backed profile matched zero source references: ${config.profileId}`);
+  }
   if (adapter.operators.length === 0) throw new Error(`unconfigured projection mode: ${config.projectionMode}`);
 
   const projectionInput = {
@@ -246,6 +262,12 @@ async function projectClaimedJob(
         profileConfigVersionId: snapshot.configVersionId,
         resolvedConfigHash,
       });
+      if (snapshot.configVersionId) {
+        await jobStore.markServingVersion(connection, {
+          profileId: job.profileId,
+          profileConfigVersionId: snapshot.configVersionId,
+        });
+      }
     },
   };
   const result = await runProfileProjection(projectionInput);
@@ -253,16 +275,16 @@ async function projectClaimedJob(
   return result;
 }
 
-async function activeProfiles(pool: Pool): Promise<ProfileConfigSnapshot[]> {
-  return (await createProfileConfigCatalog(pool).listPublished())
+async function activeProjectionTargets(pool: Pool): Promise<ProfileConfigSnapshot[]> {
+  return (await listProjectionTargetProfileConfigs(pool))
     .filter((snapshot) => snapshot.config.status === 'active');
 }
 
-async function activeProfilesByMode(
+async function activeProjectionTargetsByMode(
   pool: Pool,
   mode: WorkflowProfileConfig['projectionMode'],
 ): Promise<ProfileConfigSnapshot[]> {
-  return (await activeProfiles(pool)).filter((snapshot) => snapshot.config.projectionMode === mode);
+  return (await activeProjectionTargets(pool)).filter((snapshot) => snapshot.config.projectionMode === mode);
 }
 
 function retrySeconds(attempts: number): number {

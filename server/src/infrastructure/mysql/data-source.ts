@@ -21,6 +21,7 @@ import { AddSourceReferenceBatch1780000010000 } from './migrations/1780000010000
 import { CreateProfileSourceMatches1780000011000 } from './migrations/1780000011000-create-profile-source-matches';
 import { CreateProfileProjectionJobs1780000012000 } from './migrations/1780000012000-create-profile-projection-jobs';
 import { CreateProfileConfigs1780000013000 } from './migrations/1780000013000-create-profile-configs';
+import { ProfileConfigServingVersion1780000014000 } from './migrations/1780000014000-profile-config-serving-version';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -58,6 +59,7 @@ export function createAppDataSource(): DataSource {
       CreateProfileSourceMatches1780000011000,
       CreateProfileProjectionJobs1780000012000,
       CreateProfileConfigs1780000013000,
+      ProfileConfigServingVersion1780000014000,
     ],
   });
 }

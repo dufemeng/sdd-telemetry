@@ -235,10 +235,9 @@ async function loadMatchedSourceFacts(
   profileId: string,
   profileConfigVersionId: string | null,
 ): Promise<MatchedFact[]> {
-  const versionClause = profileConfigVersionId
-    ? 'm.profile_config_version_id = ?'
-    : 'm.profile_config_version_id IS NULL';
-  const params = profileConfigVersionId ? [profileId, profileConfigVersionId] : [profileId];
+  if (!profileConfigVersionId) {
+    throw new Error(`source-backed projection requires a persisted config version: ${profileId}`);
+  }
   const [rows] = await pool.query<MatchedSourceReferenceRow[]>(
     `SELECT s.id AS source_reference_id, s.reference_key AS source_reference_key,
             s.tool_call_id, s.interaction_id, s.event_id, s.user_id, s.session_id, s.prompt_id,
@@ -250,9 +249,9 @@ async function loadMatchedSourceFacts(
             m.ambiguous, m.metadata_json
      FROM profile_source_matches m
      JOIN source_references s ON s.id = m.source_reference_id
-     WHERE m.profile_id = ? AND ${versionClause}
+     WHERE m.profile_id = ? AND m.profile_config_version_id = ?
      ORDER BY s.id ASC`,
-    params,
+    [profileId, profileConfigVersionId],
   );
 
   return rows.map((row) => {

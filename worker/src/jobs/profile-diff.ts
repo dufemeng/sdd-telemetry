@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const profileId = parseProfileArg();
   const pool = createMysqlPool();
   try {
-    const snapshot = await createProfileConfigCatalog(pool).getPublished(profileId);
+    const snapshot = await createProfileConfigCatalog(pool).getServing(profileId);
     const config = snapshot?.config;
     if (!config) throw new Error(`profile config not found: ${profileId}`);
 
