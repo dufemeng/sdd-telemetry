@@ -242,4 +242,31 @@ flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED 
 
 ### ⏭️ 之后 — flip(Phase B 配置侧 + Phase C,均 reclean-gated)
 config 加 `SkillSourceRule` + `'invoke'` action + `capabilityRule.stage`;sdd-default 切 source_backed;
-退役 `sdd_*` 桥接;补 3 个 knowledge 端点;`/sdd/*` 路由收口。
+退役 `sdd_*` 桥接;补 3 个 knowledge 端点;`/sdd/*` 路由收口。**先做 §9 口径对齐,再动 flip。**
+
+---
+
+## 9. flip 口径对齐分析(动手前必须想清楚)
+
+切 source_backed 后,`profile_*` 必须与旧 bridge 数值一致。逐表对比(读 `sdd-bridge-operators.ts`
+vs `source-backed-operators.ts` 实证):
+
+| profile_* 表 | bridge 口径(per-usage/直接) | source_backed 现状 | 对齐 | flip 要做 |
+|---|---|---|---|---|
+| **capability_usages** | `sdd_skill_usages⋈semantics`:每 usage 一行;`capability_code=semantic_code`、`raw_capability_name=raw_skill_name`、`capability_source=skill_source`、`trigger_source=invocation_trigger`、`status`、`delivery_unit←su.work_item_id`(直接) | `insertCapabilityUsage` 写**静态/硬编码**:`capability_source='source_reference'`、`status='observed'`、`trigger_source=rule.triggerSource`(静态)、`raw_capability_name=rule.capabilityCode`、`delivery_unit←attribution`(重导) | ❌ **最大缺口** | 见下「capability 三件事」 |
+| **delivery_units** | `sdd_work_items`:`unit_type='requirements_dir'`、slug/domain/title/relative_dir 由 SDD 清洗形成 | process_doc(requirements 根)path → `deliveryUnitRule`(parent_dir) | ⚠️ 待验证 | 确认路径解析能复现 work_item 的 slug/domain/**title**(title 可能来自文档内容,非路径);sdd-default 配 process_doc 规则(`userRootKey=requirements`) |
+| **artifacts/_writes/_turns** | `sdd_work_item_artifacts` 等 | process_doc → `artifactRule.typePatterns` | 🟡 较可能 | `artifactFilenamePatterns`==`typePatterns`,逐 artifactType 比对 |
+| **knowledge_recalls** | `knowledgeOperator`(源 source_references,per-user wiki 根) | `sourceBackedKnowledgeOperator`(同源,knowledge 规则) | ✅ 同源 | sdd-default 配 knowledge 规则(`userRootKey=wiki`,A.1 机制);口径天然一致 |
+| **code_activities** | `codeOperator`(排除 wiki/requirements 根) | `sourceBackedCodeOperator`(code 规则,正根/glob) | ⚠️ 排除式 | code 是"非 doc"语义,无正根 → flip 时改正根(`src/`?)或加 exclude-userRootKey;A.2 已记 |
+
+### capability 三件事(最大缺口,必须先解)
+1. **per-usage 字段丢失**。source_backed 把 `trigger_source/capability_source/status/raw_capability_name` 写死成静态值,而 SDD 这些是**每次调用**的(user vs auto-triggered 等)。`SOURCE_BACKED_PRESENTATION` 本来隐藏 `user/autoTriggeredCount`,但 sdd-default 用的是 `SDD_PRESENTATION`(**展示** trigger 指标)→ flip 后这些指标会全空/错。
+   → **B.1 的 skill source_reference 必须在 `evidence_json` 带上 `invocationTrigger/skillSource/status/skillName`**(B.1 当前太瘦);`insertCapabilityUsage` 对 skill 类匹配改为**从 fact/evidence 读 per-usage 值**,而非静态 rule 值。
+2. **skill→capability 映射进 config**。`capability_code` 要 = `semantic_code`(funnel 按它分阶段)。skill→semantic(`sdd_skill_aliases`+`sdd_skill_semantics`)要变成 `capabilityRule`(每 semantic 一条,列其 skill 别名,`capabilityCode=semantic_code` + `stage`)。
+3. **delivery_unit 归属口径差异**。bridge 用 `su.work_item_id` **直接**连;source_backed 用 `attributionPolicy`(同 interaction/session 窗)**重导**——两者结果可能不等。需评估:要么 skill ref 带上 work_item 线索,要么接受归属口径变化并验证差异可接受。
+
+### 风险排序与结论
+- **capability(per-usage + 归属)= 头号**,直接决定 SDD 看板 user/auto + funnel 是否存活;**先回头给 B.1 的 skill ref 补 evidence 字段**,再谈 flip。
+- delivery_unit 的 **title/work_item 形成口径**第二,需读 SDD 清洗看 work_item 怎么形成。
+- code 排除式第三;knowledge 已对齐(最低)。
+- **flip 不是一次干净的开关**:它依赖「skill ref 富化 + capability operator 读 per-usage + skill→semantic 进 config + 归属口径验证」。这些应在 flip 的 reclean 之前,以可证伪方式逐项对齐(理想:同一份数据,bridge run 与 source_backed run 的 `profile_capability_usages` 按 user/trigger/stage 分组计数一致)。
