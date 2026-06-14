@@ -229,12 +229,15 @@ flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED 
 `normalized_locator=skill_name`;`SourceLocatorType` 加 `'skill'`(VARCHAR 列无需迁移)。
 纯函数 + 单测(幂等/区分/空值),**未接 writer**。自检:extractor 17/17、worker 119 passed、typecheck/build 全绿。
 
-### ⛔ Phase B.2 — 接入 writer + 全量 reclean 回填(reclean-gated,停在交互确认)
-- **怎么做**:给 `SourceReferenceWriter` 加 `rebuildSkillReferences`(遍历 `sdd_skill_usages` → upsert)并接进
-  清洗流;`pnpm db:reclean` 回填历史 skill source_reference。
-- **为什么 gated**:它会写/回填 `source_references`(=reclean 操作),按 CLAUDE.md 带 prod 锁 + 交互确认。
-- **怎么验证**:reclean 后 `SELECT COUNT(*) FROM source_references WHERE locator_type='skill'` ≈
-  `sdd_skill_usages` 行数(可证伪:一对一)。
+### 🟡 Phase B.2 — writer 接入完成,reclean 待确认(commit `9bcd971`)
+- **已做(代码,非 reclean)**:`SourceReferenceWriter.rebuildSkillReferences`(遍历 `sdd_skill_usages` →
+  `extractSkillSourceReference` → 复用 `upsert`)接进 `rebuildAll`(reclean/CLI 全量重建走这条);
+  `SourceReferenceWriteStats` 加 `skillUsages`;修 `rebuild-source-references` 的 `reused` 计算把 skill 计入。
+  自检:typecheck 6/6、worker 119 passed、build 5/5。SQL 列对齐 `sdd_skill_usages` schema。
+- **未做(reclean-gated,停在交互确认)**:`pnpm db:reclean` 回填历史 skill source_reference。
+- **怎么验证(reclean 后)**:`SELECT COUNT(*) FROM source_references WHERE locator_type='skill'` ≈
+  `SELECT COUNT(*) FROM sdd_skill_usages`(可证伪:一对一)。
+- **已知缺口(后续)**:增量 `updateForBatch` 的 skill 路径未接,steady-state 新 skill 要靠下次全量重建。
 
 ### ⏭️ 之后 — flip(Phase B 配置侧 + Phase C,均 reclean-gated)
 config 加 `SkillSourceRule` + `'invoke'` action + `capabilityRule.stage`;sdd-default 切 source_backed;
