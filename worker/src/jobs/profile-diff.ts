@@ -313,7 +313,7 @@ async function runSourceBackedDiff(
       pool,
       `SELECT COUNT(*) AS v
        FROM profile_code_activities
-       WHERE projection_run_id=? AND (repo_name IS NULL OR repo_kind IS NULL OR repo_kind='unknown')`,
+       WHERE projection_run_id=? AND repo_name IS NULL`,
       [runId],
     ),
     ambiguousContext: await scalar(

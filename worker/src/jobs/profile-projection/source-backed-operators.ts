@@ -80,7 +80,6 @@ interface ArtifactPlan {
 }
 
 interface CodePlan {
-  repoKind: string;
   repoName: string | null;
   moduleName: string | null;
   codeLocator: string;
@@ -393,7 +392,6 @@ export function buildCodePlan(match: MatchedSource): CodePlan | null {
   const parts = locator.split('/').filter(Boolean);
   const rootName = typeof match.metadata.rootName === 'string' ? match.metadata.rootName : match.sourceNamespace;
   return {
-    repoKind: typeof match.metadata.repoKind === 'string' ? match.metadata.repoKind : 'unknown',
     repoName: parts.length > 1 ? parts[0]! : rootName,
     moduleName: parts[1] ?? null,
     codeLocator: withNamespace(match, locator),
@@ -566,7 +564,7 @@ async function insertCodeActivity(
       ctx.profileId, ctx.projectionRunId, sourceBackedStableKey(ctx.profileId, 'code', item.fact.sourceReferenceKey),
       item.fact.sourceReferenceKey, item.fact.sourceReferenceId, item.fact.toolCallId, item.fact.interactionId,
       attribution.deliveryUnitId, capabilityUsageId, item.fact.userId, item.fact.sessionId, item.fact.promptId,
-      item.match.actionType, code.codeLocator, code.repoName, code.moduleName, code.repoKind, item.fact.eventTime,
+      item.match.actionType, code.codeLocator, code.repoName, code.moduleName, null, item.fact.eventTime,
       item.match.ruleId, item.match.confidence,
       JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
       SOURCE_BACKED_RULE_VERSION,

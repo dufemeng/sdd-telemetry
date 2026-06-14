@@ -59,11 +59,10 @@ describe('matchSourceReference: local path', () => {
     expect(m?.relativeLocator).toBe('payment/api.md');
   });
 
-  it('matches implementation code writes and carries fullstack metadata', () => {
+  it('matches implementation code writes', () => {
     const m = matchSourceReference(fact({ actionType: 'edit', normalizedLocator: `${ROOT}/src/App.tsx` }), e2eRules, E2E_MONOREPO_PROFILE_ID);
     expect(m?.category).toBe('code');
     expect(m?.ruleId).toBe('e2e-implementation-code');
-    expect(m?.metadata.repoKind).toBe('fullstack');
   });
 
   it('matches implementation code by fuzzy pathContains when no root is configured', () => {
@@ -122,7 +121,6 @@ describe('matchSourceReference: local path', () => {
           rootPath: ROOT,
           actions: ['write'],
           includeGlobs: ['**/*'],
-          repoKind: 'fullstack',
         } satisfies LocalPathSourceRule,
         resolvedRoot: ROOT,
       },

@@ -92,7 +92,7 @@ export const codeOperator: ProjectionOperator = {
             row.source_reference_id, row.tool_call_id, row.interaction_id, deliveryUnitId,
             capabilityUsageId,
             row.user_id, row.session_id, row.prompt_id, row.action_type, locator,
-            null, null, 'unknown', row.event_time, 'code-exclude-doc-roots', 'high',
+            null, null, null, row.event_time, 'code-exclude-doc-roots', 'high',
             JSON.stringify({ source: 'source_references' }), CODE_RULE_VERSION,
           ],
         );

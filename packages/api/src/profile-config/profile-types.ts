@@ -26,8 +26,6 @@ export type SourceAction = 'read' | 'grep' | 'glob' | 'write' | 'edit' | 'update
  * - unknown：兜底，不进入核心看板。
  */
 export type SourceCategory = 'process_doc' | 'knowledge' | 'code' | 'unknown';
-/** 代码仓库类别，用于代码分析聚合。 */
-export type RepoKind = 'frontend' | 'backend' | 'fullstack' | 'unknown';
 /** 投影分发模式：sdd_bridge 走旧 sdd_* 桥接算子；source_backed 走通用 source registry executor。 */
 export type ProjectionMode = 'sdd_bridge' | 'source_backed';
 
@@ -83,8 +81,6 @@ export interface LocalPathSourceRule extends SourceRuleBase {
   includeGlobs?: string[];
   /** 显式排除的相对路径 glob；deny 规则只是辅助，能不用就不用。 */
   excludeGlobs?: string[];
-  /** 代码类 source 的聚合维度。非 code 类 rule 通常不填。 */
-  repoKind?: RepoKind;
 }
 
 /** URL 类 source rule，适合在线知识库通过固定 URL 前缀 / 正则识别。 */

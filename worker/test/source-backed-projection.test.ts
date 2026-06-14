@@ -75,7 +75,6 @@ describe('source-backed code parsing', () => {
     )!;
     const code = buildCodePlan(match);
     expect(code).toEqual({
-      repoKind: 'fullstack',
       repoName: 'web',
       moduleName: 'src',
       codeLocator: 'acme/web/src/App.tsx',

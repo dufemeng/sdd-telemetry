@@ -90,7 +90,6 @@ function matchLocalPathRule(
       matchMode: resolved.resolvedRoot ? 'root' : 'fuzzy',
       relativeRoot: resolved.rule.relativeRoot ?? null,
       rootName: sourceNamespace,
-      repoKind: resolved.rule.repoKind ?? null,
       rulePriority: resolved.rule.priority,
       title: fact.title,
     },

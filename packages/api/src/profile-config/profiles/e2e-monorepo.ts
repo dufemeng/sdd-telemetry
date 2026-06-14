@@ -87,7 +87,6 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
       fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
       relativeRoot: 'src',
       pathContains: ['/nxb-mono-repo/src/'],
-      repoKind: 'fullstack',
       excludeGlobs: ['**/*.md', '**/*.mdx', '**/dist/**', '**/node_modules/**'],
       actions: IMPLEMENTATION_ACTIONS,
       description: 'E2E implementation code changes under nxb-mono-repo/src',
