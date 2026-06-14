@@ -271,3 +271,36 @@ vs `source-backed-operators.ts` 实证):
 - delivery_unit 的 **title/work_item 形成口径**第二,需读 SDD 清洗看 work_item 怎么形成。
 - code 排除式第三;knowledge 已对齐(最低)。
 - **flip 不是一次干净的开关**:它依赖「skill ref 富化 + capability operator 读 per-usage + skill→semantic 进 config + 归属口径验证」。这些应在 flip 的 reclean 之前,以可证伪方式逐项对齐(理想:同一份数据,bridge run 与 source_backed run 的 `profile_capability_usages` 按 user/trigger/stage 分组计数一致)。
+
+---
+
+## 10. skill→semantic→config 映射方案(数据实证设计)
+
+**真实数据(本机)**:13 semantics / 40 aliases;**实际用到 4 个 = SDD 工作流**(proposal 17 / code 9 / design 5 / task 3);另有 **47 次调用是非-SDD 技能**(`superpowers:*` / `impeccable` / `grill-me` / `run` / `init`…),bridge 里 `semantic_id=NULL`。
+
+### 映射结构:每 semantic → 1 SkillSourceRule + 1 capabilityRule
+- **SkillSourceRule(新 locator)**:`{ ruleId:'skill-<code>', locatorType:'skill', category:'skill', skillNames:[<该 semantic 全部 alias>], actions:['invoke'], confidence:'high', priority, enabled }`
+- **capabilityRule**:`{ ruleId:'cap-<code>', sourceRuleIds:['skill-<code>'], actions:['invoke'], capabilityCode:'<semantic_code>', displayName:'<display_name>', stage:<lifecycle code 或 null> }`
+- 13 semantics → 13 + 13 条(规模小,可生成后落进 `sdd-default.ts`)。
+
+### artifactFilenamePatterns → process_doc 的 artifactRule(不挂 skill)
+semantic 的 `artifact_filename_patterns` 汇总进 **process_doc** 源规则的 `artifactRule.typePatterns`(`artifactType=semantic_code`,`include=patterns`)。因为产物是"工作时写的过程文档文件",来源是 process_doc 路径,不是 skill 本身。
+
+### stage / funnel
+- 生命周期阶段 = proposal/design/task/codereview(= `SDD_MATURITY_STAGES`);这 4 条 `capabilityRule.stage`=自身 code,其余 9 个 stage=null。
+- `presentation.maturityStages=['proposal','design','task','codereview']`(有序)驱动 funnel。
+
+### 口径决策点:47 个非-SDD 技能
+bridge 把它们投成 capability_usages(`code=NULL`)。两个选择:
+- **(a) catch-all skill 规则**(最低优先级 matchAny):count 对齐 **81=81**,`code=raw_skill_name`、stage=null——flip 口径中性,**推荐先用 a 便于逐项对账**;
+- **(b) 不收**:count=34,SDD 板只显工作流能力——更干净但属口径变更,留产品决定。
+- 两者 funnel/stage 都不受影响(这 47 不属任何 stage)。
+
+### 新增 config schema(实现时)
+`SkillSourceRule`(`locatorType:'skill'` + `skillNames`)、`SourceCategory += 'skill'`、`SourceAction += 'invoke'`、`capabilityRule += stage?`。
+
+### 生成机制
+一次性 generator:读 `sdd_skill_semantics` + `sdd_skill_aliases` → 生成上述 rules → 落进 sdd-default 的 builtin `sdd-default.ts`(13 条小,生成后人工核对)。
+
+### 对账口径(flip 验证,需 reclean)
+bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × trigger_source × stage** 分组计数一致(不按 raw `capability_code` 逐一对——47 未分类项 code 不同但 stage 皆空)。
