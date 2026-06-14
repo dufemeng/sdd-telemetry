@@ -12,13 +12,18 @@ import type { MatchedSource, SourceReferenceFact } from './types';
 
 const CONFIDENCE_ORDER = { high: 3, medium: 2, low: 1 } as const;
 
+/** 每用户上报的本地根(来自 sdd_users.wiki_root_path / requirements_root_path),供 userRootKey 规则在 match 时按 userId 解析。 */
+export type UserRootMap = Map<number, { wiki: string | null; requirements: string | null }>;
+const EMPTY_USER_ROOTS: UserRootMap = new Map();
+
 export function matchSourceReference(
   fact: SourceReferenceFact,
   rules: ResolvedSourceRule[],
   profileId: string,
+  userRoots: UserRootMap = EMPTY_USER_ROOTS,
 ): MatchedSource | null {
   const candidates = rules
-    .map((rule) => matchRule(fact, rule, profileId))
+    .map((rule) => matchRule(fact, rule, profileId, userRoots))
     .filter((match): match is MatchedSource => match !== null);
 
   if (candidates.length === 0) return null;
@@ -39,6 +44,7 @@ function matchRule(
   fact: SourceReferenceFact,
   resolved: ResolvedSourceRule,
   profileId: string,
+  userRoots: UserRootMap,
 ): MatchedSource | null {
   const rule = resolved.rule;
   if (!rule.enabled) return null;
@@ -46,7 +52,7 @@ function matchRule(
   if (rule.locatorType !== fact.locatorType) return null;
 
   if (rule.locatorType === 'path') {
-    return matchLocalPathRule(fact, resolved as ResolvedSourceRule & { rule: LocalPathSourceRule }, profileId);
+    return matchLocalPathRule(fact, resolved as ResolvedSourceRule & { rule: LocalPathSourceRule }, profileId, userRoots);
   }
   if (rule.locatorType === 'url') {
     return matchUrlRule(fact, resolved as ResolvedSourceRule & { rule: UrlSourceRule }, profileId);
@@ -61,12 +67,15 @@ function matchLocalPathRule(
   fact: SourceReferenceFact,
   resolved: ResolvedSourceRule & { rule: LocalPathSourceRule },
   profileId: string,
+  userRoots: UserRootMap,
 ): MatchedSource | null {
   if (!fact.normalizedLocator) return null;
   const locator = normalizePath(fact.normalizedLocator);
 
-  const pathMatch = resolved.resolvedRoot
-    ? matchRootedPath(locator, resolved.resolvedRoot, resolved.rule)
+  // userRootKey 规则:resolvedRoot 为 null,改按 fact.userId 从 sdd_users 上报根解析。
+  const matchRoot = resolved.resolvedRoot ?? resolveUserRoot(fact, resolved.rule, userRoots);
+  const pathMatch = matchRoot
+    ? matchRootedPath(locator, matchRoot, resolved.rule)
     : matchFuzzyPath(locator, resolved.rule);
   if (!pathMatch) return null;
 
@@ -98,6 +107,17 @@ function matchLocalPathRule(
       title: fact.title,
     },
   };
+}
+
+function resolveUserRoot(
+  fact: SourceReferenceFact,
+  rule: LocalPathSourceRule,
+  userRoots: UserRootMap,
+): string | null {
+  if (!rule.userRootKey || fact.userId == null) return null;
+  const roots = userRoots.get(fact.userId);
+  if (!roots) return null;
+  return rule.userRootKey === 'wiki' ? roots.wiki : roots.requirements;
 }
 
 function matchRootedPath(

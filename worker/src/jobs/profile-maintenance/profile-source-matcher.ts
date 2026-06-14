@@ -1,8 +1,8 @@
-import type { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { RuntimeResolution, WorkflowProfileConfig } from '@sdd-telemetry/api';
 import { withTransaction } from '../../infrastructure/mysql/client';
 import { loadSourceReferenceFacts } from '../profile-projection/source-backed-operators';
-import { matchSourceReference } from '../profile-projection/source-registry/matcher';
+import { matchSourceReference, type UserRootMap } from '../profile-projection/source-registry/matcher';
 import { SOURCE_BACKED_RULE_VERSION } from '../profile-projection/source-registry/projection';
 import type { MatchedSource } from '../profile-projection/source-registry/types';
 
@@ -28,9 +28,10 @@ export async function rematchProfileSourceReferences(
   }
 
   const facts = await loadSourceReferenceFacts(pool);
+  const userRoots = await loadUserRoots(pool);
   const matches: MatchedSource[] = [];
   for (const fact of facts) {
-    const match = matchSourceReference(fact, runtime.rules, config.profileId);
+    const match = matchSourceReference(fact, runtime.rules, config.profileId, userRoots);
     if (match) matches.push(match);
   }
 
@@ -81,4 +82,24 @@ async function insertMatch(
       match.sourceReferenceId,
     ],
   );
+}
+
+async function loadUserRoots(pool: Pool): Promise<UserRootMap> {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, wiki_root_path, requirements_root_path FROM sdd_users
+     WHERE wiki_root_path IS NOT NULL OR requirements_root_path IS NOT NULL`,
+  );
+  const map: UserRootMap = new Map();
+  for (const row of rows) {
+    map.set(Number(row.id), {
+      wiki: normalizeRoot(row.wiki_root_path as string | null),
+      requirements: normalizeRoot(row.requirements_root_path as string | null),
+    });
+  }
+  return map;
+}
+
+function normalizeRoot(value: string | null): string | null {
+  if (!value) return null;
+  return value.replace(/\/+$/, '');
 }

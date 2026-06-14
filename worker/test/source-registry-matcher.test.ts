@@ -9,7 +9,7 @@ import {
   type SkillSourceRule,
   type UrlSourceRule,
 } from '@sdd-telemetry/api';
-import { matchSourceReference } from '../src/jobs/profile-projection/source-registry/matcher';
+import { matchSourceReference, type UserRootMap } from '../src/jobs/profile-projection/source-registry/matcher';
 import type { SourceReferenceFact } from '../src/jobs/profile-projection/source-registry/types';
 
 const ROOT = '/repo/nxb-mono-repo';
@@ -78,6 +78,37 @@ describe('matchSourceReference: skill', () => {
       fact({ locatorType: 'skill', actionType: 'invoke', normalizedLocator: 'superpowers:brainstorming' }),
       skillRules,
       E2E_MONOREPO_PROFILE_ID,
+    );
+    expect(m).toBeNull();
+  });
+});
+
+describe('matchSourceReference: userRootKey (per-user root)', () => {
+  const wikiRules: ResolvedSourceRule[] = [
+    {
+      rule: {
+        locatorType: 'path', ruleId: 'sdd-wiki', category: 'knowledge', priority: 50,
+        confidence: 'high', enabled: true, userRootKey: 'wiki', actions: ['read'],
+      } satisfies LocalPathSourceRule,
+      resolvedRoot: null,
+    },
+  ];
+  const userRoots: UserRootMap = new Map([[7, { wiki: '/home/u7/wiki', requirements: null }]]);
+
+  it('matches a path inside the user-reported wiki root', () => {
+    const m = matchSourceReference(
+      fact({ userId: 7, actionType: 'read', normalizedLocator: '/home/u7/wiki/domain/x.md' }),
+      wikiRules, 'sdd-default', userRoots,
+    );
+    expect(m?.category).toBe('knowledge');
+    expect(m?.ruleId).toBe('sdd-wiki');
+    expect(m?.relativeLocator).toBe('domain/x.md');
+  });
+
+  it('does not match when the user has no reported root', () => {
+    const m = matchSourceReference(
+      fact({ userId: 999, actionType: 'read', normalizedLocator: '/home/u7/wiki/domain/x.md' }),
+      wikiRules, 'sdd-default', userRoots,
     );
     expect(m).toBeNull();
   });
