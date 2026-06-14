@@ -8,6 +8,7 @@ import {
 export const ProfileRuleConfidenceSchema = z.enum(['high', 'medium', 'low']);
 export const SourceActionSchema = z.enum(['read', 'grep', 'glob', 'write', 'edit', 'update', 'delete']);
 export const SourceCategorySchema = z.enum(['process_doc', 'knowledge', 'code', 'unknown']);
+export const UserRootKeySchema = z.enum(['wiki', 'requirements']);
 export const ProjectionModeSchema = z.enum(['sdd_bridge', 'source_backed']);
 
 const SourceRuleBaseSchema = z.object({
@@ -30,6 +31,7 @@ export const LocalPathSourceRuleSchema = SourceRuleBaseSchema.extend({
   pathRegexes: z.array(z.string()).optional(),
   includeGlobs: z.array(z.string()).optional(),
   excludeGlobs: z.array(z.string()).optional(),
+  userRootKey: UserRootKeySchema.optional(),
 });
 
 export const UrlSourceRuleSchema = SourceRuleBaseSchema.extend({

@@ -57,7 +57,7 @@ export function validateProfileConfig(config: unknown): ValidationResult {
 
     if (!rule.enabled) continue;
     if (rule.locatorType === 'path') {
-      const hasRoot = Boolean(rule.rootEnv) || Boolean(rule.rootPath) || (Boolean(rule.fallbackBaseEnv) && Boolean(rule.relativeRoot));
+      const hasRoot = Boolean(rule.rootEnv) || Boolean(rule.rootPath) || (Boolean(rule.fallbackBaseEnv) && Boolean(rule.relativeRoot)) || Boolean(rule.userRootKey);
       const hasFuzzyMatcher = hasItems(rule.pathContains) || hasItems(rule.pathRegexes);
       if (!hasRoot && !hasFuzzyMatcher) {
         issues.push({
@@ -65,7 +65,7 @@ export function validateProfileConfig(config: unknown): ValidationResult {
           code: 'path_rule_missing_matcher',
           severity: 'error',
           path: `sourceRules.${rule.ruleId}`,
-          message: 'path rule needs rootEnv, rootPath, fallbackBaseEnv + relativeRoot, pathContains, or pathRegexes',
+          message: 'path rule needs rootEnv, rootPath, fallbackBaseEnv + relativeRoot, userRootKey, pathContains, or pathRegexes',
         });
       }
     } else if (rule.locatorType === 'url') {

@@ -176,6 +176,17 @@ describe('validateProfileConfig rejects malformed configs', () => {
     expect(res.rules[0]!.resolvedRoot).toBeNull();
   });
 
+  it('accepts path rule with userRootKey as a per-user root source', () => {
+    const cfg = baseConfig({
+      sourceRules: [{ locatorType: 'path', ruleId: 'wiki', category: 'knowledge', priority: 1, confidence: 'high', enabled: true, userRootKey: 'wiki', actions: ['read'] }],
+    });
+    expect(validateProfileConfig(cfg).valid).toBe(true);
+    const res = resolveRuntimeProfileConfig(cfg, {});
+    expect(res.rules).toHaveLength(1);
+    expect(res.rules[0]!.resolvedRoot).toBeNull();
+    expect(res.unresolved).toHaveLength(0);
+  });
+
   it('rejects mcp_doc rule that only declares mcpServers', () => {
     const cfg = baseConfig({
       sourceRules: [{ locatorType: 'mcp_doc', ruleId: 'mcp', category: 'knowledge', priority: 1, confidence: 'high', enabled: true, mcpServers: ['x'], actions: ['read'] }],

@@ -40,11 +40,12 @@ export function resolveRuntimeProfileConfig(
     if (rule.locatorType === 'path') {
       const root = resolveLocalPathRoot(rule, env);
       if (!root) {
-        if (hasItems(rule.pathContains) || hasItems(rule.pathRegexes)) {
+        // userRootKey 的 root 取自 per-user sdd_users 列，无法在此用 env 解析；保留为待投影时解析的规则。
+        if (rule.userRootKey || hasItems(rule.pathContains) || hasItems(rule.pathRegexes)) {
           rules.push({ rule, resolvedRoot: null });
           continue;
         }
-        unresolved.push({ ruleId: rule.ruleId, reason: 'missing path matcher (rootEnv / rootPath / fallbackBaseEnv+relativeRoot / pathContains / pathRegexes)' });
+        unresolved.push({ ruleId: rule.ruleId, reason: 'missing path matcher (rootEnv / rootPath / fallbackBaseEnv+relativeRoot / userRootKey / pathContains / pathRegexes)' });
         continue;
       }
       rules.push({ rule, resolvedRoot: normalizeRoot(root) });
