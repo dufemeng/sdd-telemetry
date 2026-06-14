@@ -189,3 +189,29 @@ sdd-default 变成普通 `source_backed` profile,`sourceRules` =
 - **skill 去重**:一个 `skill_usage` 跨多 tool_call,emit 粒度定在 skill_usage 级。
 - **funnel 口径迁移**:query 改 config 驱动后,迁移前后数值需对比(可证伪)。
 - **reclean 一次性、动全历史**:按 `db:reclean` 既有流程(prod 锁 + 5% 阈值 + 交互确认)。
+
+---
+
+## 8. 执行进度
+
+### ✅ Phase 1 — 砍 repoKind(commit `7bd5018`)
+从 schema/types/e2e 配置/matcher metadata/两个 code operator 移除 repoKind;profile-diff
+完整性检查改为只看 `repo_name`;`repo_kind` 列保留写 NULL,Phase C reclean 物理删。
+自检:typecheck 6/6、build 5/5、worker 测试 114 passed。
+
+### ⚠️ 预存红测试(非本次引入,已诊断)
+`worker/test/source-backed-projection.test.ts` 5 个用例红——经 `git stash` 在基线
+`a292da9` 验证为**预存**,与 repoKind 无关。**根因:测试 fixture 陈旧**,用
+`${ROOT}/plan/...`、`${ROOT}/web/...`,而 e2e 配置 `relativeRoot` 已是 `docs/plan` / `src`,
+解析根不含这些路径 → match 返回 null。**matcher 本身正确**。这些用例会在 Phase A
+(sdd-default 改 source_backed、matcher/config 变更)随之重写,届时一并修;现在不动(手术刀范围)。
+
+### ⏭️ 下一步 Phase A — 知识+代码 config 化(待开工)
+- **为什么**:让 sdd-default 的知识/代码投影由 config sourceRule 驱动,替掉 `knowledgeOperator`/
+  `codeOperator` 的硬编码(`knowledge-v1`/`code-v1` + 每用户根)。
+- **怎么做**:① path locator 加 `userRootKey:'wiki'|'requirements'`;② 给 sdd-default 配 knowledge/code
+  path 规则;③ 两个 operator 改读 config + 在 match 时按 `sdd_users` 的 userId 解析 per-user 根。
+- **风险**:per-user 根解析发生在 match 时(需 userId),matcher 接口要接 per-user roots map——是
+  真接口改动,非纯加字段;需 DB 验证(reset-derived + worker once 比对计数)。
+- **怎么验证**:reclean/reset-derived 前后 sdd-default 的 `profile_knowledge_recalls` /
+  `profile_code_activities` 计数一致(可证伪)。
