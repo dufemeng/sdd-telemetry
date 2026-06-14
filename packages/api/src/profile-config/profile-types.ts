@@ -16,7 +16,7 @@ export const ONLINE_DOCS_PROFILE_ID = 'online-docs';
 /** 匹配置信度。只有 high + 非冲突事实会进入核心 KPI。 */
 export type ProfileRuleConfidence = 'high' | 'medium' | 'low';
 /** 标准化后的工具动作。来源于 source_references.action_type，而不是具体工具名。 */
-export type SourceAction = 'read' | 'grep' | 'glob' | 'write' | 'edit' | 'update' | 'delete';
+export type SourceAction = 'read' | 'grep' | 'glob' | 'write' | 'edit' | 'update' | 'delete' | 'invoke';
 
 /**
  * source 的业务类别。
@@ -25,7 +25,7 @@ export type SourceAction = 'read' | 'grep' | 'glob' | 'write' | 'edit' | 'update
  * - code：代码读写，回答“是否进入代码实施”。
  * - unknown：兜底，不进入核心看板。
  */
-export type SourceCategory = 'process_doc' | 'knowledge' | 'code' | 'unknown';
+export type SourceCategory = 'process_doc' | 'knowledge' | 'code' | 'unknown' | 'skill';
 /** 本地 path locator 的"按用户上报根解析"键：root 取自 sdd_users 的 wiki/requirements 列。 */
 export type UserRootKey = 'wiki' | 'requirements';
 /** 投影分发模式：sdd_bridge 走旧 sdd_* 桥接算子；source_backed 走通用 source registry executor。 */
@@ -126,7 +126,14 @@ export interface McpDocSourceRule extends SourceRuleBase {
   };
 }
 
-export type SourceRule = LocalPathSourceRule | UrlSourceRule | McpDocSourceRule;
+/** 技能调用类 source rule：按技能名(含别名)匹配 locator_type='skill' 的 source_reference。 */
+export interface SkillSourceRule extends SourceRuleBase {
+  locatorType: 'skill';
+  /** 匹配的技能名(含别名);对应 source_reference.normalized_locator = skill_name。 */
+  skillNames: string[];
+}
+
+export type SourceRule = LocalPathSourceRule | UrlSourceRule | McpDocSourceRule | SkillSourceRule;
 export type SourceLocatorType = SourceRule['locatorType'];
 
 /** 从 locator 解析“需求 / 交付单元”的策略。 */
@@ -171,6 +178,8 @@ export interface CapabilityRule {
   displayName: string;
   /** 可选触发来源。source-backed profile 没有 SDD invocation 时通常为 null。 */
   triggerSource?: string | null;
+  /** 生命周期阶段(用于 funnel/maturity);非阶段能力为 null。 */
+  stage?: string | null;
 }
 
 /**

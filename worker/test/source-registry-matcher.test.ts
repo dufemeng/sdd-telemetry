@@ -6,6 +6,7 @@ import {
   type LocalPathSourceRule,
   type McpDocSourceRule,
   type ResolvedSourceRule,
+  type SkillSourceRule,
   type UrlSourceRule,
 } from '@sdd-telemetry/api';
 import { matchSourceReference } from '../src/jobs/profile-projection/source-registry/matcher';
@@ -42,6 +43,45 @@ function fact(over: Partial<SourceReferenceFact>): SourceReferenceFact {
     ...over,
   };
 }
+
+const skillRules: ResolvedSourceRule[] = [
+  {
+    rule: {
+      locatorType: 'skill',
+      ruleId: 'skill-design',
+      category: 'skill',
+      priority: 50,
+      confidence: 'high',
+      enabled: true,
+      skillNames: ['bk-fe-design', 'bk-fe:design'],
+      actions: ['invoke'],
+    } satisfies SkillSourceRule,
+    resolvedRoot: null,
+  },
+];
+
+describe('matchSourceReference: skill', () => {
+  it('matches a skill invocation by skill name', () => {
+    const m = matchSourceReference(
+      fact({ locatorType: 'skill', actionType: 'invoke', normalizedLocator: 'bk-fe-design' }),
+      skillRules,
+      E2E_MONOREPO_PROFILE_ID,
+    );
+    expect(m?.category).toBe('skill');
+    expect(m?.ruleId).toBe('skill-design');
+    expect(m?.locatorType).toBe('skill');
+    expect(m?.normalizedLocator).toBe('bk-fe-design');
+  });
+
+  it('does not match an unlisted skill name', () => {
+    const m = matchSourceReference(
+      fact({ locatorType: 'skill', actionType: 'invoke', normalizedLocator: 'superpowers:brainstorming' }),
+      skillRules,
+      E2E_MONOREPO_PROFILE_ID,
+    );
+    expect(m).toBeNull();
+  });
+});
 
 describe('matchSourceReference: local path', () => {
   it('matches a plan write as process_doc with relative locator', () => {

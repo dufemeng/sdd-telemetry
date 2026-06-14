@@ -6,8 +6,8 @@ import {
 } from '../contracts/profile.contract';
 
 export const ProfileRuleConfidenceSchema = z.enum(['high', 'medium', 'low']);
-export const SourceActionSchema = z.enum(['read', 'grep', 'glob', 'write', 'edit', 'update', 'delete']);
-export const SourceCategorySchema = z.enum(['process_doc', 'knowledge', 'code', 'unknown']);
+export const SourceActionSchema = z.enum(['read', 'grep', 'glob', 'write', 'edit', 'update', 'delete', 'invoke']);
+export const SourceCategorySchema = z.enum(['process_doc', 'knowledge', 'code', 'unknown', 'skill']);
 export const UserRootKeySchema = z.enum(['wiki', 'requirements']);
 export const ProjectionModeSchema = z.enum(['sdd_bridge', 'source_backed']);
 
@@ -62,10 +62,16 @@ export const McpDocSourceRuleSchema = SourceRuleBaseSchema.extend({
   }).optional(),
 });
 
+export const SkillSourceRuleSchema = SourceRuleBaseSchema.extend({
+  locatorType: z.literal('skill'),
+  skillNames: z.array(z.string().trim().min(1)),
+});
+
 export const SourceRuleSchema = z.discriminatedUnion('locatorType', [
   LocalPathSourceRuleSchema,
   UrlSourceRuleSchema,
   McpDocSourceRuleSchema,
+  SkillSourceRuleSchema,
 ]);
 
 export const DeliveryUnitLocatorStrategySchema = z.discriminatedUnion('kind', [
@@ -108,6 +114,7 @@ export const CapabilityRuleSchema = z.object({
   capabilityCode: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
   triggerSource: z.string().nullable().optional(),
+  stage: z.string().trim().min(1).nullable().optional(),
 });
 
 export const AttributionPolicySchema = z.object({

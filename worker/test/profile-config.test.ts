@@ -187,6 +187,25 @@ describe('validateProfileConfig rejects malformed configs', () => {
     expect(res.unresolved).toHaveLength(0);
   });
 
+  it('accepts skill rule (+ stage) and keeps it resolvable', () => {
+    const cfg = baseConfig({
+      sourceRules: [{ locatorType: 'skill', ruleId: 'skill-design', category: 'skill', priority: 1, confidence: 'high', enabled: true, skillNames: ['bk-fe-design'], actions: ['invoke'] }],
+      capabilityRules: [{ ruleId: 'cap-design', sourceRuleIds: ['skill-design'], actions: ['invoke'], capabilityCode: 'design', displayName: 'Design', stage: 'design' }],
+    });
+    expect(validateProfileConfig(cfg).valid).toBe(true);
+    const res = resolveRuntimeProfileConfig(cfg, {});
+    expect(res.rules).toHaveLength(1);
+    expect(res.rules[0]!.rule.locatorType).toBe('skill');
+    expect(res.rules[0]!.resolvedRoot).toBeNull();
+  });
+
+  it('rejects skill rule with empty skillNames', () => {
+    const cfg = baseConfig({
+      sourceRules: [{ locatorType: 'skill', ruleId: 'skill-x', category: 'skill', priority: 1, confidence: 'high', enabled: true, skillNames: [], actions: ['invoke'] }],
+    });
+    expect(validateProfileConfig(cfg).valid).toBe(false);
+  });
+
   it('rejects mcp_doc rule that only declares mcpServers', () => {
     const cfg = baseConfig({
       sourceRules: [{ locatorType: 'mcp_doc', ruleId: 'mcp', category: 'knowledge', priority: 1, confidence: 'high', enabled: true, mcpServers: ['x'], actions: ['read'] }],

@@ -9,6 +9,7 @@ export type ValidationIssueCode =
   | 'path_rule_missing_matcher'
   | 'url_rule_missing_matcher'
   | 'mcp_doc_rule_missing_matcher'
+  | 'skill_rule_missing_matcher'
   | 'unknown_source_rule_id'
   | 'capability_rule_missing_source';
 
@@ -86,6 +87,16 @@ export function validateProfileConfig(config: unknown): ValidationResult {
           severity: 'error',
           path: `sourceRules.${rule.ruleId}`,
           message: 'mcp_doc rule needs at least one of docIdPatterns / collectionIds / urlPrefixes / docTypes (mcpServer alone is not enough)',
+        });
+      }
+    } else if (rule.locatorType === 'skill') {
+      if (!hasItems(rule.skillNames)) {
+        issues.push({
+          ruleId: rule.ruleId,
+          code: 'skill_rule_missing_matcher',
+          severity: 'error',
+          path: `sourceRules.${rule.ruleId}`,
+          message: 'skill rule needs at least one skillNames entry',
         });
       }
     }

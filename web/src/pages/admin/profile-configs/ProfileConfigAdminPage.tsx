@@ -404,12 +404,19 @@ function SourceRuleMatcherFields({ rule, onPatch }: { rule: SourceRule; onPatch:
       </div>
     );
   }
+  if (rule.locatorType === 'mcp_doc') {
+    return (
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <Field label="Doc ID Patterns"><textarea className={TEXTAREA_CLASS} value={(rule.docIdPatterns ?? []).join('\n')} onChange={(event) => onPatch({ docIdPatterns: parseLines(event.target.value) })} /></Field>
+        <Field label="Collection IDs"><textarea className={TEXTAREA_CLASS} value={(rule.collectionIds ?? []).join('\n')} onChange={(event) => onPatch({ collectionIds: parseLines(event.target.value) })} /></Field>
+        <Field label="Doc Types"><textarea className={TEXTAREA_CLASS} value={(rule.docTypes ?? []).join('\n')} onChange={(event) => onPatch({ docTypes: parseLines(event.target.value) })} /></Field>
+        <Field label="URL Prefixes"><textarea className={TEXTAREA_CLASS} value={(rule.urlPrefixes ?? []).join('\n')} onChange={(event) => onPatch({ urlPrefixes: parseLines(event.target.value) })} /></Field>
+      </div>
+    );
+  }
   return (
-    <div className="mt-3 grid gap-3 md:grid-cols-2">
-      <Field label="Doc ID Patterns"><textarea className={TEXTAREA_CLASS} value={(rule.docIdPatterns ?? []).join('\n')} onChange={(event) => onPatch({ docIdPatterns: parseLines(event.target.value) })} /></Field>
-      <Field label="Collection IDs"><textarea className={TEXTAREA_CLASS} value={(rule.collectionIds ?? []).join('\n')} onChange={(event) => onPatch({ collectionIds: parseLines(event.target.value) })} /></Field>
-      <Field label="Doc Types"><textarea className={TEXTAREA_CLASS} value={(rule.docTypes ?? []).join('\n')} onChange={(event) => onPatch({ docTypes: parseLines(event.target.value) })} /></Field>
-      <Field label="URL Prefixes"><textarea className={TEXTAREA_CLASS} value={(rule.urlPrefixes ?? []).join('\n')} onChange={(event) => onPatch({ urlPrefixes: parseLines(event.target.value) })} /></Field>
+    <div className="mt-3 grid gap-3">
+      <Field label="Skill Names"><textarea className={TEXTAREA_CLASS} value={(rule.skillNames ?? []).join('\n')} onChange={(event) => onPatch({ skillNames: parseLines(event.target.value) })} /></Field>
     </div>
   );
 }

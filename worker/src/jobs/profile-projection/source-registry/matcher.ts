@@ -3,6 +3,7 @@ import type {
   LocalPathSourceRule,
   McpDocSourceRule,
   ResolvedSourceRule,
+  SkillSourceRule,
   SourceAction,
   SourceLocatorType,
   UrlSourceRule,
@@ -49,6 +50,9 @@ function matchRule(
   }
   if (rule.locatorType === 'url') {
     return matchUrlRule(fact, resolved as ResolvedSourceRule & { rule: UrlSourceRule }, profileId);
+  }
+  if (rule.locatorType === 'skill') {
+    return matchSkillRule(fact, resolved as ResolvedSourceRule & { rule: SkillSourceRule }, profileId);
   }
   return matchMcpDocRule(fact, resolved as ResolvedSourceRule & { rule: McpDocSourceRule }, profileId);
 }
@@ -152,6 +156,32 @@ function fuzzyPathResult(
     relativeLocator,
     sourceNamespace,
     root: null,
+  };
+}
+
+function matchSkillRule(
+  fact: SourceReferenceFact,
+  resolved: ResolvedSourceRule & { rule: SkillSourceRule },
+  profileId: string,
+): MatchedSource | null {
+  const skillName = fact.normalizedLocator;
+  if (!skillName) return null;
+  if (!resolved.rule.skillNames.includes(skillName)) return null;
+  return {
+    profileId,
+    sourceReferenceId: fact.sourceReferenceId,
+    sourceReferenceKey: fact.sourceReferenceKey,
+    ruleId: resolved.rule.ruleId,
+    confidence: resolved.rule.confidence,
+    ambiguous: false,
+    category: resolved.rule.category,
+    actionType: fact.actionType as SourceAction,
+    locatorType: 'skill',
+    normalizedLocator: skillName,
+    sourceNamespace: skillName,
+    resourceId: skillName,
+    relativeLocator: null,
+    metadata: { rulePriority: resolved.rule.priority },
   };
 }
 
