@@ -238,7 +238,9 @@ flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED 
   - distinct `reference_key` = 81、`action_type` 全 `invoke`、`normalized_locator`=skill_name、`tool_call_id`=NULL、evidence 带 `skillUsageKey`。
   - **幂等已证**:二次 rebuild `inserted=0`、skill_refs 仍 = 81(不重复)——reclean 安全的前提成立。
 - **已知缺口(后续)**:增量 `updateForBatch` 的 skill 路径未接,steady-state 新 skill 靠下次全量重建。
-- **全量 `db:reclean` 仍留到 flip 阶段**(重建 raw→derived→projection),届时单独确认。
+- **✅ 全量 `db:reclean` 健壮性验证(test env,已跑)**:7 轮排空、`db:verify` 33 表 27 索引、projection 新 run capability=81(repoKind 移除后口径正常)、`skill_refs=81==skill_usages`(`sdd_skill_usages` 被 truncate+重建 id 全变,`reference_key` 绑 `usage_key` 仍全对上)、新 skill-type refs 不干扰旧投影。**结论:Phase 1 + B.1/B.2 端到端健壮。**
+- **⚠️ reclean 照出的真实缺口**:`resetDerivedData` 不 truncate `source_references`,且 reclean 用 per-batch `updateForBatch`(无 skill 路径)→ skill refs 是"存活"而非"被 reclean 重新 emit"。要真正健壮,需把 skill emit 接进 `updateForBatch`(按 batch 经 tool_call→event→batch 作用域,idempotent upsert 容跨 batch)。
+- flip 阶段的 reclean 改为做**口径对账**(bridge run vs source_backed run)。
 
 ### ⏭️ 之后 — flip(Phase B 配置侧 + Phase C,均 reclean-gated)
 config 加 `SkillSourceRule` + `'invoke'` action + `capabilityRule.stage`;sdd-default 切 source_backed;
