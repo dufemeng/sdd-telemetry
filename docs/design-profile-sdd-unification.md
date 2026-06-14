@@ -261,7 +261,8 @@ vs `source-backed-operators.ts` 实证):
 
 ### capability 三件事(最大缺口,必须先解)
 1. **per-usage 字段丢失**。source_backed 把 `trigger_source/capability_source/status/raw_capability_name` 写死成静态值,而 SDD 这些是**每次调用**的(user vs auto-triggered 等)。`SOURCE_BACKED_PRESENTATION` 本来隐藏 `user/autoTriggeredCount`,但 sdd-default 用的是 `SDD_PRESENTATION`(**展示** trigger 指标)→ flip 后这些指标会全空/错。
-   → **B.1 的 skill source_reference 必须在 `evidence_json` 带上 `invocationTrigger/skillSource/status/skillName`**(B.1 当前太瘦);`insertCapabilityUsage` 对 skill 类匹配改为**从 fact/evidence 读 per-usage 值**,而非静态 rule 值。
+   → ✅ **已做(commit `0468fcd`)**:skill ref `evidence_json` 现带 `invocationTrigger/skillSource/status`(81/81,幂等,真实值如 `user-slash`)。
+   → ⏭️ **待做**:`insertCapabilityUsage` 对 skill 类匹配改为**从 evidence 读 per-usage 值**(trigger/source/status/raw_skill_name),而非静态 rule 值。
 2. **skill→capability 映射进 config**。`capability_code` 要 = `semantic_code`(funnel 按它分阶段)。skill→semantic(`sdd_skill_aliases`+`sdd_skill_semantics`)要变成 `capabilityRule`(每 semantic 一条,列其 skill 别名,`capabilityCode=semantic_code` + `stage`)。
 3. **delivery_unit 归属口径差异**。bridge 用 `su.work_item_id` **直接**连;source_backed 用 `attributionPolicy`(同 interaction/session 窗)**重导**——两者结果可能不等。需评估:要么 skill ref 带上 work_item 线索,要么接受归属口径变化并验证差异可接受。
 
