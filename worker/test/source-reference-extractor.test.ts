@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeMaybeDoubleEncoded,
+  extractSkillSourceReference,
   extractSourceReferences,
+  SKILL_SOURCE_ACTION,
   type ToolCallFact,
 } from '../src/jobs/source-reference-extractor';
 
@@ -21,6 +23,45 @@ function baseFact(overrides: Partial<ToolCallFact>): ToolCallFact {
     ...overrides,
   };
 }
+
+describe('extractSkillSourceReference', () => {
+  const skillFact = {
+    usageKey: 'usage_abc',
+    skillName: 'bk-fe-design',
+    interactionId: 1,
+    userId: 100,
+    sessionId: 'sess_1',
+    promptId: 'prompt_1',
+    eventTime: new Date('2026-06-04T00:00:00.000Z'),
+  };
+
+  it('emits one skill source_reference per skill_usage', () => {
+    const ref = extractSkillSourceReference(skillFact);
+    expect(ref).not.toBeNull();
+    expect(ref!.locatorType).toBe('skill');
+    expect(ref!.actionType).toBe(SKILL_SOURCE_ACTION);
+    expect(ref!.normalizedLocator).toBe('bk-fe-design');
+    expect(ref!.toolCallId).toBeNull();
+    expect(ref!.evidenceJson).toMatchObject({ skillUsageKey: 'usage_abc' });
+  });
+
+  it('is idempotent on usageKey (other fields do not change referenceKey)', () => {
+    const a = extractSkillSourceReference(skillFact);
+    const b = extractSkillSourceReference({ ...skillFact, interactionId: 999, eventTime: new Date() });
+    expect(a!.referenceKey).toBe(b!.referenceKey);
+  });
+
+  it('different skill_usage -> different referenceKey', () => {
+    const a = extractSkillSourceReference(skillFact);
+    const b = extractSkillSourceReference({ ...skillFact, usageKey: 'usage_xyz' });
+    expect(a!.referenceKey).not.toBe(b!.referenceKey);
+  });
+
+  it('returns null when usageKey or skillName missing', () => {
+    expect(extractSkillSourceReference({ ...skillFact, usageKey: '' })).toBeNull();
+    expect(extractSkillSourceReference({ ...skillFact, skillName: '' })).toBeNull();
+  });
+});
 
 describe('decodeMaybeDoubleEncoded', () => {
   it('passes through a plain object', () => {

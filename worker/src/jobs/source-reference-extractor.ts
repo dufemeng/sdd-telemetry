@@ -16,7 +16,7 @@ import path from 'node:path';
 
 export const SOURCE_REFERENCE_RULE_VERSION = 'src-ref-v1';
 
-export type SourceLocatorType = 'path' | 'pattern' | 'url' | 'mcp_doc' | 'unknown';
+export type SourceLocatorType = 'path' | 'pattern' | 'url' | 'mcp_doc' | 'skill' | 'unknown';
 export type SourceDirection = 'input' | 'result' | 'event';
 
 export interface ToolCallFact {
@@ -269,6 +269,62 @@ function buildReference(
     docType: parts.docType ?? null,
     eventTime: fact.eventTime,
     evidenceJson: { stableEvidenceId, ...parts.evidence },
+    ruleVersion: SOURCE_REFERENCE_RULE_VERSION,
+  };
+}
+
+/** sdd_skill_usages 行的稳定投影输入：把一次技能调用 emit 成 locator_type='skill' 的 source_reference。 */
+export interface SkillUsageFact {
+  /** sdd_skill_usages.usage_key —— 每次技能调用的稳定幂等键。 */
+  usageKey: string;
+  /** raw_skill_name —— 技能名，写入 normalized_locator，供 skill source rule 匹配。 */
+  skillName: string;
+  interactionId: number | null;
+  userId: number | null;
+  sessionId: string | null;
+  promptId: string | null;
+  eventTime: Date | null;
+}
+
+/** 技能调用的合成动作类型（技能无读写语义，统一记为 invoke）。 */
+export const SKILL_SOURCE_ACTION = 'invoke';
+
+/**
+ * 把一次技能调用（sdd_skill_usages 行）映射成一条 locator_type='skill' 的 source_reference。
+ * 粒度 = skill_usage（reference_key 绑 usage_key），保证一次调用一行、reclean 幂等、不按 tool_call 重复。
+ */
+export function extractSkillSourceReference(fact: SkillUsageFact): SourceReferenceInput | null {
+  if (!fact.usageKey || !fact.skillName) return null;
+  const direction: SourceDirection = 'input';
+  const normalizedLocator = fact.skillName;
+  const normalizedLocatorHash = sha256(normalizedLocator);
+  const referenceKey = sha256(
+    [fact.usageKey, direction, SKILL_SOURCE_ACTION, 'skill', normalizedLocatorHash].join(':'),
+  );
+  return {
+    referenceKey,
+    interactionId: fact.interactionId,
+    toolCallId: null,
+    eventId: null,
+    userId: fact.userId,
+    sessionId: fact.sessionId,
+    promptId: fact.promptId,
+    actionType: SKILL_SOURCE_ACTION,
+    locatorType: 'skill',
+    direction,
+    rawLocator: fact.skillName,
+    normalizedLocator,
+    normalizedLocatorHash,
+    mcpServer: null,
+    mcpToolName: null,
+    docId: null,
+    url: null,
+    title: null,
+    spaceId: null,
+    collectionId: null,
+    docType: null,
+    eventTime: fact.eventTime,
+    evidenceJson: { skillUsageKey: fact.usageKey, source: 'skill_usage' },
     ruleVersion: SOURCE_REFERENCE_RULE_VERSION,
   };
 }
