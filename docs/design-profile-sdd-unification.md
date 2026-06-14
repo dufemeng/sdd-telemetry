@@ -338,3 +338,30 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 - **路 2(parity,工作量大)**:补三件——① catch-all skill 匹配(`skillNames:['*']` 通配,低优先级,capability_code=raw_skill_name)让 capability 回 81;② code 规则 `excludeUserRootKeys` 复现"非 doc";③ delivery `titleStrategy`。再生成 sdd-default 全量 config(skill via `buildSddSkillConfig` + knowledge `userRootKey=wiki` + process_doc `userRootKey=requirements` + delivery + artifact + `SDD_PRESENTATION`)、切 `projectionMode`、reclean 按 user×trigger×stage 对账。
 
 **推荐路 2 的 ①②(capability/code 是 SDD 看板核心),delivery title 逐步对齐**;switch 在三件就绪后一次做、reclean 对账。
+
+---
+
+## 12. flip 已执行 + reclean 口径对账结果
+
+**flip 已 LIVE**:`sdd-default.ts` 切 `source_backed`(13 semantics→buildSddSkillConfig + catch-all + knowledge/process_doc/code path 规则);seed 修复支持 builtin 重新快照,`db:seed` 后 serving 版本切 source_backed;reclean 用统一 source_backed 投影。
+
+### capability 口径对账(核心,§9 头号风险)— ✅ 基本对上
+| | bridge | source_backed | |
+|---|---|---|---|
+| total | 81 | **81** | ✅ |
+| coded(SDD 工作流) | 34 | 34(proposal17/code9/design5/task3) | ✅ 计数一致 |
+| 非-SDD | NULL×47 | other-skill×47(catch-all) | ✅ count parity |
+| trigger user-slash / nested-skill | 39 / 9 | **39 / 9** | ✅ |
+| trigger claude-proactive | 32 | 33 | ~ 差 1(1 例语义归类微差,80/81 精确) |
+
+**§9 头号风险解决**:source_backed 从 skill `evidence_json` 复现了 per-usage trigger(user-slash/claude-proactive/nested-skill)与 stage——这正是 flip 前判定会"全空/错"的指标。
+
+### 其他表
+- **code_activities = 1265** ✅:`excludeUserRootKeys`(非 doc)机制跑通。
+- knowledge = 23(per-user wiki 根);delivery/artifacts = **2 / 2** ❌ 偏低。
+
+### 遗留(delivery-formation 口径)
+`deliveryUnitRule` 的 `parent_dir` 路径解析没能复现 bridge 的 `sdd_work_items`(标题/数量含内容派生,非纯路径)→ delivery/artifact 偏低,SDD 看板"需求/产物"会变。**这是 flip 收尾的最后一块口径**:需 delivery 形成逻辑对齐(`titleStrategy` + 可能要从过程文档内容/work-item key 派生),或接受重定义。
+
+### 仍未做(页面层,§3)
+补 3 个 knowledge 钻取端点、`/sdd/semantics` 退役、`/sdd/*` 路由收口——均在统一契约背后,投影口径稳定后做。
