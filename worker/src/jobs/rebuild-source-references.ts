@@ -21,6 +21,8 @@ export interface RebuildSourceReferencesStats {
   reused: number;
   parseFailed: number;
   unknown: number;
+  /** sdd_skill_usages emit 的 skill source_reference 数。 */
+  skillUsages: number;
   affectedRows: number;
 }
 
@@ -37,7 +39,7 @@ export async function rebuildSourceReferences(
   const result: RebuildSourceReferencesStats = {
     ...stats,
     inserted,
-    reused: Math.max(0, stats.extracted - inserted),
+    reused: Math.max(0, stats.extracted + stats.skillUsages - inserted),
   };
 
   logger.info({ stats: result }, 'source-references: rebuild completed');

@@ -1,5 +1,6 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
+  extractSkillSourceReference,
   extractSourceReferences,
   type SourceReferenceInput,
   type ToolCallFact,
@@ -27,7 +28,19 @@ export interface SourceReferenceWriteStats {
   extracted: number;
   parseFailed: number;
   unknown: number;
+  skillUsages: number;
   affectedRows: number;
+}
+
+interface SkillUsageRow extends RowDataPacket {
+  id: number;
+  usage_key: string;
+  raw_skill_name: string;
+  interaction_id: number | null;
+  user_id: number | null;
+  session_id: string | null;
+  prompt_id: string | null;
+  event_time: Date | null;
 }
 
 export class SourceReferenceWriter {
@@ -43,7 +56,43 @@ export class SourceReferenceWriter {
         await this.extractAndUpsert(pool, row, stats);
       }
     }
+    await this.rebuildSkillReferences(pool, stats);
     return stats;
+  }
+
+  /**
+   * 把每个 sdd_skill_usages emit 成一条 locator_type='skill' 的 source_reference。
+   * 粒度 = skill_usage（reference_key 绑 usage_key），upsert 幂等。
+   * 注：仅接入全量 rebuildAll（reclean 走这条);增量 per-batch（updateForBatch）的 skill 路径待后续补。
+   */
+  private async rebuildSkillReferences(pool: Pool, stats: SourceReferenceWriteStats): Promise<void> {
+    let lastId = 0;
+    for (;;) {
+      const [rows] = await pool.query<SkillUsageRow[]>(
+        `SELECT id, usage_key, raw_skill_name, interaction_id, user_id, session_id, prompt_id, event_time
+         FROM sdd_skill_usages
+         WHERE id > ?
+         ORDER BY id ASC
+         LIMIT ?`,
+        [lastId, SOURCE_REFERENCE_PAGE_SIZE],
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        lastId = row.id;
+        const ref = extractSkillSourceReference({
+          usageKey: row.usage_key,
+          skillName: row.raw_skill_name,
+          interactionId: row.interaction_id,
+          userId: row.user_id,
+          sessionId: row.session_id,
+          promptId: row.prompt_id,
+          eventTime: row.event_time,
+        });
+        if (!ref) continue;
+        stats.skillUsages += 1;
+        stats.affectedRows += await this.upsert(pool, ref, null);
+      }
+    }
   }
 
   async updateForBatch(pool: Pool, batchId: string): Promise<SourceReferenceWriteStats> {
@@ -179,6 +228,7 @@ function emptyStats(): SourceReferenceWriteStats {
     extracted: 0,
     parseFailed: 0,
     unknown: 0,
+    skillUsages: 0,
     affectedRows: 0,
   };
 }
