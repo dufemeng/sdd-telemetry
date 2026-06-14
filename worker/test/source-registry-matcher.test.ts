@@ -81,6 +81,29 @@ describe('matchSourceReference: skill', () => {
     );
     expect(m).toBeNull();
   });
+
+  it("'*' catch-all matches any skill (lower priority loses to a named rule)", () => {
+    const catchAll: ResolvedSourceRule[] = [
+      ...skillRules,
+      {
+        rule: {
+          locatorType: 'skill', ruleId: 'skill-other', category: 'skill', priority: 1,
+          confidence: 'high', enabled: true, skillNames: ['*'], actions: ['invoke'],
+        } satisfies SkillSourceRule,
+        resolvedRoot: null,
+      },
+    ];
+    const unlisted = matchSourceReference(
+      fact({ locatorType: 'skill', actionType: 'invoke', normalizedLocator: 'superpowers:brainstorming' }),
+      catchAll, E2E_MONOREPO_PROFILE_ID,
+    );
+    expect(unlisted?.ruleId).toBe('skill-other');
+    const named = matchSourceReference(
+      fact({ locatorType: 'skill', actionType: 'invoke', normalizedLocator: 'bk-fe-design' }),
+      catchAll, E2E_MONOREPO_PROFILE_ID,
+    );
+    expect(named?.ruleId).toBe('skill-design');
+  });
 });
 
 describe('matchSourceReference: userRootKey (per-user root)', () => {
@@ -111,6 +134,26 @@ describe('matchSourceReference: userRootKey (per-user root)', () => {
       wikiRules, 'sdd-default', userRoots,
     );
     expect(m).toBeNull();
+  });
+
+  it('code rule excludes paths inside an excluded per-user root (excludeUserRootKeys)', () => {
+    const codeRules: ResolvedSourceRule[] = [{
+      rule: {
+        locatorType: 'path', ruleId: 'sdd-code', category: 'code', priority: 30,
+        confidence: 'high', enabled: true, pathRegexes: ['.+'], excludeUserRootKeys: ['wiki'], actions: ['edit'],
+      } satisfies LocalPathSourceRule,
+      resolvedRoot: null,
+    }];
+    const code = matchSourceReference(
+      fact({ userId: 7, actionType: 'edit', normalizedLocator: '/home/u7/proj/src/App.tsx' }),
+      codeRules, 'sdd-default', userRoots,
+    );
+    expect(code?.category).toBe('code');
+    const insideWiki = matchSourceReference(
+      fact({ userId: 7, actionType: 'edit', normalizedLocator: '/home/u7/wiki/notes.md' }),
+      codeRules, 'sdd-default', userRoots,
+    );
+    expect(insideWiki).toBeNull();
   });
 });
 

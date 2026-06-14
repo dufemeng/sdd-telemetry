@@ -83,6 +83,7 @@ function matchLocalPathRule(
   if (relativeLocator === '') return null;
   if (!matchesGlobs(relativeLocator, resolved.rule.includeGlobs, true)) return null;
   if (matchesGlobs(relativeLocator, resolved.rule.excludeGlobs, false)) return null;
+  if (excludedByUserRoot(fact, resolved.rule, locator, userRoots)) return null;
 
   return {
     profileId,
@@ -118,6 +119,23 @@ function resolveUserRoot(
   const roots = userRoots.get(fact.userId);
   if (!roots) return null;
   return rule.userRootKey === 'wiki' ? roots.wiki : roots.requirements;
+}
+
+/** 该路径是否落在规则排除的某个 per-user 根内(SDD code="非 doc")。 */
+function excludedByUserRoot(
+  fact: SourceReferenceFact,
+  rule: LocalPathSourceRule,
+  locator: string,
+  userRoots: UserRootMap,
+): boolean {
+  if (!rule.excludeUserRootKeys?.length || fact.userId == null) return false;
+  const roots = userRoots.get(fact.userId);
+  if (!roots) return false;
+  for (const key of rule.excludeUserRootKeys) {
+    const root = key === 'wiki' ? roots.wiki : roots.requirements;
+    if (root && isInside(locator, normalizeRoot(root))) return true;
+  }
+  return false;
 }
 
 function matchRootedPath(
@@ -186,7 +204,9 @@ function matchSkillRule(
 ): MatchedSource | null {
   const skillName = fact.normalizedLocator;
   if (!skillName) return null;
-  if (!resolved.rule.skillNames.includes(skillName)) return null;
+  const names = resolved.rule.skillNames;
+  // '*' = catch-all(匹配任意技能);用低优先级 catch-all 规则收口 bridge 里 semantic=NULL 的非-SDD 技能,保 capability count 口径。
+  if (!names.includes('*') && !names.includes(skillName)) return null;
   return {
     profileId,
     sourceReferenceId: fact.sourceReferenceId,

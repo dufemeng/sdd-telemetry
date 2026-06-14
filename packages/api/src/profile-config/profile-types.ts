@@ -85,6 +85,8 @@ export interface LocalPathSourceRule extends SourceRuleBase {
   excludeGlobs?: string[];
   /** 按用户上报根解析：root 取自 sdd_users 的 wiki/requirements 列(每用户不同),投影时解析。 */
   userRootKey?: UserRootKey;
+  /** 排除落在这些 per-user 根内的路径(SDD code="非 doc":pathRegexes 全匹配 + 排除 wiki/requirements 根)。 */
+  excludeUserRootKeys?: UserRootKey[];
 }
 
 /** URL 类 source rule，适合在线知识库通过固定 URL 前缀 / 正则识别。 */

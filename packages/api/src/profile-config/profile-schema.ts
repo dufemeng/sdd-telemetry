@@ -32,6 +32,7 @@ export const LocalPathSourceRuleSchema = SourceRuleBaseSchema.extend({
   includeGlobs: z.array(z.string()).optional(),
   excludeGlobs: z.array(z.string()).optional(),
   userRootKey: UserRootKeySchema.optional(),
+  excludeUserRootKeys: z.array(UserRootKeySchema).optional(),
 });
 
 export const UrlSourceRuleSchema = SourceRuleBaseSchema.extend({
