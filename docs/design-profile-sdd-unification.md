@@ -306,3 +306,35 @@ bridge 把它们投成 capability_usages(`code=NULL`)。两个选择:
 
 ### 对账口径(flip 验证,需 reclean)
 bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × trigger_source × stage** 分组计数一致(不按 raw `capability_code` 逐一对——47 未分类项 code 不同但 stage 皆空)。
+
+---
+
+## 11. flip prep 全完成 + switch 前的口径现实(材料性发现)
+
+### prep 全部完成并验证(commits Flip-prep A–E)
+| 步 | 内容 | 验证 |
+|---|---|---|
+| A | config schema 支持 skill 规则(`SkillSourceRule` + `capabilityRule.stage`) | 单测 + typecheck/build |
+| B | skill emit 接 `updateForBatch`(全量重建) | **reclean 实测**:删空→reclean→确定性 81=81 |
+| C | `buildSddSkillConfig` 生成器(§10 映射) | 单测 |
+| D | capability 读 skill per-usage evidence | typecheck(口径在 flip reclean 验) |
+| E | matcher `userRootKey` 解析(per-user 根) | 单测 |
+
+源层(skill 进 source_references)经全量 reclean 验证健壮(81=81、幂等);capability/knowledge 的 source_backed 通路就绪。
+
+### ⚠️ 硬现实:flip 切 source_backed **无法与 bridge 口径中性一致**(实测数据支撑)
+| 表 | bridge | source_backed(当前模型) | 差 | parity 需要 |
+|---|---|---|---|---|
+| **capability** | **81**(全部 skill_usage) | **34**(仅 13 semantic 的 bk-fe-* 技能) | 47 个非-SDD 技能(`superpowers:*`/`impeccable`…)不匹配 | catch-all skill 匹配(`skillNames` 通配)——现仅精确匹配 |
+| **code** | `codeOperator`(排除 wiki/req 根) | **0**(SDD code=非 doc,无正根可表达) | 全丢 | code 规则加 **exclude-userRootKey** 机制 |
+| **delivery** | `sdd_work_items`(标题含内容派生) | requirements 路径 `parent_dir` 解析 | 标题/口径可能不同 | `titleStrategy` 对齐 |
+| **knowledge** | `knowledgeOperator`(per-user wiki) | knowledge 规则(`userRootKey=wiki`,E 已通) | 应一致 | — |
+| **artifact** | `sdd_work_item_artifacts` | `artifactRule.typePatterns`(=`artifactFilenamePatterns`) | 应较接近 | 逐型比对 |
+
+数据实证:`sdd_skill_usages` 81 = 34 SDD 工作流 + 47 非-SDD。直接 switch 会让 SDD 看板 capability 81→34、code →0——**这是行为变更,不是默认参数,故落文档而非静默执行**。
+
+### 两条路(下一步)
+- **路 1(口径重定义,简单)**:source_backed sdd-default 只统计 SDD 工作流技能(34)、不要 code 板(本就未在 SDD 看板露出)、delivery 走路径解析。SDD 看板数字会变。
+- **路 2(parity,工作量大)**:补三件——① catch-all skill 匹配(`skillNames:['*']` 通配,低优先级,capability_code=raw_skill_name)让 capability 回 81;② code 规则 `excludeUserRootKeys` 复现"非 doc";③ delivery `titleStrategy`。再生成 sdd-default 全量 config(skill via `buildSddSkillConfig` + knowledge `userRootKey=wiki` + process_doc `userRootKey=requirements` + delivery + artifact + `SDD_PRESENTATION`)、切 `projectionMode`、reclean 按 user×trigger×stage 对账。
+
+**推荐路 2 的 ①②(capability/code 是 SDD 看板核心),delivery title 逐步对齐**;switch 在三件就绪后一次做、reclean 对账。
