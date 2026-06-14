@@ -40,6 +40,7 @@ interface SourceReferenceRow extends RowDataPacket {
   space_id: string | null;
   collection_id: string | null;
   doc_type: string | null;
+  evidence_json: unknown;
 }
 
 interface MatchedSourceReferenceRow extends SourceReferenceRow {
@@ -242,6 +243,7 @@ async function loadMatchedSourceFacts(
             s.tool_call_id, s.interaction_id, s.event_id, s.user_id, s.session_id, s.prompt_id,
             s.action_type, s.locator_type, s.normalized_locator, s.event_time,
             s.mcp_server, s.mcp_tool_name, s.doc_id, s.url, s.title, s.space_id, s.collection_id, s.doc_type,
+            s.evidence_json,
             m.matched_rule_id, m.category AS match_category, m.action_type AS match_action_type,
             m.locator_type AS match_locator_type, m.normalized_locator AS match_normalized_locator,
             m.relative_locator, m.resource_id, m.source_namespace, m.confidence,
@@ -282,7 +284,7 @@ export async function loadSourceReferenceFacts(pool: Pool): Promise<SourceRefere
     `SELECT id AS source_reference_id, reference_key AS source_reference_key,
             tool_call_id, interaction_id, event_id, user_id, session_id, prompt_id,
             action_type, locator_type, normalized_locator, event_time,
-            mcp_server, mcp_tool_name, doc_id, url, title, space_id, collection_id, doc_type
+            mcp_server, mcp_tool_name, doc_id, url, title, space_id, collection_id, doc_type, evidence_json
      FROM source_references
      ORDER BY id ASC`,
   );
@@ -312,6 +314,7 @@ function toSourceReferenceFact(row: SourceReferenceRow): SourceReferenceFact {
     spaceId: row.space_id,
     collectionId: row.collection_id,
     docType: row.doc_type,
+    evidenceJson: parseJsonRecord(row.evidence_json),
   };
 }
 
@@ -489,6 +492,14 @@ async function insertCapabilityUsage(
   rule: CapabilityRule,
   attribution: AttributionResult,
 ): Promise<void> {
+  // skill 类匹配:per-usage 字段从 source_reference.evidence_json 读(复现 bridge 的 user/auto-triggered、
+  // skill_source、status、raw_skill_name 口径);非 skill(路径类能力)沿用静态值。
+  const isSkill = item.match.category === 'skill';
+  const ev = isSkill ? item.fact.evidenceJson ?? {} : {};
+  const rawCapabilityName = isSkill ? (item.match.normalizedLocator || rule.capabilityCode) : rule.capabilityCode;
+  const capabilitySource = isSkill ? evString(ev, 'skillSource') : 'source_reference';
+  const triggerSource = isSkill ? evString(ev, 'invocationTrigger') : (rule.triggerSource ?? null);
+  const status = isSkill ? (evString(ev, 'status') ?? 'observed') : 'observed';
   await ctx.pool.query<ResultSetHeader>(
     `INSERT INTO profile_capability_usages
        (profile_id, projection_run_id, usage_key, delivery_unit_id, interaction_id, user_id, session_id, prompt_id,
@@ -498,12 +509,17 @@ async function insertCapabilityUsage(
     [
       ctx.profileId, ctx.projectionRunId, sourceBackedStableKey(ctx.profileId, 'capability', item.fact.sourceReferenceKey),
       attribution.deliveryUnitId, item.fact.interactionId, item.fact.userId, item.fact.sessionId, item.fact.promptId,
-      rule.capabilityCode, rule.capabilityCode, rule.displayName, 'source_reference', rule.triggerSource ?? null,
-      'observed', item.fact.eventTime, rule.ruleId, item.match.confidence,
+      rawCapabilityName, rule.capabilityCode, rule.displayName, capabilitySource, triggerSource,
+      status, item.fact.eventTime, rule.ruleId, item.match.confidence,
       JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
+}
+
+function evString(ev: Record<string, unknown>, key: string): string | null {
+  const value = ev[key];
+  return typeof value === 'string' ? value : null;
 }
 
 async function insertKnowledgeRecall(

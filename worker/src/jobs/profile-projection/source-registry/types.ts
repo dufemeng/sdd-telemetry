@@ -30,6 +30,8 @@ export interface SourceReferenceFact {
   spaceId: string | null;
   collectionId: string | null;
   docType: string | null;
+  /** source_references.evidence_json（skill ref 含 invocationTrigger/skillSource/status,供 capability per-usage 口径）。 */
+  evidenceJson?: Record<string, unknown>;
 }
 
 /**
