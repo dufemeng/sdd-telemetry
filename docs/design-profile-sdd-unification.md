@@ -223,10 +223,19 @@ userRootKey 的 path 规则视为可解析(resolvedRoot=null,延迟到投影);va
 **结论:Phase A 收在 A.1**(durable 机制:userRootKey 字段)。真正的知识/代码 config 驱动随 sdd-default
 flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED operator,无 throwaway)。
 
-### ⏭️ 下一步 Phase B — skill 成为一等 source(枢纽,大且需 reclean)
-- **为什么**:flip 的前提。sdd-default 的能力/需求/产物来自 `sdd_*`(skill→semantic),要统一就得让
-  skill 进 `source_references`(`locator_type='skill'`),再由统一 capability/artifact operator 投影。
-- **怎么做**:清洗为每个 `skill_usage` emit 一条 `locator_type='skill'` source_reference(ref_key 绑
-  skill_usage 稳定 key);sourceRule/capabilityRule 支持 skill;`presentation.maturityStages` 驱动 funnel。
-- **风险/成本**:动清洗管线 + 需**全量 reclean** 验证(prod 锁 + 交互确认),是一次明显的 scope 升级——
-  应作为独立专注单元推进,不宜塞进零碎增量。
+### ✅ Phase B.1 — skill emit 纯函数(commit,非 reclean)
+`extractSkillSourceReference`:`sdd_skill_usages` 行 → 一条 `locator_type='skill'` source_reference,
+`reference_key` 绑 `usage_key`(幂等、不按 tool_call 重复),`action_type='invoke'`,
+`normalized_locator=skill_name`;`SourceLocatorType` 加 `'skill'`(VARCHAR 列无需迁移)。
+纯函数 + 单测(幂等/区分/空值),**未接 writer**。自检:extractor 17/17、worker 119 passed、typecheck/build 全绿。
+
+### ⛔ Phase B.2 — 接入 writer + 全量 reclean 回填(reclean-gated,停在交互确认)
+- **怎么做**:给 `SourceReferenceWriter` 加 `rebuildSkillReferences`(遍历 `sdd_skill_usages` → upsert)并接进
+  清洗流;`pnpm db:reclean` 回填历史 skill source_reference。
+- **为什么 gated**:它会写/回填 `source_references`(=reclean 操作),按 CLAUDE.md 带 prod 锁 + 交互确认。
+- **怎么验证**:reclean 后 `SELECT COUNT(*) FROM source_references WHERE locator_type='skill'` ≈
+  `sdd_skill_usages` 行数(可证伪:一对一)。
+
+### ⏭️ 之后 — flip(Phase B 配置侧 + Phase C,均 reclean-gated)
+config 加 `SkillSourceRule` + `'invoke'` action + `capabilityRule.stage`;sdd-default 切 source_backed;
+退役 `sdd_*` 桥接;补 3 个 knowledge 端点;`/sdd/*` 路由收口。
