@@ -206,12 +206,27 @@ sdd-default 变成普通 `source_backed` profile,`sourceRules` =
 解析根不含这些路径 → match 返回 null。**matcher 本身正确**。这些用例会在 Phase A
 (sdd-default 改 source_backed、matcher/config 变更)随之重写,届时一并修;现在不动(手术刀范围)。
 
-### ⏭️ 下一步 Phase A — 知识+代码 config 化(待开工)
-- **为什么**:让 sdd-default 的知识/代码投影由 config sourceRule 驱动,替掉 `knowledgeOperator`/
-  `codeOperator` 的硬编码(`knowledge-v1`/`code-v1` + 每用户根)。
-- **怎么做**:① path locator 加 `userRootKey:'wiki'|'requirements'`;② 给 sdd-default 配 knowledge/code
-  path 规则;③ 两个 operator 改读 config + 在 match 时按 `sdd_users` 的 userId 解析 per-user 根。
-- **风险**:per-user 根解析发生在 match 时(需 userId),matcher 接口要接 per-user roots map——是
-  真接口改动,非纯加字段;需 DB 验证(reset-derived + worker once 比对计数)。
-- **怎么验证**:reclean/reset-derived 前后 sdd-default 的 `profile_knowledge_recalls` /
-  `profile_code_activities` 计数一致(可证伪)。
+### ✅ Phase A.1 — path locator 加 userRootKey 机制(commit `8fca839`)
+schema/types 加 `userRootKey:'wiki'|'requirements'`;`resolveRuntimeProfileConfig` 把仅
+userRootKey 的 path 规则视为可解析(resolvedRoot=null,延迟到投影);validation 计入合法 root 来源。
+自检:profile-config 20/20(含新用例)、typecheck 6/6、build 5/5、worker 无新增红。
+
+### ⛔ Phase A.2(config 驱动桥接 operator)— 读码后决定**不做**
+读 `knowledge-operator.ts` / `code-operator.ts` / `runner.ts` 后的两点代码事实改变了判断:
+1. **codeOperator 是排除式**("path 不在 wiki/requirements 根下即代码"),**无正根**,无法映射成
+   `userRootKey` 的包含式规则——code 的 config 化要等 source_backed flip 设计(届时 code 用正根 `src/`
+   或显式 exclude 语义)。
+2. **knowledgeOperator 能 config 驱动**(`ProjectionContext` 带 `profileConfig`),但那只是把硬编码的
+   actions/root 换成"恰好等价"的 config 规则——**count 是 tautological 相等**,且这俩 operator 在 Phase C
+   flip 时整体删除,属**浅层 throwaway 胶水**。按简洁/不做 throwaway 原则,**不值得做**。
+
+**结论:Phase A 收在 A.1**(durable 机制:userRootKey 字段)。真正的知识/代码 config 驱动随 sdd-default
+flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED operator,无 throwaway)。
+
+### ⏭️ 下一步 Phase B — skill 成为一等 source(枢纽,大且需 reclean)
+- **为什么**:flip 的前提。sdd-default 的能力/需求/产物来自 `sdd_*`(skill→semantic),要统一就得让
+  skill 进 `source_references`(`locator_type='skill'`),再由统一 capability/artifact operator 投影。
+- **怎么做**:清洗为每个 `skill_usage` emit 一条 `locator_type='skill'` source_reference(ref_key 绑
+  skill_usage 稳定 key);sourceRule/capabilityRule 支持 skill;`presentation.maturityStages` 驱动 funnel。
+- **风险/成本**:动清洗管线 + 需**全量 reclean** 验证(prod 锁 + 交互确认),是一次明显的 scope 升级——
+  应作为独立专注单元推进,不宜塞进零碎增量。
