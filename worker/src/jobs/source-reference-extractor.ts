@@ -283,6 +283,10 @@ export interface SkillUsageFact {
   userId: number | null;
   sessionId: string | null;
   promptId: string | null;
+  /** per-usage 上下文（写进 evidence，供 flip 时 source_backed capability 复现 bridge 口径）。 */
+  invocationTrigger: string | null;
+  skillSource: string | null;
+  status: string | null;
   eventTime: Date | null;
 }
 
@@ -324,7 +328,13 @@ export function extractSkillSourceReference(fact: SkillUsageFact): SourceReferen
     collectionId: null,
     docType: null,
     eventTime: fact.eventTime,
-    evidenceJson: { skillUsageKey: fact.usageKey, source: 'skill_usage' },
+    evidenceJson: {
+      skillUsageKey: fact.usageKey,
+      source: 'skill_usage',
+      invocationTrigger: fact.invocationTrigger,
+      skillSource: fact.skillSource,
+      status: fact.status,
+    },
     ruleVersion: SOURCE_REFERENCE_RULE_VERSION,
   };
 }

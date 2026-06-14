@@ -40,6 +40,9 @@ interface SkillUsageRow extends RowDataPacket {
   user_id: number | null;
   session_id: string | null;
   prompt_id: string | null;
+  invocation_trigger: string | null;
+  skill_source: string | null;
+  status: string | null;
   event_time: Date | null;
 }
 
@@ -69,7 +72,8 @@ export class SourceReferenceWriter {
     let lastId = 0;
     for (;;) {
       const [rows] = await pool.query<SkillUsageRow[]>(
-        `SELECT id, usage_key, raw_skill_name, interaction_id, user_id, session_id, prompt_id, event_time
+        `SELECT id, usage_key, raw_skill_name, interaction_id, user_id, session_id, prompt_id,
+                invocation_trigger, skill_source, status, event_time
          FROM sdd_skill_usages
          WHERE id > ?
          ORDER BY id ASC
@@ -86,6 +90,9 @@ export class SourceReferenceWriter {
           userId: row.user_id,
           sessionId: row.session_id,
           promptId: row.prompt_id,
+          invocationTrigger: row.invocation_trigger,
+          skillSource: row.skill_source,
+          status: row.status,
           eventTime: row.event_time,
         });
         if (!ref) continue;

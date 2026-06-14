@@ -32,6 +32,9 @@ describe('extractSkillSourceReference', () => {
     userId: 100,
     sessionId: 'sess_1',
     promptId: 'prompt_1',
+    invocationTrigger: 'user',
+    skillSource: 'slash_command',
+    status: 'observed',
     eventTime: new Date('2026-06-04T00:00:00.000Z'),
   };
 
@@ -42,12 +45,17 @@ describe('extractSkillSourceReference', () => {
     expect(ref!.actionType).toBe(SKILL_SOURCE_ACTION);
     expect(ref!.normalizedLocator).toBe('bk-fe-design');
     expect(ref!.toolCallId).toBeNull();
-    expect(ref!.evidenceJson).toMatchObject({ skillUsageKey: 'usage_abc' });
+    expect(ref!.evidenceJson).toMatchObject({
+      skillUsageKey: 'usage_abc',
+      invocationTrigger: 'user',
+      skillSource: 'slash_command',
+      status: 'observed',
+    });
   });
 
   it('is idempotent on usageKey (other fields do not change referenceKey)', () => {
     const a = extractSkillSourceReference(skillFact);
-    const b = extractSkillSourceReference({ ...skillFact, interactionId: 999, eventTime: new Date() });
+    const b = extractSkillSourceReference({ ...skillFact, interactionId: 999, eventTime: new Date(), invocationTrigger: 'auto', status: 'x' });
     expect(a!.referenceKey).toBe(b!.referenceKey);
   });
 
