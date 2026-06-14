@@ -229,15 +229,16 @@ flip 到 source_backed 一次做对(那时用已 config 驱动的 SOURCE_BACKED 
 `normalized_locator=skill_name`;`SourceLocatorType` 加 `'skill'`(VARCHAR 列无需迁移)。
 纯函数 + 单测(幂等/区分/空值),**未接 writer**。自检:extractor 17/17、worker 119 passed、typecheck/build 全绿。
 
-### 🟡 Phase B.2 — writer 接入完成,reclean 待确认(commit `9bcd971`)
-- **已做(代码,非 reclean)**:`SourceReferenceWriter.rebuildSkillReferences`(遍历 `sdd_skill_usages` →
-  `extractSkillSourceReference` → 复用 `upsert`)接进 `rebuildAll`(reclean/CLI 全量重建走这条);
-  `SourceReferenceWriteStats` 加 `skillUsages`;修 `rebuild-source-references` 的 `reused` 计算把 skill 计入。
-  自检:typecheck 6/6、worker 119 passed、build 5/5。SQL 列对齐 `sdd_skill_usages` schema。
-- **未做(reclean-gated,停在交互确认)**:`pnpm db:reclean` 回填历史 skill source_reference。
-- **怎么验证(reclean 后)**:`SELECT COUNT(*) FROM source_references WHERE locator_type='skill'` ≈
-  `SELECT COUNT(*) FROM sdd_skill_usages`(可证伪:一对一)。
-- **已知缺口(后续)**:增量 `updateForBatch` 的 skill 路径未接,steady-state 新 skill 要靠下次全量重建。
+### ✅ Phase B.2 — writer 接入完成并已验证(commit `9bcd971`)
+- **代码**:`SourceReferenceWriter.rebuildSkillReferences`(遍历 `sdd_skill_usages` →
+  `extractSkillSourceReference` → 复用 `upsert`)接进 `rebuildAll`;`SourceReferenceWriteStats` 加
+  `skillUsages`;修 `rebuild-source-references` 的 `reused` 计算把 skill 计入(破坏性自检)。
+- **已验证(用轻量 `pnpm profile:rebuild-source-references`,非 `db:reclean`——它就是 `rebuildAll` 路径,幂等非破坏)**:
+  - `source_references WHERE locator_type='skill'` = **81** == `sdd_skill_usages` = 81(**1:1**)。
+  - distinct `reference_key` = 81、`action_type` 全 `invoke`、`normalized_locator`=skill_name、`tool_call_id`=NULL、evidence 带 `skillUsageKey`。
+  - **幂等已证**:二次 rebuild `inserted=0`、skill_refs 仍 = 81(不重复)——reclean 安全的前提成立。
+- **已知缺口(后续)**:增量 `updateForBatch` 的 skill 路径未接,steady-state 新 skill 靠下次全量重建。
+- **全量 `db:reclean` 仍留到 flip 阶段**(重建 raw→derived→projection),届时单独确认。
 
 ### ⏭️ 之后 — flip(Phase B 配置侧 + Phase C,均 reclean-gated)
 config 加 `SkillSourceRule` + `'invoke'` action + `capabilityRule.stage`;sdd-default 切 source_backed;
