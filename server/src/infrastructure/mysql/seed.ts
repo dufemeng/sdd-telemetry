@@ -278,20 +278,30 @@ async function bootstrapBuiltinProfileConfig(
   }>;
   const existing = existingRows[0];
   const publishedVersionId = existing?.published_version_id == null ? null : String(existing.published_version_id);
-  if (publishedVersionId) {
-    await dataSource.query(
-      `UPDATE profile_configs
-       SET origin = 'builtin',
-           serving_version_id = COALESCE(serving_version_id, published_version_id),
-           gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE profile_id = ?`,
-      [config.profileId],
-    );
-    return { versionId: publishedVersionId, created: false };
-  }
 
   const configJson = canonicalProfileConfigJson(config);
   const definitionHash = sha256(configJson);
+
+  if (publishedVersionId) {
+    // 已存在:仅当 builtin 定义 hash 与当前 serving 版本一致时跳过;变了(如 flip)则下面重新快照并切 serving。
+    const servingId = existing?.serving_version_id ?? publishedVersionId;
+    const hashRows = (await dataSource.query(
+      `SELECT definition_hash FROM profile_config_versions WHERE id = ? LIMIT 1`,
+      [servingId],
+    )) as Array<{ definition_hash: string }>;
+    if (hashRows[0]?.definition_hash === definitionHash) {
+      await dataSource.query(
+        `UPDATE profile_configs
+         SET origin = 'builtin',
+             serving_version_id = COALESCE(serving_version_id, published_version_id),
+             gmt_modified = CURRENT_TIMESTAMP(3)
+         WHERE profile_id = ?`,
+        [config.profileId],
+      );
+      return { versionId: publishedVersionId, created: false };
+    }
+    // builtin 定义已变 → 落到下面创建/复用新版本 + 切 published/serving。
+  }
 
   await dataSource.query(
     `INSERT INTO profile_configs
@@ -336,7 +346,7 @@ async function bootstrapBuiltinProfileConfig(
   await dataSource.query(
     `UPDATE profile_configs
      SET display_name = ?, status = ?, projection_mode = ?,
-         published_version_id = ?, serving_version_id = COALESCE(serving_version_id, ?),
+         published_version_id = ?, serving_version_id = ?,
          draft_version_id = NULL, archived_at = NULL, gmt_modified = CURRENT_TIMESTAMP(3)
      WHERE profile_id = ?`,
     [config.displayName, config.status, config.projectionMode, versionId, versionId, config.profileId],

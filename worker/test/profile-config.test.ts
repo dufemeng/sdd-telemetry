@@ -16,8 +16,10 @@ const sdd = getProfileConfig(SDD_DEFAULT_PROFILE_ID)!;
 const onlineDocs = getProfileConfig(ONLINE_DOCS_PROFILE_ID)!;
 
 describe('profile config projectionMode + shipped configs', () => {
-  it('sdd-default is sdd_bridge', () => {
-    expect(sdd.projectionMode).toBe('sdd_bridge');
+  it('sdd-default is source_backed (flipped from sdd_bridge)', () => {
+    expect(sdd.projectionMode).toBe('source_backed');
+    expect(sdd.sourceRules.some((r) => r.locatorType === 'skill')).toBe(true);
+    expect(validateProfileConfig(sdd).valid).toBe(true);
   });
 
   it('e2e-monorepo is source_backed with process doc, knowledge, and implementation code rules', () => {
