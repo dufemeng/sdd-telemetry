@@ -1,11 +1,45 @@
-import {
-  buildSddSkillConfig,
-  type CapabilityRule,
-  type LocalPathSourceRule,
-  type SourceRule,
-  type UserRootKey,
-  type WorkflowProfileConfig,
+import type {
+  CapabilityRule,
+  LocalPathSourceRule,
+  SourceRule,
+  UserRootKey,
+  WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
+
+/**
+ * buildSddSkillConfig 的本地镜像(§10 skill→config 映射)。
+ *
+ * 不从 @sdd-telemetry/api 运行时 import:该包以 CommonJS dist 被消费,Vite 对 link 的
+ * workspace 包走 /@fs/ 原样 serve,深层 __exportStar 的具名导出在浏览器里取不到。
+ * 这里只内联这一段纯逻辑(类型仍从 api import,编译期擦除)。与 packages/api 的
+ * buildSddSkillConfig 保持一致——config-authoring.test 的 round-trip 用内置 profile
+ * (由 api 端生成)做基准,一旦漂移测试即红。
+ */
+function buildSkillRules(
+  semantics: Array<{ semanticCode: string; displayName: string; artifactFilenamePatterns: string[]; skillNames: string[] }>,
+): { sourceRules: SourceRule[]; capabilityRules: CapabilityRule[]; artifactTypePatterns: Array<{ artifactType: string; include: string[] }> } {
+  const sourceRules: SourceRule[] = [];
+  const capabilityRules: CapabilityRule[] = [];
+  const artifactTypePatterns: Array<{ artifactType: string; include: string[] }> = [];
+  let priority = 100;
+  for (const sem of semantics) {
+    if (sem.skillNames.length === 0) continue;
+    const ruleId = `skill-${sem.semanticCode}`;
+    sourceRules.push({
+      locatorType: 'skill', ruleId, category: 'skill', priority,
+      confidence: 'high', enabled: true, skillNames: sem.skillNames, actions: ['invoke'],
+    });
+    capabilityRules.push({
+      ruleId: `cap-${sem.semanticCode}`, sourceRuleIds: [ruleId], actions: ['invoke'],
+      capabilityCode: sem.semanticCode, displayName: sem.displayName,
+    });
+    if (sem.artifactFilenamePatterns.length > 0) {
+      artifactTypePatterns.push({ artifactType: sem.semanticCode, include: sem.artifactFilenamePatterns });
+    }
+    priority -= 1;
+  }
+  return { sourceRules, capabilityRules, artifactTypePatterns };
+}
 
 /**
  * 简单视图的「内容地图 + 技能映射」编解码层。
@@ -208,7 +242,7 @@ function spliceBeforeId<T>(list: T[], markerId: string, inserts: T[], idOf: (ite
 }
 
 export function encodeSemanticRows(config: WorkflowProfileConfig, rows: SemanticRow[]): WorkflowProfileConfig {
-  const generated = buildSddSkillConfig(
+  const generated = buildSkillRules(
     rows.map((row) => ({
       semanticCode: row.code,
       displayName: row.displayName,
