@@ -224,6 +224,7 @@ export const sourceBackedArtifactTurnOperator: ProjectionOperator = {
   name: 'sourceBackedArtifactTurn',
   async run(ctx): Promise<OperatorStats> {
     const writes = await loadRunArtifactWrites(ctx.pool, ctx.profileId, ctx.projectionRunId);
+    const insertedTurnKeys = new Set<string>();
     let source = 0;
     let projected = 0;
     let skipped = 0;
@@ -238,11 +239,17 @@ export const sourceBackedArtifactTurnOperator: ProjectionOperator = {
         skipped += 1;
         continue;
       }
-      source += 1;
+      source += turns.length;
       // turn 的能力归属 = 本次 write 的著作技能(与 bridge 一致:同一 write 的所有 turn 共享其作者能力)。
       const capabilityUsageId = await resolveWriteCapabilityUsageId(ctx, write);
       for (const turn of turns) {
-        await insertArtifactTurn(ctx, write, turn, capabilityUsageId);
+        const turnKey = buildArtifactTurnKey(ctx.profileId, write.artifact_key, turn.interaction_id);
+        if (insertedTurnKeys.has(turnKey)) {
+          skipped += 1;
+          continue;
+        }
+        insertedTurnKeys.add(turnKey);
+        await insertArtifactTurn(ctx, write, turn, capabilityUsageId, turnKey);
         projected += 1;
       }
     }
@@ -721,8 +728,8 @@ async function insertArtifactTurn(
   write: ArtifactWriteRow,
   turn: DiscussionTurnRow,
   capabilityUsageId: number | null,
+  turnKey: string,
 ): Promise<void> {
-  const turnKey = sourceBackedStableKey(ctx.profileId, 'artifact_turn', `${write.artifact_key}:${turn.interaction_id}`);
   await ctx.pool.query<ResultSetHeader>(
     `INSERT INTO profile_artifact_turns
        (profile_id, projection_run_id, turn_key, artifact_id, delivery_unit_id, interaction_id,
@@ -742,6 +749,10 @@ async function insertArtifactTurn(
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
+}
+
+export function buildArtifactTurnKey(profileId: string, artifactKey: string, interactionId: number): string {
+  return sourceBackedStableKey(profileId, 'artifact_turn', `${artifactKey}:${interactionId}`);
 }
 
 async function createAttributor(

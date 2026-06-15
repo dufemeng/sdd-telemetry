@@ -7,9 +7,11 @@ import {
 import {
   buildCodePlan,
   buildDeliveryPlan,
+  sourceBackedArtifactTurnOperator,
 } from '../src/jobs/profile-projection/source-backed-operators';
 import { matchSourceReference } from '../src/jobs/profile-projection/source-registry/matcher';
 import type { SourceReferenceFact } from '../src/jobs/profile-projection/source-registry/types';
+import type { ProjectionContext } from '../src/jobs/profile-projection/runner';
 
 const ROOT = '/repo/acme';
 const config = getProfileConfig(E2E_MONOREPO_PROFILE_ID)!;
@@ -98,5 +100,80 @@ describe('source-backed code parsing', () => {
     )!;
     expect(match.category).toBe('process_doc');
     expect(match.ruleId).toBe('e2e-plan-process-doc');
+  });
+});
+
+describe('source-backed artifact turns', () => {
+  it('deduplicates duplicate write rows that produce the same discussion turn', async () => {
+    const insertedTurnKeys = new Set<string>();
+    const writeTime = new Date('2026-06-11T06:13:49.751Z');
+    const turnTime = new Date('2026-06-11T06:13:38.141Z');
+    const queries: string[] = [];
+    const pool = {
+      query: async (sql: string, params: unknown[] = []) => {
+        queries.push(sql);
+        if (sql.includes('FROM profile_artifact_writes w') && sql.includes('JOIN profile_artifacts a')) {
+          return [[
+            {
+              write_id: 1,
+              artifact_id: 10,
+              artifact_key: 'artifact-a',
+              delivery_unit_id: 20,
+              interaction_id: 30,
+              user_id: 40,
+              session_id: 'session-a',
+              event_time: writeTime,
+              matched_rule_id: 'process-doc',
+              confidence: 'high',
+            },
+            {
+              write_id: 2,
+              artifact_id: 10,
+              artifact_key: 'artifact-a',
+              delivery_unit_id: 20,
+              interaction_id: 30,
+              user_id: 40,
+              session_id: 'session-a',
+              event_time: writeTime,
+              matched_rule_id: 'process-doc',
+              confidence: 'high',
+            },
+          ], undefined];
+        }
+        if (sql.includes('FROM sdd_interactions i')) {
+          return [[{
+            interaction_id: 31,
+            started_at: turnTime,
+            anchor_event_time: turnTime,
+          }], undefined];
+        }
+        if (sql.includes('FROM profile_capability_usages')) {
+          return [[], undefined];
+        }
+        if (sql.includes('INSERT INTO profile_artifact_turns')) {
+          const key = String(params[2]);
+          if (insertedTurnKeys.has(key)) {
+            throw new Error(`duplicate turn key: ${key}`);
+          }
+          insertedTurnKeys.add(key);
+          return [{ affectedRows: 1 }, undefined];
+        }
+        throw new Error(`unexpected query: ${sql}`);
+      },
+    };
+
+    const stats = await sourceBackedArtifactTurnOperator.run({
+      pool,
+      profileId: E2E_MONOREPO_PROFILE_ID,
+      profileConfig: config,
+      profileConfigVersionId: '1',
+      projectionRunId: 1,
+      logger: console,
+      registry: { capabilityUsageBySkillUsageId: new Map(), deliveryUnitByWorkItemId: new Map(), artifactByArtifactId: new Map() },
+    } as unknown as ProjectionContext);
+
+    expect(stats).toEqual({ source: 2, projected: 1, skipped: 1 });
+    expect(insertedTurnKeys.size).toBe(1);
+    expect(queries.filter((sql) => sql.includes('INSERT INTO profile_artifact_turns'))).toHaveLength(1);
   });
 });
