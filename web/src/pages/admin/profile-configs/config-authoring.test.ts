@@ -44,6 +44,27 @@ describe('content map decode', () => {
       );
     }
   });
+
+  it('switches e2e knowledge from a shared path to per-user root (same locator type)', () => {
+    const rows = decodeContentRows(e2e);
+    const next = rows.map((r) => (r.kind === 'knowledge' ? { ...r, sourceType: 'user_root' as const } : r));
+    const cfg = encodeContentRows(e2e, next);
+    const rule = cfg.sourceRules.find((r) => r.category === 'knowledge')!;
+    expect(rule.locatorType).toBe('path');
+    expect('userRootKey' in rule ? rule.userRootKey : undefined).toBe('wiki');
+    expect(validateProfileConfig(cfg).valid).toBe(true);
+    expect(decodeContentRows(cfg).find((r) => r.kind === 'knowledge')?.sourceType).toBe('user_root');
+  });
+
+  it('switches sdd knowledge from per-user root to online url (crosses locator type)', () => {
+    const rows = decodeContentRows(sdd);
+    const next = rows.map((r) => (r.kind === 'knowledge' ? { ...r, sourceType: 'url' as const, urlPrefixes: ['https://docs/'] } : r));
+    const cfg = encodeContentRows(sdd, next);
+    const rule = cfg.sourceRules.find((r) => r.category === 'knowledge')!;
+    expect(rule.locatorType).toBe('url');
+    expect(validateProfileConfig(cfg).valid).toBe(true);
+    expect(decodeContentRows(cfg).find((r) => r.kind === 'knowledge')?.sourceType).toBe('url');
+  });
 });
 
 describe('skill semantic decode/encode', () => {

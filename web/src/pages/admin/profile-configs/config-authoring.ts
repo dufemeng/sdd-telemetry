@@ -1,6 +1,5 @@
 import type {
   CapabilityRule,
-  LocalPathSourceRule,
   SourceRule,
   UserRootKey,
   WorkflowProfileConfig,
@@ -77,27 +76,39 @@ export interface SemanticRow {
 export const CONTENT_KINDS: ContentKind[] = ['knowledge', 'process_doc', 'code'];
 
 export const CONTENT_KIND_META: Record<ContentKind, { label: string; hint: string; icon: string }> = {
-  knowledge: { label: '知识库读取', hint: '工程师读了哪些知识库文档', icon: '📚' },
-  process_doc: { label: '过程文档', hint: '需求 / 设计 / 任务等过程文档写在哪', icon: '📝' },
-  code: { label: '代码读写', hint: '实现代码读写发生在哪', icon: '💻' },
+  knowledge: { label: '知识库', hint: '工程师读的知识库文档', icon: '📚' },
+  process_doc: { label: '过程文档', hint: '需求 / 设计 / 任务等过程文档', icon: '📝' },
+  code: { label: '代码', hint: '实现代码的读写', icon: '💻' },
 };
 
+// 来源类型按「意图」措辞:用户回答"这类内容在哪种情况",机制由答案推导。
 export const CONTENT_SOURCE_TYPE_LABEL: Record<ContentSourceType, string> = {
-  path_contains: '路径包含',
-  user_root: '每个用户的目录',
-  code_catchall: '其余所有路径',
-  url: '网址前缀',
-  mcp: '在线文档(MCP)',
+  path_contains: '在一个大家共用的仓库里',
+  user_root: '每个人在自己电脑上',
+  code_catchall: '除知识 / 文档外的其余路径',
+  url: '是在线文档(网址)',
+  mcp: '是在线文档(MCP)',
 };
 
-/** 来源类型的一句话解释,显示在下拉旁边,免得用户猜。 */
+/** 来源类型的一句话解释,显示在下拉下面。 */
 export const CONTENT_SOURCE_TYPE_DESC: Record<ContentSourceType, string> = {
-  path_contains: '文件路径里只要包含你填的一段,就算这一类。多人、多台电脑时最稳。',
-  user_root: '每个用户上报自己电脑上的目录(知识库 / 需求目录),你不用填路径,选一种即可。',
+  path_contains: '路径里包含你填的一段就算。适合所有人共用同一个仓库(路径结构一致)。',
+  user_root: '每个用户的客户端上报自己电脑上的目录,你不用填路径。适合每个人的仓库散落在各自机器上。',
   code_catchall: '凡是不在知识库 / 需求目录里的路径,都当作代码。',
-  url: '网址以你填的前缀开头,就算这一类。',
+  url: '网址以你填的前缀开头就算。',
   mcp: '通过 MCP 工具读到的在线文档。',
 };
+
+/** 每类内容合理的「在哪」选项:代码不会在线,只有知识/文档有"每个人自己的目录"。 */
+export function availableSourceTypes(kind: ContentKind): ContentSourceType[] {
+  if (kind === 'code') return ['path_contains', 'code_catchall'];
+  return ['path_contains', 'user_root', 'url'];
+}
+
+/** 选了"每个人自己电脑上"时,用哪个上报根:知识库→wiki,过程文档→requirements。 */
+function userRootForKind(kind: ContentKind): UserRootKey {
+  return kind === 'knowledge' ? 'wiki' : 'requirements';
+}
 
 function asLines(value: string[] | undefined): string[] {
   return Array.isArray(value) ? value.filter(Boolean) : [];
@@ -157,27 +168,42 @@ export function isContentDecodable(config: WorkflowProfileConfig): boolean {
     .every((rule) => rule.locatorType !== 'skill');
 }
 
-/** 把一条内容行写回(或新建)对应类别的 path/url 规则字段。 */
-function applyContentRow(rule: LocalPathSourceRule | SourceRule, row: ContentRow): SourceRule {
-  if (row.sourceType === 'url' && rule.locatorType === 'url') {
-    return { ...rule, urlPrefixes: row.urlPrefixes };
-  }
-  if (row.sourceType === 'mcp' && rule.locatorType === 'mcp_doc') {
-    return { ...rule, urlPrefixes: row.urlPrefixes };
-  }
-  if (rule.locatorType !== 'path') return rule;
-  if (row.sourceType === 'user_root') {
-    return { ...rule, userRootKey: row.userRootKey ?? undefined, pathContains: undefined, excludeGlobs: row.excludeGlobs.length ? row.excludeGlobs : undefined };
-  }
-  if (row.sourceType === 'code_catchall') {
-    return { ...rule, pathRegexes: ['.+'], excludeUserRootKeys: row.excludeUserRootKeys, excludeGlobs: row.excludeGlobs.length ? row.excludeGlobs : undefined };
-  }
-  return {
-    ...rule,
-    pathContains: row.pathContains,
-    userRootKey: undefined,
-    excludeGlobs: row.excludeGlobs.length ? row.excludeGlobs : undefined,
+function locatorTypeFor(sourceType: ContentSourceType): SourceRule['locatorType'] {
+  if (sourceType === 'url') return 'url';
+  if (sourceType === 'mcp') return 'mcp_doc';
+  return 'path';
+}
+
+/**
+ * 把一条内容行写回对应类别的规则。
+ * - 来源类型不改 locatorType 时:保留现有规则其它字段(includeGlobs / rootEnv 等),只动相关字段。
+ * - 改了 locatorType 时(本地 ↔ 在线):只带过公共字段重建,丢掉不再适用的字段。
+ * 输出由 encodeContentRows → validateProfileConfig 的 round-trip 测试兜底,故此处用 as 断言。
+ */
+function applyContentRow(rule: SourceRule, row: ContentRow): SourceRule {
+  const target = locatorTypeFor(row.sourceType);
+  const base = {
+    ruleId: rule.ruleId, priority: rule.priority, confidence: rule.confidence,
+    enabled: rule.enabled, category: rule.category, actions: rule.actions,
+    ...(rule.description ? { description: rule.description } : {}),
   };
+  const start = rule.locatorType === target ? rule : base;
+  const excludeGlobs = row.excludeGlobs.length ? row.excludeGlobs : undefined;
+
+  switch (row.sourceType) {
+    case 'path_contains':
+      return { ...start, locatorType: 'path', pathContains: row.pathContains, userRootKey: undefined, excludeUserRootKeys: undefined, pathRegexes: undefined, excludeGlobs } as SourceRule;
+    case 'user_root':
+      return { ...start, locatorType: 'path', userRootKey: userRootForKind(row.kind), pathContains: undefined, excludeUserRootKeys: undefined, pathRegexes: undefined } as SourceRule;
+    case 'code_catchall':
+      return { ...start, locatorType: 'path', pathRegexes: ['.+'], excludeUserRootKeys: ['wiki', 'requirements'], pathContains: undefined, userRootKey: undefined, excludeGlobs } as SourceRule;
+    case 'url':
+      return { ...start, locatorType: 'url', urlPrefixes: row.urlPrefixes } as SourceRule;
+    case 'mcp':
+      return { ...start, locatorType: 'mcp_doc', urlPrefixes: row.urlPrefixes } as SourceRule;
+    default:
+      return rule;
+  }
 }
 
 export function encodeContentRows(config: WorkflowProfileConfig, rows: ContentRow[]): WorkflowProfileConfig {

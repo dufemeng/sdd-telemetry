@@ -3,14 +3,13 @@ import {
   CONTENT_KIND_META,
   CONTENT_SOURCE_TYPE_DESC,
   CONTENT_SOURCE_TYPE_LABEL,
+  availableSourceTypes,
   type ContentRow,
   type ContentSourceType,
   decodeContentRows,
   encodeContentRows,
 } from './config-authoring';
 import { Field, INPUT_CLASS, Section, TEXTAREA_CLASS, Warn, linesToArray } from './config-ui';
-
-const PATH_SOURCE_TYPES: ContentSourceType[] = ['path_contains', 'user_root', 'code_catchall'];
 
 export function ContentMapSection({
   config,
@@ -39,7 +38,8 @@ export function ContentMapSection({
 
 function ContentRowEditor({ row, onChange }: { row: ContentRow; onChange: (patch: Partial<ContentRow>) => void }) {
   const meta = CONTENT_KIND_META[row.kind];
-  const isPath = PATH_SOURCE_TYPES.includes(row.sourceType);
+  const types = availableSourceTypes(row.kind);
+  const options = types.includes(row.sourceType) ? types : [row.sourceType, ...types];
 
   return (
     <div className="grid gap-2.5 rounded-[6px] border border-[var(--color-border)] bg-[#141414] p-3">
@@ -48,26 +48,19 @@ function ContentRowEditor({ row, onChange }: { row: ContentRow; onChange: (patch
           <span className="text-[15px]" aria-hidden>
             {meta.icon}
           </span>
-          <div>
-            <div className="text-[12px] font-semibold text-[#f5f5f5]">{meta.label}</div>
-            <div className="text-[11px] text-[var(--color-muted)]">{meta.hint}</div>
-          </div>
+          <div className="text-[12px] font-semibold text-[#f5f5f5]">{meta.label}在哪?</div>
         </div>
-        {isPath ? (
-          <select
-            className={`${INPUT_CLASS} w-auto`}
-            value={row.sourceType}
-            onChange={(event) => onChange({ sourceType: event.target.value as ContentSourceType })}
-          >
-            {PATH_SOURCE_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {CONTENT_SOURCE_TYPE_LABEL[type]}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-[11px] text-[var(--color-secondary)]">{CONTENT_SOURCE_TYPE_LABEL[row.sourceType]}</span>
-        )}
+        <select
+          className={`${INPUT_CLASS} w-auto`}
+          value={row.sourceType}
+          onChange={(event) => onChange({ sourceType: event.target.value as ContentSourceType })}
+        >
+          {options.map((type) => (
+            <option key={type} value={type}>
+              {CONTENT_SOURCE_TYPE_LABEL[type]}
+            </option>
+          ))}
+        </select>
       </div>
 
       <p className="text-[11px] leading-[1.6] text-[var(--color-muted)]">{CONTENT_SOURCE_TYPE_DESC[row.sourceType]}</p>
@@ -99,19 +92,11 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
   }
 
   if (row.sourceType === 'user_root') {
+    const rootLabel = row.kind === 'knowledge' ? '知识库目录' : '需求 / 文档目录';
     return (
-      <div className="grid gap-2.5">
-        <Field label="用户目录" hint="选一种,系统按每个用户上报的目录判断">
-          <select
-            className={`${INPUT_CLASS} w-auto`}
-            value={row.userRootKey ?? 'wiki'}
-            onChange={(event) => onChange({ userRootKey: event.target.value as 'wiki' | 'requirements' })}
-          >
-            <option value="wiki">知识库目录</option>
-            <option value="requirements">需求 / 文档目录</option>
-          </select>
-        </Field>
-      </div>
+      <p className="text-[11px] text-[var(--color-secondary)]">
+        → 用每个用户客户端上报的「{rootLabel}」,无需在这里填路径。
+      </p>
     );
   }
 
