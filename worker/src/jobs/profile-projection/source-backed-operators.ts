@@ -214,9 +214,47 @@ export const sourceBackedCodeOperator: ProjectionOperator = {
   },
 };
 
+/**
+ * 文档会话 turn:复现 bridge 的「discussion timeline」语义。
+ * 每个 process_doc write 往前回溯——在同一 session、[上一次 write, 本次 write) 窗口内、
+ * 且本身不是 write 的 interaction 即为一次讨论 turn。来源用本 run 的 profile_artifact_writes
+ * 作 write 边界 + 排除集,interaction 全集取自事件层 sdd_interactions(与 source_references 同源)。
+ */
+export const sourceBackedArtifactTurnOperator: ProjectionOperator = {
+  name: 'sourceBackedArtifactTurn',
+  async run(ctx): Promise<OperatorStats> {
+    const writes = await loadRunArtifactWrites(ctx.pool, ctx.profileId, ctx.projectionRunId);
+    let source = 0;
+    let projected = 0;
+    let skipped = 0;
+
+    for (const write of writes) {
+      if (!write.session_id || !write.event_time) {
+        skipped += 1;
+        continue;
+      }
+      const turns = await loadDiscussionTurns(ctx.pool, ctx.projectionRunId, write.session_id, write.event_time);
+      if (turns.length === 0) {
+        skipped += 1;
+        continue;
+      }
+      source += 1;
+      // turn 的能力归属 = 本次 write 的著作技能(与 bridge 一致:同一 write 的所有 turn 共享其作者能力)。
+      const capabilityUsageId = await resolveWriteCapabilityUsageId(ctx, write);
+      for (const turn of turns) {
+        await insertArtifactTurn(ctx, write, turn, capabilityUsageId);
+        projected += 1;
+      }
+    }
+
+    return { source, projected, skipped };
+  },
+};
+
 export const SOURCE_BACKED_OPERATORS: ProjectionOperator[] = [
   sourceBackedDeliveryArtifactOperator,
   sourceBackedCapabilityOperator,
+  sourceBackedArtifactTurnOperator,
   sourceBackedKnowledgeOperator,
   sourceBackedCodeOperator,
 ];
@@ -583,6 +621,124 @@ async function insertCodeActivity(
       item.match.actionType, code.codeLocator, code.repoName, code.moduleName, null, item.fact.eventTime,
       item.match.ruleId, item.match.confidence,
       JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
+      SOURCE_BACKED_RULE_VERSION,
+    ],
+  );
+}
+
+interface ArtifactWriteRow extends RowDataPacket {
+  write_id: number;
+  artifact_id: number | null;
+  artifact_key: string;
+  delivery_unit_id: number | null;
+  interaction_id: number | null;
+  user_id: number | null;
+  session_id: string | null;
+  event_time: Date | null;
+  matched_rule_id: string | null;
+  confidence: string | null;
+}
+
+interface DiscussionTurnRow extends RowDataPacket {
+  interaction_id: number;
+  started_at: Date | null;
+  anchor_event_time: Date | null;
+}
+
+async function loadRunArtifactWrites(pool: Pool, profileId: string, runId: number): Promise<ArtifactWriteRow[]> {
+  const [rows] = await pool.query<ArtifactWriteRow[]>(
+    `SELECT w.id AS write_id, w.artifact_id, a.artifact_key, w.delivery_unit_id, w.interaction_id,
+            w.user_id, w.session_id, w.event_time, w.matched_rule_id, w.confidence
+     FROM profile_artifact_writes w
+     JOIN profile_artifacts a ON a.id = w.artifact_id
+     WHERE w.profile_id = ? AND w.projection_run_id = ?
+     ORDER BY w.event_time ASC, w.id ASC`,
+    [profileId, runId],
+  );
+  return rows;
+}
+
+// 讨论 turn 窗口:同 session、[上次 write 时间(无则 session 首个 interaction), 本次 write 时间) 内、
+// 且非 write 自身的 interaction。write 边界与排除集都取本 run 的 profile_artifact_writes。
+async function loadDiscussionTurns(
+  pool: Pool,
+  runId: number,
+  sessionId: string,
+  writeEventTime: Date,
+): Promise<DiscussionTurnRow[]> {
+  const [rows] = await pool.query<DiscussionTurnRow[]>(
+    `SELECT i.id AS interaction_id, i.started_at AS started_at,
+            COALESCE(
+              (SELECT MAX(pw.event_time) FROM profile_artifact_writes pw
+                WHERE pw.projection_run_id = ? AND pw.session_id = i.session_id
+                  AND pw.event_time IS NOT NULL AND pw.event_time < ?),
+              (SELECT MIN(i2.started_at) FROM sdd_interactions i2
+                WHERE i2.session_id = i.session_id AND i2.started_at IS NOT NULL)
+            ) AS anchor_event_time
+     FROM sdd_interactions i
+     WHERE i.session_id = ?
+       AND i.started_at IS NOT NULL
+       AND i.started_at < ?
+       AND i.started_at >= COALESCE(
+             (SELECT MAX(pw.event_time) FROM profile_artifact_writes pw
+               WHERE pw.projection_run_id = ? AND pw.session_id = i.session_id
+                 AND pw.event_time IS NOT NULL AND pw.event_time < ?),
+             (SELECT MIN(i2.started_at) FROM sdd_interactions i2
+               WHERE i2.session_id = i.session_id AND i2.started_at IS NOT NULL))
+       AND i.id NOT IN (
+             SELECT pw.interaction_id FROM profile_artifact_writes pw
+             WHERE pw.projection_run_id = ? AND pw.session_id = i.session_id AND pw.interaction_id IS NOT NULL)
+     ORDER BY i.started_at ASC, i.id ASC`,
+    [runId, writeEventTime, sessionId, writeEventTime, runId, writeEventTime, runId],
+  );
+  return rows;
+}
+
+async function resolveWriteCapabilityUsageId(ctx: ProjectionContext, write: ArtifactWriteRow): Promise<number | null> {
+  if (write.interaction_id != null) {
+    const [byInteraction] = await ctx.pool.query<RowDataPacket[]>(
+      `SELECT id FROM profile_capability_usages
+       WHERE projection_run_id = ? AND interaction_id = ?
+       ORDER BY event_time DESC LIMIT 1`,
+      [ctx.projectionRunId, write.interaction_id],
+    );
+    if (byInteraction[0]?.id != null) return Number(byInteraction[0].id);
+  }
+  if (write.session_id) {
+    const [bySession] = await ctx.pool.query<RowDataPacket[]>(
+      `SELECT id FROM profile_capability_usages
+       WHERE projection_run_id = ? AND session_id = ? AND (event_time IS NULL OR event_time <= ?)
+       ORDER BY event_time DESC LIMIT 1`,
+      [ctx.projectionRunId, write.session_id, write.event_time],
+    );
+    if (bySession[0]?.id != null) return Number(bySession[0].id);
+  }
+  return null;
+}
+
+async function insertArtifactTurn(
+  ctx: ProjectionContext,
+  write: ArtifactWriteRow,
+  turn: DiscussionTurnRow,
+  capabilityUsageId: number | null,
+): Promise<void> {
+  const turnKey = sourceBackedStableKey(ctx.profileId, 'artifact_turn', `${write.artifact_key}:${turn.interaction_id}`);
+  await ctx.pool.query<ResultSetHeader>(
+    `INSERT INTO profile_artifact_turns
+       (profile_id, projection_run_id, turn_key, artifact_id, delivery_unit_id, interaction_id,
+        capability_usage_id, user_id, session_id, anchor_event_time, write_event_time, event_time,
+        matched_rule_id, confidence, evidence_json, rule_version)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      ctx.profileId, ctx.projectionRunId, turnKey, write.artifact_id, write.delivery_unit_id, turn.interaction_id,
+      capabilityUsageId, write.user_id, write.session_id, turn.anchor_event_time, write.event_time, turn.started_at,
+      write.matched_rule_id, write.confidence,
+      JSON.stringify({
+        source: 'source_references',
+        artifactKey: write.artifact_key,
+        writeId: write.write_id,
+        discussionInteractionId: turn.interaction_id,
+      }),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
