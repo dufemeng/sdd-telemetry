@@ -1,3 +1,5 @@
+import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { Config, Inject, Provide } from '@midwayjs/core';
 import type {
   ProfileArtifactTimelineItem,
@@ -12,7 +14,10 @@ import type {
   ProfileDemand,
   ProfileDemandDetail,
   ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeContent,
   ProfileKnowledgeDeliveryUnitRankingQuery,
+  ProfileKnowledgeDocDetailResponse,
+  ProfileKnowledgeDomainDocsResponse,
   ProfileKnowledgeRecallItem,
   ProfileKnowledgeTimelineQuery,
   ProfileOverview,
@@ -35,7 +40,10 @@ import {
   type WorkflowProfileConfig,
 } from './profile-config';
 import { ProfileConfigRepository } from './profile-config.repository';
-import { ProfileProjectionRepository } from './profile-projection.repository';
+import {
+  ProfileProjectionRepository,
+  type ProfileKnowledgeContentSource,
+} from './profile-projection.repository';
 import {
   collapseProfileUserActivityItems,
   expandProfileUserActivityFetchLimit,
@@ -730,6 +738,120 @@ export class ProfilesService {
     };
   }
 
+  async getKnowledgeDomainDocs(
+    profileId: string,
+    sourceNamespace: string,
+    domain: string,
+  ): Promise<ProfileKnowledgeDomainDocsResponse> {
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getKnowledgeDomainDocs(
+        profileId,
+        read.runId,
+        sourceNamespace,
+        domain,
+      );
+    }
+    if (read.mode === 'empty') return { sourceNamespace, domain, items: [] };
+
+    const sdd = await this.sddQueryService.getWikiRecallDomainDocs(sourceNamespace, domain);
+    return {
+      sourceNamespace: sdd.repo,
+      domain: sdd.domain,
+      items: sdd.items.map((item) => ({
+        relativePath: item.relativePath,
+        recallCount: item.recallCount,
+        distinctUsers: item.distinctUsers,
+        lastRecallAt: item.lastRecallAt,
+        status: item.status,
+        addedAt: item.addedAt,
+      })),
+    };
+  }
+
+  async getKnowledgeDocDetail(
+    profileId: string,
+    sourceNamespace: string,
+    relativePath: string,
+  ): Promise<ProfileKnowledgeDocDetailResponse> {
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getKnowledgeDocDetail(
+        profileId,
+        read.runId,
+        sourceNamespace,
+        relativePath,
+      );
+    }
+    if (read.mode === 'empty') {
+      return {
+        sourceNamespace,
+        relativePath,
+        trend: [],
+        readers: [],
+        sourceDeliveryUnits: [],
+      };
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallDocDetail(sourceNamespace, relativePath);
+    return {
+      sourceNamespace: sdd.repo,
+      relativePath: sdd.relativePath,
+      trend: sdd.trend,
+      readers: sdd.readers,
+      sourceDeliveryUnits: sdd.sourceWorkItems.map((item) => ({
+        deliveryUnitId: item.workItemId,
+        unitSlug: item.workItemSlug ?? null,
+        businessDomain: item.businessDomain,
+        recallCount: item.recallCount,
+      })),
+    };
+  }
+
+  async getKnowledgeContentByPath(
+    profileId: string,
+    sourceNamespace: string,
+    relativePath: string,
+  ): Promise<ProfileKnowledgeContent> {
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      const source = await this.profileProjectionRepository.findKnowledgeContentSourceByPath(
+        profileId,
+        read.runId,
+        sourceNamespace,
+        relativePath,
+      );
+      return readProfileKnowledgeContent(source, { sourceNamespace, relativePath });
+    }
+    if (read.mode === 'empty') {
+      return emptyProfileKnowledgeContent('file_missing', sourceNamespace, relativePath, null);
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallContentByPath(sourceNamespace, relativePath);
+    return toProfileKnowledgeContent(sdd);
+  }
+
+  async getKnowledgeContent(
+    profileId: string,
+    toolCallId: string,
+  ): Promise<ProfileKnowledgeContent> {
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      const source = await this.profileProjectionRepository.findKnowledgeContentSourceByToolCall(
+        profileId,
+        read.runId,
+        toolCallId,
+      );
+      return readProfileKnowledgeContent(source, {});
+    }
+    if (read.mode === 'empty') {
+      return emptyProfileKnowledgeContent('recall_not_found', null, null, null);
+    }
+
+    const sdd = await this.sddQueryService.getWikiRecallContent(toolCallId);
+    return toProfileKnowledgeContent(sdd);
+  }
+
   private async resolveReadMode(profileId: string): Promise<ProfileReadMode> {
     const config = await this.requireProfile(profileId);
     if (config.status !== 'active') return { mode: 'empty' };
@@ -756,6 +878,90 @@ export class ProfilesService {
   private profileConfigCatalog(): ProfileConfigCatalog {
     return new ProfileConfigCatalog(this.profileConfigRepository);
   }
+}
+
+function toProfileKnowledgeContent(content: {
+  found: boolean;
+  reason: ProfileKnowledgeContent['reason'];
+  repoName: string | null;
+  relativePath: string | null;
+  rawPath: string | null;
+  isMarkdown: boolean;
+  content: string | null;
+  truncated: boolean;
+}): ProfileKnowledgeContent {
+  return {
+    found: content.found,
+    reason: content.reason,
+    sourceNamespace: content.repoName,
+    relativePath: content.relativePath,
+    rawPath: content.rawPath,
+    isMarkdown: content.isMarkdown,
+    content: content.content,
+    truncated: content.truncated,
+  };
+}
+
+async function readProfileKnowledgeContent(
+  source: ProfileKnowledgeContentSource | null,
+  fallback: { sourceNamespace?: string | null; relativePath?: string | null },
+): Promise<ProfileKnowledgeContent> {
+  if (!source) {
+    return emptyProfileKnowledgeContent(
+      fallback.sourceNamespace || fallback.relativePath ? 'file_missing' : 'recall_not_found',
+      fallback.sourceNamespace ?? null,
+      fallback.relativePath ?? null,
+      null,
+    );
+  }
+
+  const sourceNamespace = source.sourceNamespace ?? fallback.sourceNamespace ?? null;
+  const relativePath = source.relativePath ?? fallback.relativePath ?? null;
+  const rawPath = source.rawPath ?? source.normalizedPath ?? null;
+
+  if (source.actionType && source.actionType !== 'read') {
+    return emptyProfileKnowledgeContent('not_readable_action', sourceNamespace, relativePath, rawPath);
+  }
+  if (!source.normalizedPath || !path.isAbsolute(source.normalizedPath)) {
+    return emptyProfileKnowledgeContent('file_missing', sourceNamespace, relativePath, rawPath);
+  }
+
+  const fileStat = await stat(source.normalizedPath).catch(() => null);
+  if (!fileStat) return emptyProfileKnowledgeContent('file_missing', sourceNamespace, relativePath, rawPath);
+  if (!fileStat.isFile()) return emptyProfileKnowledgeContent('not_a_file', sourceNamespace, relativePath, rawPath);
+
+  const maxBytes = 512 * 1024;
+  const buffer = await readFile(source.normalizedPath);
+  const truncated = buffer.byteLength > maxBytes;
+  const content = buffer.subarray(0, maxBytes).toString('utf8');
+  return {
+    found: true,
+    reason: 'ok',
+    sourceNamespace,
+    relativePath,
+    rawPath,
+    isMarkdown: /\.(md|mdx)$/i.test(source.normalizedPath),
+    content,
+    truncated,
+  };
+}
+
+function emptyProfileKnowledgeContent(
+  reason: ProfileKnowledgeContent['reason'],
+  sourceNamespace: string | null,
+  relativePath: string | null,
+  rawPath: string | null,
+): ProfileKnowledgeContent {
+  return {
+    found: false,
+    reason,
+    sourceNamespace,
+    relativePath,
+    rawPath,
+    isMarkdown: false,
+    content: null,
+    truncated: false,
+  };
 }
 
 function toSummary(config: WorkflowProfileConfig): ProfileSummary {

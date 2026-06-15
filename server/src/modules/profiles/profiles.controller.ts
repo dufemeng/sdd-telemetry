@@ -15,9 +15,12 @@ import {
   ProfileDemandListSchema,
   ProfileDemandQuerySchema,
   ProfileKnowledgeCoverageQuerySchema,
+  ProfileKnowledgeContentSchema,
   ProfileKnowledgeCoverageResponseSchema,
   ProfileKnowledgeDeliveryUnitRankingQuerySchema,
   ProfileKnowledgeDeliveryUnitRankingResponseSchema,
+  ProfileKnowledgeDocDetailResponseSchema,
+  ProfileKnowledgeDomainDocsResponseSchema,
   ProfileKnowledgeListQuerySchema,
   ProfileKnowledgeRecallListResponseSchema,
   ProfileKnowledgeTimelineQuerySchema,
@@ -37,6 +40,9 @@ import {
   type ProfileCapabilityTimeseries,
   type ProfileDemand,
   type ProfileDemandDetail,
+  type ProfileKnowledgeContent,
+  type ProfileKnowledgeDocDetailResponse,
+  type ProfileKnowledgeDomainDocsResponse,
   type ProfileInspectorResponse,
   type ProfileOverview,
   type ProfileSummary,
@@ -204,4 +210,51 @@ export class ProfilesController {
     const data = await this.profilesService.getKnowledgeDeliveryUnitRanking(profileId, query);
     return ok(parseWithSchema(ProfileKnowledgeDeliveryUnitRankingResponseSchema, data));
   }
+
+  @Get('/:profileId/knowledge/docs')
+  async knowledgeDomainDocs() {
+    const profileId = this.ctx.params.profileId as string;
+    const sourceNamespace =
+      firstQueryValue(this.ctx.query.sourceNamespace) ?? firstQueryValue(this.ctx.query.repo) ?? '';
+    const domain = firstQueryValue(this.ctx.query.domain) ?? '';
+    const data: ProfileKnowledgeDomainDocsResponse =
+      await this.profilesService.getKnowledgeDomainDocs(profileId, sourceNamespace, domain);
+    return ok(parseWithSchema(ProfileKnowledgeDomainDocsResponseSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/doc-detail')
+  async knowledgeDocDetail() {
+    const profileId = this.ctx.params.profileId as string;
+    const sourceNamespace =
+      firstQueryValue(this.ctx.query.sourceNamespace) ?? firstQueryValue(this.ctx.query.repo) ?? '';
+    const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
+    const data: ProfileKnowledgeDocDetailResponse =
+      await this.profilesService.getKnowledgeDocDetail(profileId, sourceNamespace, relativePath);
+    return ok(parseWithSchema(ProfileKnowledgeDocDetailResponseSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/content/by-path')
+  async knowledgeContentByPath() {
+    const profileId = this.ctx.params.profileId as string;
+    const sourceNamespace =
+      firstQueryValue(this.ctx.query.sourceNamespace) ?? firstQueryValue(this.ctx.query.repo) ?? '';
+    const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
+    const data: ProfileKnowledgeContent =
+      await this.profilesService.getKnowledgeContentByPath(profileId, sourceNamespace, relativePath);
+    return ok(parseWithSchema(ProfileKnowledgeContentSchema, data));
+  }
+
+  @Get('/:profileId/knowledge/content/:toolCallId')
+  async knowledgeContent() {
+    const profileId = this.ctx.params.profileId as string;
+    const toolCallId = this.ctx.params.toolCallId as string;
+    const data: ProfileKnowledgeContent =
+      await this.profilesService.getKnowledgeContent(profileId, toolCallId);
+    return ok(parseWithSchema(ProfileKnowledgeContentSchema, data));
+  }
+}
+
+function firstQueryValue(value: unknown): string | undefined {
+  if (Array.isArray(value)) return firstQueryValue(value[0]);
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-06-01
+更新时间：2026-06-15
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -37,6 +37,7 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
 /api/ingest   采集链路
 /api/events   通用 OTel 事件分析
 /api/sdd      SDD 业务分析
+/api/profiles Profile 统一观测接口
 /api/ops      运维 / 排障 / 数据库观察
 /api/auth     Dashboard 登录与成员管理
 ```
@@ -833,6 +834,8 @@ export const ReportUserSettingsRequestSchema = z.object({
 
 ### 6.21 GET /api/sdd/wiki-recalls/content/:toolCallId
 
+兼容接口。知识库分析页面的新读路径是 `/api/profiles/:profileId/knowledge/*`；`/api/sdd/wiki-recalls/*` 保留给 legacy SDD 调用方。
+
 按 `tool_call_id` 取该 wiki 召回对应知识库文档内容。后端从 `sdd_wiki_recalls` 取「仓库名 + 仓库内相对路径」，重映射到服务器 `KNOWLEDGE_BASE_ROOT` 后只读读取（越权守卫 + 大小上限）。**采集机绝对路径不可直接用**，只取仓库名与相对路径重拼。弱依赖：读不到按 `reason` 分级降级，不报错。
 
 仅 `action_type='read'` 的召回返回内容；`KNOWLEDGE_BASE_ROOT`（容器内默认 `/knowledge`）与大小上限 `WIKI_CONTENT_MAX_BYTES`（默认 512KB）由服务端配置，未配置即返回 `not_configured` 降级。
@@ -1022,11 +1025,115 @@ wikiDomain  string (可选，URL-encoded)
 - 传普通域名（如 `cashier`）→ 追加 `AND wiki_domain = ?`。
 - 传 `（根目录）` → 追加 `AND wiki_domain IS NULL`（复用 `ROOT_DOMAIN_LABEL` 特判）。
 
-## 7. ops API
+## 7. profile API
+
+Profile API 是前端看板的统一读接口。URL 中的 `profileId` 选择当前 profile；响应字段使用统一领域名，前端可按 profile presentation 映射成 SDD 文案。
+
+### 7.1 GET /api/profiles/:profileId/knowledge/docs
+
+单领域知识文档清单。用于知识库分析领域下钻页，替代页面侧对 `/api/sdd/wiki-recalls/docs` 的直接调用。
+
+Query：
+
+```text
+sourceNamespace  string
+domain           string
+```
+
+Response：`ProfileKnowledgeDomainDocsResponseSchema`
+
+```ts
+{
+  sourceNamespace: string,
+  domain: string,
+  items: Array<{
+    relativePath: string,
+    recallCount: number,
+    distinctUsers: number,
+    lastRecallAt: string | null,
+    status: 'hot' | 'cold' | 'dead' | 'new',
+    addedAt: string | null,
+  }>,
+}
+```
+
+### 7.2 GET /api/profiles/:profileId/knowledge/doc-detail
+
+按 `(sourceNamespace, relativePath)` 返回单篇知识文档的趋势、读者和来源交付单元。
+
+Query：
+
+```text
+sourceNamespace  string
+relativePath     string (URL-encoded)
+```
+
+Response：`ProfileKnowledgeDocDetailResponseSchema`
+
+```ts
+{
+  sourceNamespace: string,
+  relativePath: string,
+  trend: Array<{ t: string, count: number }>,
+  readers: Array<{
+    userId: string,
+    userName: string | null,
+    recallCount: number,
+    lastRecallAt: string | null,
+  }>,
+  sourceDeliveryUnits: Array<{
+    deliveryUnitId: string,
+    unitSlug: string | null,
+    businessDomain: string | null,
+    recallCount: number,
+  }>,
+}
+```
+
+### 7.3 GET /api/profiles/:profileId/knowledge/content/by-path
+
+按 `sourceNamespace + relativePath` 读取知识文档当前内容。legacy SDD 读知识库扫描目录；source-backed profile 从当前投影的 source reference 解析本地文件。
+
+Query：
+
+```text
+sourceNamespace  string
+relativePath     string (URL-encoded)
+```
+
+Response：`ProfileKnowledgeContentSchema`
+
+### 7.4 GET /api/profiles/:profileId/knowledge/content/:toolCallId
+
+按知识召回的 `toolCallId` 读取对应文档内容。仅可读动作返回内容，其他动作按 `reason` 降级。
+
+Response：`ProfileKnowledgeContentSchema`
+
+```ts
+{
+  found: boolean,
+  reason:
+    | 'ok'
+    | 'recall_not_found'
+    | 'not_readable_action'
+    | 'not_configured'
+    | 'repo_missing'
+    | 'file_missing'
+    | 'not_a_file',
+  sourceNamespace: string | null,
+  relativePath: string | null,
+  rawPath: string | null,
+  isMarkdown: boolean,
+  content: string | null,
+  truncated: boolean,
+}
+```
+
+## 8. ops API
 
 ops API 面向本地和公司内网排障，不作为业务公开接口。
 
-### 7.1 GET /api/ops/tables
+### 8.1 GET /api/ops/tables
 
 返回 MySQL 表列表、行数估算、最近更新时间和字段元数据。
 
@@ -1060,7 +1167,7 @@ export const OpsTableSchema = z.object({
 | `estimatedMaxSize` | 当前字段理论最大占用字节估算，不是当前已使用 size                                        |
 | `sizeBasis`        | size 估算依据，例如 `CHARACTER_MAXIMUM_LENGTH * utf8mb4 4 bytes` 或 `MySQL type maximum` |
 
-### 7.2 GET /api/ops/tables/:tableName/rows
+### 8.2 GET /api/ops/tables/:tableName/rows
 
 分页查看表数据。
 
@@ -1108,19 +1215,19 @@ GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","o
 4. `LONGTEXT` / `BLOB` / `JSON` 字段默认截断为 500 字符，详情页再展开。
 5. cursor 仅对默认 `id` 排序提供稳定翻页；指定其他 `orderBy` 时只返回当前页。
 
-### 7.3 GET /api/ops/jobs
+### 8.3 GET /api/ops/jobs
 
 查看 outbox 和清洗调度状态。P0 公司环境使用定时任务，BullMQ job 状态仅作为后续目标态增强。
 
-### 7.4 GET /api/ops/jobs/:jobId
+### 8.4 GET /api/ops/jobs/:jobId
 
 查看单个 outbox/job 的错误、attempts、payload。
 
-### 7.5 GET /api/ops/queue
+### 8.5 GET /api/ops/queue
 
 查看 outbox 积压和清洗调度健康度。
 
-## 8. 前端适配策略
+## 9. 前端适配策略
 
 旧 `web/src/api.ts` 不再是事实标准。
 

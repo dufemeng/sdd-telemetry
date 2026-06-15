@@ -13,8 +13,11 @@ import type {
 } from '@sdd-telemetry/api';
 import type {
   ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeContent,
   ProfileKnowledgeTimelineResponse,
   ProfileKnowledgeDeliveryUnitRankingResponse,
+  ProfileKnowledgeDocDetailResponse,
+  ProfileKnowledgeDomainDocsResponse,
   ProfileKnowledgeRecallListResponse,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
@@ -155,37 +158,73 @@ export function useWikiRecallCoverage() {
 }
 
 export function useWikiRecallDomainDocs(repo: string | null, domain: string | null, enabled = true) {
+  const { profileId } = useShellContext();
   return useQuery({
-    queryKey: ['wiki-recalls', 'docs', repo, domain],
-    enabled: enabled && !!repo && !!domain,
-    queryFn: () =>
-      requestData<WikiDomainDocsResponse>(
-        `/api/sdd/wiki-recalls/docs?${toQueryString({ repo: repo!, domain: domain! })}`,
-      ),
+    queryKey: ['profile-knowledge-docs', profileId, repo, domain],
+    enabled: enabled && !!profileId && !!repo && !!domain,
+    queryFn: async () => {
+      const r = await requestData<ProfileKnowledgeDomainDocsResponse>(
+        `/api/profiles/${profileId}/knowledge/docs?${toQueryString({ sourceNamespace: repo!, domain: domain! })}`,
+      );
+      return {
+        repo: r.sourceNamespace,
+        domain: r.domain,
+        items: r.items.map((item) => ({ ...item, lastToolCallId: null })),
+      } satisfies WikiDomainDocsResponse;
+    },
   });
 }
 
 export function useWikiRecallDocDetail(repo: string | null, relativePath: string | null) {
+  const { profileId } = useShellContext();
   return useQuery({
-    queryKey: ['wiki-recalls', 'doc-detail', repo, relativePath],
-    enabled: !!repo && !!relativePath,
-    queryFn: () =>
-      requestData<WikiDocDetailResponse>(
-        `/api/sdd/wiki-recalls/doc-detail?${toQueryString({ repo: repo!, relativePath: relativePath! })}`,
-      ),
+    queryKey: ['profile-knowledge-doc-detail', profileId, repo, relativePath],
+    enabled: !!profileId && !!repo && !!relativePath,
+    queryFn: async () => {
+      const r = await requestData<ProfileKnowledgeDocDetailResponse>(
+        `/api/profiles/${profileId}/knowledge/doc-detail?${toQueryString({ sourceNamespace: repo!, relativePath: relativePath! })}`,
+      );
+      return {
+        repo: r.sourceNamespace,
+        relativePath: r.relativePath,
+        trend: r.trend,
+        readers: r.readers,
+        sourceWorkItems: r.sourceDeliveryUnits.map((item) => ({
+          workItemId: item.deliveryUnitId,
+          workItemSlug: item.unitSlug ?? '',
+          businessDomain: item.businessDomain,
+          recallCount: item.recallCount,
+        })),
+      } satisfies WikiDocDetailResponse;
+    },
   });
 }
 
 export function useWikiRecallDocContentByPath(repo: string | null, relativePath: string | null) {
+  const { profileId } = useShellContext();
   return useQuery({
-    queryKey: ['wiki-recalls', 'content-by-path', repo, relativePath],
-    enabled: !!repo && !!relativePath,
+    queryKey: ['profile-knowledge-content-by-path', profileId, repo, relativePath],
+    enabled: !!profileId && !!repo && !!relativePath,
     staleTime: 60_000,
-    queryFn: () =>
-      requestData<SddWikiRecallContent>(
-        `/api/sdd/wiki-recalls/content/by-path?${toQueryString({ repo: repo!, relativePath: relativePath! })}`,
+    queryFn: async () => mapKnowledgeContent(
+      await requestData<ProfileKnowledgeContent>(
+        `/api/profiles/${profileId}/knowledge/content/by-path?${toQueryString({ sourceNamespace: repo!, relativePath: relativePath! })}`,
       ),
+    ),
   });
+}
+
+function mapKnowledgeContent(content: ProfileKnowledgeContent): SddWikiRecallContent {
+  return {
+    found: content.found,
+    reason: content.reason,
+    repoName: content.sourceNamespace,
+    relativePath: content.relativePath,
+    rawPath: content.rawPath,
+    isMarkdown: content.isMarkdown,
+    content: content.content,
+    truncated: content.truncated,
+  };
 }
 
 function toQueryString(params: Record<string, string | undefined>): string {

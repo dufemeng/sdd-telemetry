@@ -15,6 +15,8 @@ import type {
   ProfileKnowledgeCoverageDomain,
   ProfileKnowledgeCoverageRepo,
   ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeDocDetailResponse,
+  ProfileKnowledgeDomainDocsResponse,
   ProfileKnowledgeRecallItem,
   ProfileKnowledgeTimelinePoint,
   ProfileOverview,
@@ -70,6 +72,14 @@ interface UserActivityOptions {
   deliveryUnitId?: string | null;
   rangeSinceDate?: Date | null;
   limit: number;
+}
+
+export interface ProfileKnowledgeContentSource {
+  actionType: string | null;
+  sourceNamespace: string | null;
+  relativePath: string | null;
+  rawPath: string | null;
+  normalizedPath: string | null;
 }
 
 export interface ProfileProjectionInspector {
@@ -1377,11 +1387,7 @@ export class ProfileProjectionRepository {
     const totalDocs = toNumber(t.total_docs);
     const recalledDocs = toNumber(t.distinct_recalled);
     const coverageRate = totalDocs > 0 ? recalledDocs / totalDocs : 0;
-    const namespaceSql = `COALESCE(
-      NULLIF(JSON_UNQUOTE(JSON_EXTRACT(kr.evidence_json, '$.sourceNamespace')), ''),
-      NULLIF(SUBSTRING_INDEX(kr.knowledge_locator, '/', 1), ''),
-      'local'
-    )`;
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
 
     const repoRows = (await dataSource.query(
       `SELECT
@@ -1468,6 +1474,181 @@ export class ProfileProjectionRepository {
       repos,
       domains,
     };
+  }
+
+  async getKnowledgeDomainDocs(
+    profileId: string,
+    runId: number,
+    sourceNamespace: string,
+    domain: string,
+  ): Promise<ProfileKnowledgeDomainDocsResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
+    const relativePathSql = knowledgeRelativePathSql('kr');
+    const rows = (await dataSource.query(
+      `SELECT
+          ${relativePathSql} AS relative_path,
+          COUNT(*) AS recall_count,
+          COUNT(DISTINCT kr.user_id) AS distinct_users,
+          MAX(kr.event_time) AS last_recall_at,
+          MIN(kr.event_time) AS added_at
+       FROM profile_knowledge_recalls kr
+       WHERE kr.profile_id = ?
+         AND kr.projection_run_id = ?
+         AND ${namespaceSql} = ?
+         AND COALESCE(kr.knowledge_domain, ?) = ?
+       GROUP BY ${relativePathSql}
+       ORDER BY recall_count DESC, relative_path ASC`,
+      [profileId, runId, sourceNamespace, ROOT_DOMAIN_LABEL, domain],
+    )) as Array<Record<string, unknown>>;
+
+    return {
+      sourceNamespace,
+      domain,
+      items: rows.map((row) => {
+        const recallCount = toNumber(row.recall_count);
+        return {
+          relativePath: String(row.relative_path ?? ''),
+          recallCount,
+          distinctUsers: toNumber(row.distinct_users),
+          lastRecallAt: toIsoDate(row.last_recall_at),
+          status: recallCount >= 10 ? 'hot' : 'cold',
+          addedAt: toIsoDate(row.added_at),
+        };
+      }),
+    };
+  }
+
+  async getKnowledgeDocDetail(
+    profileId: string,
+    runId: number,
+    sourceNamespace: string,
+    relativePath: string,
+  ): Promise<ProfileKnowledgeDocDetailResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
+    const relativePathSql = knowledgeRelativePathSql('kr');
+    const clauses = [
+      'kr.profile_id = ?',
+      'kr.projection_run_id = ?',
+      `${namespaceSql} = ?`,
+      `${relativePathSql} = ?`,
+    ];
+    const params: unknown[] = [profileId, runId, sourceNamespace, relativePath];
+    const since = new Date(Date.now() - 30 * DAY_MS);
+
+    const [trendRows, readerRows, sourceRows] = await Promise.all([
+      dataSource.query(
+        `SELECT DATE_FORMAT(kr.event_time, '%Y-%m-%dT00:00:00.000Z') AS bucket_ts,
+                COUNT(*) AS count
+         FROM profile_knowledge_recalls kr
+         ${whereSql([...clauses, 'kr.event_time IS NOT NULL', 'kr.event_time >= ?'])}
+         GROUP BY bucket_ts
+         ORDER BY bucket_ts ASC`,
+        [...params, since],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT kr.user_id, su.user_name,
+                COUNT(*) AS recall_count,
+                MAX(kr.event_time) AS last_recall_at
+         FROM profile_knowledge_recalls kr
+         LEFT JOIN sdd_users su ON su.id = kr.user_id
+         ${whereSql([...clauses, 'kr.user_id IS NOT NULL'])}
+         GROUP BY kr.user_id, su.user_name
+         ORDER BY recall_count DESC, last_recall_at DESC`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT kr.delivery_unit_id, du.unit_slug, du.business_domain,
+                COUNT(*) AS recall_count
+         FROM profile_knowledge_recalls kr
+         LEFT JOIN profile_delivery_units du
+           ON du.id = kr.delivery_unit_id AND du.projection_run_id = kr.projection_run_id
+         ${whereSql([...clauses, 'kr.delivery_unit_id IS NOT NULL'])}
+         GROUP BY kr.delivery_unit_id, du.unit_slug, du.business_domain
+         ORDER BY recall_count DESC`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>,
+    ]);
+
+    return {
+      sourceNamespace,
+      relativePath,
+      trend: trendRows.map((row) => ({
+        t: toIsoDate(row.bucket_ts) ?? '',
+        count: toNumber(row.count),
+      })),
+      readers: readerRows.map((row) => ({
+        userId: toStringId(row.user_id),
+        userName: (row.user_name as string | null) ?? null,
+        recallCount: toNumber(row.recall_count),
+        lastRecallAt: toIsoDate(row.last_recall_at),
+      })),
+      sourceDeliveryUnits: sourceRows.map((row) => ({
+        deliveryUnitId: toStringId(row.delivery_unit_id),
+        unitSlug: (row.unit_slug as string | null) ?? null,
+        businessDomain: (row.business_domain as string | null) ?? null,
+        recallCount: toNumber(row.recall_count),
+      })),
+    };
+  }
+
+  async findKnowledgeContentSourceByPath(
+    profileId: string,
+    runId: number,
+    sourceNamespace: string,
+    relativePath: string,
+  ): Promise<ProfileKnowledgeContentSource | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
+    const relativePathSql = knowledgeRelativePathSql('kr');
+    const rows = (await dataSource.query(
+      `SELECT
+          kr.action_type,
+          ${namespaceSql} AS source_namespace,
+          ${relativePathSql} AS relative_path,
+          sr.raw_locator,
+          sr.normalized_locator
+       FROM profile_knowledge_recalls kr
+       LEFT JOIN source_references sr ON sr.id = kr.source_reference_id
+       WHERE kr.profile_id = ?
+         AND kr.projection_run_id = ?
+         AND ${namespaceSql} = ?
+         AND ${relativePathSql} = ?
+       ORDER BY (kr.action_type = 'read') DESC, kr.event_time DESC, kr.id DESC
+       LIMIT 1`,
+      [profileId, runId, sourceNamespace, relativePath],
+    )) as Array<Record<string, unknown>>;
+
+    return rows[0] ? toKnowledgeContentSource(rows[0]) : null;
+  }
+
+  async findKnowledgeContentSourceByToolCall(
+    profileId: string,
+    runId: number,
+    toolCallId: string,
+  ): Promise<ProfileKnowledgeContentSource | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
+    const relativePathSql = knowledgeRelativePathSql('kr');
+    const rows = (await dataSource.query(
+      `SELECT
+          kr.action_type,
+          ${namespaceSql} AS source_namespace,
+          ${relativePathSql} AS relative_path,
+          sr.raw_locator,
+          sr.normalized_locator
+       FROM profile_knowledge_recalls kr
+       LEFT JOIN source_references sr ON sr.id = kr.source_reference_id
+       WHERE kr.profile_id = ?
+         AND kr.projection_run_id = ?
+         AND kr.tool_call_id = ?
+       ORDER BY kr.event_time DESC, kr.id DESC
+       LIMIT 1`,
+      [profileId, runId, toolCallId],
+    )) as Array<Record<string, unknown>>;
+
+    return rows[0] ? toKnowledgeContentSource(rows[0]) : null;
   }
 
   async getKnowledgeTimeline(
@@ -1672,6 +1853,38 @@ function emptyFactCounts(): ProfileInspectorFactCounts {
     capabilityUsages: 0,
     knowledgeRecalls: 0,
     codeActivities: 0,
+  };
+}
+
+function knowledgeSourceNamespaceSql(alias: string): string {
+  return `COALESCE(
+    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.sourceNamespace')), ''),
+    NULLIF(SUBSTRING_INDEX(${alias}.knowledge_locator, '/', 1), ''),
+    'local'
+  )`;
+}
+
+function knowledgeRelativePathSql(alias: string): string {
+  const namespaceSql = knowledgeSourceNamespaceSql(alias);
+  const rawRelativeSql = `COALESCE(
+    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.relative')), ''),
+    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.relativeLocator')), ''),
+    ${alias}.knowledge_locator
+  )`;
+  return `CASE
+    WHEN ${rawRelativeSql} LIKE CONCAT(${namespaceSql}, '/%')
+      THEN SUBSTRING(${rawRelativeSql}, CHAR_LENGTH(${namespaceSql}) + 2)
+    ELSE ${rawRelativeSql}
+  END`;
+}
+
+function toKnowledgeContentSource(row: Record<string, unknown>): ProfileKnowledgeContentSource {
+  return {
+    actionType: (row.action_type as string | null) ?? null,
+    sourceNamespace: (row.source_namespace as string | null) ?? null,
+    relativePath: (row.relative_path as string | null) ?? null,
+    rawPath: (row.raw_locator as string | null) ?? null,
+    normalizedPath: (row.normalized_locator as string | null) ?? null,
   };
 }
 
