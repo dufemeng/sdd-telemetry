@@ -30,8 +30,6 @@ const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPag
 const WorkItemDetailPage = lazy(() => import('./pages/sdd/work-items/WorkItemDetailPage'));
 const WikiRecallsPage   = lazy(() => import('./pages/sdd/wiki-recalls/WikiRecallsPage'));
 const WikiDomainDetailPage = lazy(() => import('./pages/sdd/wiki-recalls/WikiDomainDetailPage'));
-const SemanticsPage     = lazy(() => import('./pages/sdd/semantics/SemanticsPage'));
-const ProfileInspectorPage = lazy(() => import('./pages/profiles/ProfileInspectorPage'));
 const DatabasePage      = lazy(() => import('./pages/ops/database/DatabasePage'));
 const ResourcesPage     = lazy(() => import('./pages/ops/resources/ResourcesPage'));
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
@@ -69,8 +67,6 @@ export const router = createBrowserRouter([
           { path: 'reports/daily',          element: wrap(DailyReportsPage), errorElement: <RouteError /> },
           { path: 'reports/daily/latest',   element: wrap(DailyReportsPage), errorElement: <RouteError /> },
           { path: 'reports/daily/:date',    element: wrap(DailyReportsPage), errorElement: <RouteError /> },
-          { path: 'profiles/inspector',    element: wrap(ProfileInspectorPage), errorElement: <RouteError /> },
-          { path: 'sdd/semantics',        element: wrap(SemanticsPage),    errorElement: <RouteError /> },
           { path: 'troubleshoot',         element: wrap(TroubleshootPage), errorElement: <RouteError /> },
           {
             element: <AdminOnly />,

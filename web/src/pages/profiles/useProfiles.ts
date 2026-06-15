@@ -13,7 +13,6 @@ import type {
   ProfileKnowledgeRecallListResponse,
   ProfileKnowledgeTimelineResponse,
   ProfileOverview,
-  ProfileInspectorResponse,
   ProfilePresentation,
   ProfileSummary,
   ProfileUserActivityItem,
@@ -50,14 +49,6 @@ export function useProfilePresentationModel(profileId: string): NormalizedProfil
   return normalizeProfilePresentation(useProfilePresentation(profileId));
 }
 
-export function useProfileInspector(profileId: string) {
-  return useQuery({
-    queryKey: ['profile-inspector', profileId],
-    queryFn: () => requestData<ProfileInspectorResponse>(`/api/profiles/${profileId}/inspector`),
-    staleTime: 30_000,
-    enabled: Boolean(profileId),
-  });
-}
 
 export function useProfileDemands(profileId: string, fromIso?: string) {
   const query = fromIso ? `?from=${fromIso}` : '';
