@@ -115,7 +115,6 @@ export const CapabilityRuleSchema = z.object({
   capabilityCode: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
   triggerSource: z.string().nullable().optional(),
-  stage: z.string().trim().min(1).nullable().optional(),
 });
 
 export const AttributionPolicySchema = z.object({

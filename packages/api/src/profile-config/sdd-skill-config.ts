@@ -17,10 +17,6 @@ export interface SddSkillConfig {
   artifactTypePatterns: Array<{ artifactType: string; include: string[] }>;
 }
 
-/** SDD 生命周期阶段(funnel/maturity);只有这些 semantic 的 capabilityRule 带 stage。 */
-export const SDD_LIFECYCLE_STAGES = ['proposal', 'design', 'task', 'codereview'] as const;
-const LIFECYCLE_SET = new Set<string>(SDD_LIFECYCLE_STAGES);
-
 /**
  * §10 映射:把 sdd_skill_semantics + 别名转成统一 config 的 skill 规则。
  *
@@ -54,7 +50,6 @@ export function buildSddSkillConfig(semantics: SddSemanticInput[]): SddSkillConf
       actions: ['invoke'],
       capabilityCode: sem.semanticCode,
       displayName: sem.displayName,
-      stage: LIFECYCLE_SET.has(sem.semanticCode) ? sem.semanticCode : null,
     });
     if (sem.artifactFilenamePatterns.length > 0) {
       artifactTypePatterns.push({ artifactType: sem.semanticCode, include: sem.artifactFilenamePatterns });

@@ -24,11 +24,6 @@ describe('buildSddSkillConfig (§10 skill→config)', () => {
     expect(design?.actions).toEqual(['invoke']);
   });
 
-  it('sets stage only for lifecycle semantics', () => {
-    expect(cfg.capabilityRules.find((r) => r.capabilityCode === 'design')?.stage).toBe('design');
-    expect(cfg.capabilityRules.find((r) => r.capabilityCode === 'help')?.stage).toBeNull();
-  });
-
   it('collects artifact typePatterns only when patterns exist', () => {
     expect(cfg.artifactTypePatterns).toEqual([{ artifactType: 'design', include: ['design.md', 'design-*.md'] }]);
   });

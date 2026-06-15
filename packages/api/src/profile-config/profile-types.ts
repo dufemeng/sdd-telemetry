@@ -180,8 +180,6 @@ export interface CapabilityRule {
   displayName: string;
   /** 可选触发来源。source-backed profile 没有 SDD invocation 时通常为 null。 */
   triggerSource?: string | null;
-  /** 生命周期阶段(用于 funnel/maturity);非阶段能力为 null。 */
-  stage?: string | null;
 }
 
 /**

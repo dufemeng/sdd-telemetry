@@ -192,7 +192,7 @@ describe('validateProfileConfig rejects malformed configs', () => {
   it('accepts skill rule (+ stage) and keeps it resolvable', () => {
     const cfg = baseConfig({
       sourceRules: [{ locatorType: 'skill', ruleId: 'skill-design', category: 'skill', priority: 1, confidence: 'high', enabled: true, skillNames: ['bk-fe-design'], actions: ['invoke'] }],
-      capabilityRules: [{ ruleId: 'cap-design', sourceRuleIds: ['skill-design'], actions: ['invoke'], capabilityCode: 'design', displayName: 'Design', stage: 'design' }],
+      capabilityRules: [{ ruleId: 'cap-design', sourceRuleIds: ['skill-design'], actions: ['invoke'], capabilityCode: 'design', displayName: 'Design' }],
     });
     expect(validateProfileConfig(cfg).valid).toBe(true);
     const res = resolveRuntimeProfileConfig(cfg, {});
