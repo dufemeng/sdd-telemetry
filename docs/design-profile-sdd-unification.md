@@ -375,3 +375,22 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 
 ### 仍未做(页面层 + 清理,§3,非口径)
 补 3 个 knowledge 钻取端点、`/sdd/semantics` 退役、`/sdd/*` 路由收口;删死代码(bridge knowledge/code operator + SDD_BRIDGE_OPERATORS);sdd_* 退役(daily-report 改读 profile_*)。均在统一契约背后,不影响当前口径。
+
+## 13. 口径缺口全部收口(commits `048bf73` + `021c8f7`)
+
+逐表重测(fresh run 821,带 worker 一次 profile:rebuild)后,§12「真实遗留」三项结论修正:
+
+| 项 | §12 判断 | 收口结论 |
+|---|---|---|
+| artifact_turns 0 vs 1 | ❌ 缺算子 | ✅ **已补 `sourceBackedArtifactTurnOperator`**,1=1 完全对上(interaction 4095 / anchor / capability=proposal 与 bridge 一致) |
+| artifact_writes 3 vs 4 | ⚠️ 差 1 | ✅ **非缺口**:bridge 那条是 orphan(artifact_id 指向已不存在的 artifact、write_kind='other'、2024 旧时间戳)。**非孤儿 3=3**,source_backed 反而更正确;reclean 后 bridge 涨到 5(累计 2 个 orphan),source_backed 稳定 3 |
+| capability 80/81 | ⚠️ alias 微差 | ✅ **非缺口**:数据自然增长后 **82=82** 精确,之前是瞬时采样 |
+
+**artifact_turn 算子**:复现 bridge「discussion timeline」语义。每个 process_doc write 往前回溯,同 session、`[上次 write(无则 session 首个 interaction), 本次 write)` 窗口内、非 write 自身的 interaction = 一次讨论 turn。write 边界/排除集取本 run `profile_artifact_writes`;interaction 全集取**事件层** `sdd_interactions`(与 source_references 同源,非 work-item 桥接层)。算子排 capability 之后。
+
+**附带修复**(commit `021c8f7`):`matchRootedPath` 的 `sourceNamespace` 此前取整段 `relativeRoot`('docs/plan'),与生产 fuzzy 路径(末段 'plan')不一致 → rooted 单机验证会误判出 businessDomain。改为取末段(basename),与 fuzzy 对齐;顺带修了 `source-backed-projection.test.ts` 5 个 stale fixture(配置早 plan→docs/plan / code→src,该文件未跟改)。worker 136 测试全绿。
+
+**口径结论**:capability/delivery/artifacts/artifact_turns/knowledge/code **全部 1=1**(artifact_writes source_backed 更正确)。**flip 口径完整,sdd_bridge 已可退役。**
+
+### 退役的取舍(建议)
+sdd_bridge 模式 + sdd_* work-item 层(`sdd_work_items` / `sdd_work_item_*` / `sdd_skill_usages` / `sdd_wiki_recalls`)现已无 profile 使用,是死重。但**当前仍是 source_backed 的对账 oracle**(reclean + profile:diff 靠它交叉验证),且 daily-report 仍直接读 sdd_*(~25 条查询)。建议:**保留 bridge 作为影子 oracle 一段时间**,待 source_backed 经更多数据/时间验证后,再整体退役(含 daily-report 迁 profile_*、删 SDD_BRIDGE_OPERATORS、砍 sdd_* 清洗)。事件层 `sdd_interactions` / `sdd_interaction_texts` / `sdd_interaction_tool_calls` 是共享地基,**不退**。
