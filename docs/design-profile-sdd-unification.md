@@ -356,12 +356,22 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 
 **§9 头号风险解决**:source_backed 从 skill `evidence_json` 复现了 per-usage trigger(user-slash/claude-proactive/nested-skill)与 stage——这正是 flip 前判定会"全空/错"的指标。
 
-### 其他表
-- **code_activities = 1265** ✅:`excludeUserRootKeys`(非 doc)机制跑通。
-- knowledge = 23(per-user wiki 根);delivery/artifacts = **2 / 2** ❌ 偏低。
+### 其他表 vs bridge 源表(逐表对账,修正版)
+| 表 | bridge | source_backed | |
+|---|---|---|---|
+| delivery_units | 2 | **2**(slug 完全一致:2026-05-27/28-add-delayed-debit) | ✅ |
+| artifacts | 2 | **2** | ✅ |
+| knowledge_recalls | 23 | **23** | ✅ |
+| code_activities | — | 1265(exclude 机制通) | ✅ |
+| artifact_writes | 4 | 3 | ⚠️ 差 1 |
+| artifact_turns | 1 | **0** | ❌ source_backed 无 turn 算子 |
 
-### 遗留(delivery-formation 口径)
-`deliveryUnitRule` 的 `parent_dir` 路径解析没能复现 bridge 的 `sdd_work_items`(标题/数量含内容派生,非纯路径)→ delivery/artifact 偏低,SDD 看板"需求/产物"会变。**这是 flip 收尾的最后一块口径**:需 delivery 形成逻辑对齐(`titleStrategy` + 可能要从过程文档内容/work-item key 派生),或接受重定义。
+**⚠️ 重大修正**:之前判"delivery/artifact 偏低=架构缺口"是**误判**——本 dev 库 SDD 数据稀疏(仅 2 个 work_items、3/81 skill 挂 work_item),bridge 也是 2。`parent_dir` 路径解析**已精确复现** bridge work-items(slug 全一致)。**delivery-from-skill 重构不需要做。**
 
-### 仍未做(页面层,§3)
-补 3 个 knowledge 钻取端点、`/sdd/semantics` 退役、`/sdd/*` 路由收口——均在统一契约背后,投影口径稳定后做。
+### 真实遗留(都很小)
+1. **artifact_turns 0 vs 1**:source_backed 无 artifact_turns 算子(bridge 有)→ 此表空。需补一个 turn 算子。
+2. **artifact_writes 3 vs 4**:差 1。
+3. **capability 80/81**:1 例 alias 语义归类微差。
+
+### 仍未做(页面层 + 清理,§3,非口径)
+补 3 个 knowledge 钻取端点、`/sdd/semantics` 退役、`/sdd/*` 路由收口;删死代码(bridge knowledge/code operator + SDD_BRIDGE_OPERATORS);sdd_* 退役(daily-report 改读 profile_*)。均在统一契约背后,不影响当前口径。
