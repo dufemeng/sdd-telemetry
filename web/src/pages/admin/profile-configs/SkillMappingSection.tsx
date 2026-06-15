@@ -47,15 +47,15 @@ export function SkillMappingSection({
   return (
     <Section
       title="技能映射"
-      hint="技能名 → 能力 / 产物。改别名就改了它怎么被识别"
+      hint="把技能名归类成一种能力 · 改别名 = 改它怎么被识别"
       action={
         <button className={BUTTON_CLASS} type="button" onClick={addRow}>
-          <Plus size={14} /> 新增语义
+          <Plus size={14} /> 新增技能
         </button>
       }
     >
       {rows.length === 0 ? (
-        <p className="text-[12px] text-[var(--color-muted)]">还没有技能语义。点「新增语义」把技能名映射成能力。</p>
+        <p className="text-[12px] text-[var(--color-muted)]">还没有技能。点「新增技能」把技能名归类成一种能力。</p>
       ) : (
         <div className="grid gap-2">
           {rows.map((row, index) => (
@@ -122,7 +122,7 @@ function SemanticEditor({
       {open ? (
         <div className="grid gap-2.5 border-t border-[var(--color-border)] p-3">
           <div className="grid gap-2.5 md:grid-cols-2">
-            <Field label="语义 code" hint="稳定能力编码,看板按它聚合">
+            <Field label="能力标识" hint="看板用它归类,如 design;别频繁改">
               <input
                 className={`${INPUT_CLASS} font-mono`}
                 value={row.code}
@@ -144,7 +144,7 @@ function SemanticEditor({
               onChange={(event) => onChange({ aliases: linesToArray(event.target.value) })}
             />
           </Field>
-          <Field label="产物文件名" hint="该能力产出的过程文档文件名模式,一行一个;选填">
+          <Field label="产物文件名" hint="这个能力产出的文档文件名,可用 * 通配,一行一个;选填">
             <textarea
               className={`${TEXTAREA_CLASS} font-mono`}
               placeholder={'design.md\ndesign-*.md'}
@@ -152,7 +152,7 @@ function SemanticEditor({
               onChange={(event) => onChange({ artifactPatterns: linesToArray(event.target.value) })}
             />
           </Field>
-          {row.aliases.length === 0 ? <Warn>没有技能别名,这条语义不会生成任何识别规则。</Warn> : null}
+          {row.aliases.length === 0 ? <Warn>没填技能别名,这条不会生效。</Warn> : null}
         </div>
       ) : null}
     </div>

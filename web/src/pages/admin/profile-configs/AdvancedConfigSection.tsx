@@ -30,7 +30,7 @@ export function AdvancedConfigSection({
   }
 
   return (
-    <Section title="高级 (编译产物 · 带注释)" hint="简单视图就是这些规则的入口;这里看 / 改底层完整配置">
+    <Section title="高级 · 底层完整配置" hint="上面的内容地图 / 技能映射,展开后就是这些底层规则">
       <Disclosure open={open} onToggle={() => setOpen((value) => !value)}>
         {open ? '收起' : '展开底层规则'}
       </Disclosure>
@@ -44,7 +44,7 @@ export function AdvancedConfigSection({
           </div>
 
           <Disclosure open={jsonOpen} onToggle={openJson}>
-            {jsonOpen ? '收起 JSON' : '编辑完整 JSON(逃生口)'}
+            {jsonOpen ? '收起 JSON' : '直接编辑完整 JSON'}
           </Disclosure>
           {jsonOpen ? (
             <div className="grid gap-2">

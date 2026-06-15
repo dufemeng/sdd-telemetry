@@ -1,6 +1,7 @@
 import type { WorkflowProfileConfig } from '@sdd-telemetry/api';
 import {
   CONTENT_KIND_META,
+  CONTENT_SOURCE_TYPE_DESC,
   CONTENT_SOURCE_TYPE_LABEL,
   type ContentRow,
   type ContentSourceType,
@@ -69,8 +70,10 @@ function ContentRowEditor({ row, onChange }: { row: ContentRow; onChange: (patch
         )}
       </div>
 
+      <p className="text-[11px] leading-[1.6] text-[var(--color-muted)]">{CONTENT_SOURCE_TYPE_DESC[row.sourceType]}</p>
+
       {!row.present ? (
-        <Warn>当前配置没有「{meta.label}」这一类来源。到高级视图新增,或换个 profile。</Warn>
+        <Warn>这个工作流还没配「{meta.label}」。到高级视图新增,或换个工作流。</Warn>
       ) : (
         <ContentRowInput row={row} onChange={onChange} />
       )}
@@ -82,7 +85,7 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
   if (row.sourceType === 'path_contains') {
     return (
       <div className="grid gap-2.5">
-        <Field label="路径包含" hint="命中含这些子串的路径,一行一个">
+        <Field label="路径包含" hint="一行一个,填路径里的一段">
           <textarea
             className={TEXTAREA_CLASS}
             placeholder="/your-repo/wiki/"
@@ -98,14 +101,14 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
   if (row.sourceType === 'user_root') {
     return (
       <div className="grid gap-2.5">
-        <Field label="按用户根" hint="root 取自每个用户上报的目录,无需填绝对路径">
+        <Field label="用户目录" hint="选一种,系统按每个用户上报的目录判断">
           <select
             className={`${INPUT_CLASS} w-auto`}
             value={row.userRootKey ?? 'wiki'}
             onChange={(event) => onChange({ userRootKey: event.target.value as 'wiki' | 'requirements' })}
           >
-            <option value="wiki">wiki 根(知识库)</option>
-            <option value="requirements">requirements 根(需求/过程文档)</option>
+            <option value="wiki">知识库目录</option>
+            <option value="requirements">需求 / 文档目录</option>
           </select>
         </Field>
       </div>
@@ -115,10 +118,7 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
   if (row.sourceType === 'code_catchall') {
     return (
       <div className="grid gap-2.5">
-        <p className="text-[11px] text-[var(--color-secondary)]">
-          代码 = 除知识库 / 过程文档根之外的所有路径
-          {row.excludeUserRootKeys.length ? `(排除根:${row.excludeUserRootKeys.join('、')})` : ''}
-        </p>
+        <p className="text-[11px] text-[var(--color-secondary)]">代码 = 不在知识库 / 需求目录里的所有路径</p>
         <ExcludeGlobsField row={row} onChange={onChange} />
       </div>
     );
@@ -126,7 +126,7 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
 
   if (row.sourceType === 'url' || row.sourceType === 'mcp') {
     return (
-      <Field label="URL 前缀" hint="命中以这些前缀开头的网址,一行一个">
+      <Field label="网址前缀" hint="一行一个,如 https://host/docs/">
         <textarea
           className={TEXTAREA_CLASS}
           placeholder="https://host/docs/"
@@ -142,7 +142,7 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
 
 function ExcludeGlobsField({ row, onChange }: { row: ContentRow; onChange: (patch: Partial<ContentRow>) => void }) {
   return (
-    <Field label="排除" hint="不算代码的相对路径 glob,一行一个">
+    <Field label="排除" hint="要排除的路径通配符,一行一个,如 *.md、dist/">
       <textarea
         className={TEXTAREA_CLASS}
         placeholder={'*.md\ndist/**\nnode_modules/**'}

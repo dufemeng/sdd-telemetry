@@ -32,7 +32,7 @@ export const SOURCE_RULE_FIELD_DOCS: Record<string, FieldDoc> = {
   pathRegexes: { desc: '路径正则匹配,适合结构不固定但有模式', example: '.+' },
   userRootKey: { desc: '按用户上报根解析:root 取自每个用户的 wiki / requirements 列', example: 'wiki' },
   excludeUserRootKeys: { desc: '排除落在这些用户根里的路径(代码=非文档)', example: 'wiki, requirements' },
-  excludeGlobs: { desc: '排除这些相对路径 glob', example: '*.md, dist/**, node_modules/**' },
+  excludeGlobs: { desc: '排除这些路径(通配符,* 匹配任意)', example: '*.md, dist/**, node_modules/**' },
   skillNames: { desc: '匹配的技能名(含别名),对应 source_reference 的 skill_name', example: 'bk-fe-design, bk-fe:design' },
   actions: { desc: '允许命中的工具动作', example: 'read, write, edit / invoke' },
 };

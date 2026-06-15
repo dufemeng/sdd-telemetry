@@ -31,7 +31,7 @@ export default function ProfileConfigAdminPage() {
 
   return (
     <div className="grid gap-3 xl:grid-cols-[minmax(300px,0.7fr)_minmax(0,1.6fr)]">
-      <Panel title="Profile" icon={<Settings2 size={18} />}>
+      <Panel title="工作流" icon={<Settings2 size={18} />}>
         <DataTable
           headers={['名称', '状态', '版本']}
           rows={items.map((item) => ({
@@ -96,15 +96,15 @@ function ProfileEditor({
     createDraft.isPending || saveDraft.isPending || publish.isPending || disable.isPending || previewMutation.isPending;
   const error = createDraft.error ?? saveDraft.error ?? publish.error ?? disable.error ?? previewMutation.error;
 
-  if (!selectedId && !config) return <EmptyState text="请选择 Profile" />;
+  if (!selectedId && !config) return <EmptyState text="请选择工作流" />;
   if (detailQuery.isLoading && !config) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
   }
   if (!config) {
     return (
-      <Panel title="Profile 配置" icon={<FileJson size={18} />}>
+      <Panel title="工作流配置" icon={<FileJson size={18} />}>
         <button className={PRIMARY_BUTTON_CLASS} type="button" onClick={() => setConfig(scaffoldProfileConfig())}>
-          <CopyPlus size={14} /> 新建 Profile
+          <CopyPlus size={14} /> 新建工作流
         </button>
       </Panel>
     );
@@ -138,7 +138,7 @@ function ProfileEditor({
     replace({
       ...activeConfig,
       profileId: `${activeConfig.profileId}-copy`,
-      displayName: `${activeConfig.displayName} Copy`,
+      displayName: `${activeConfig.displayName} 副本`,
       status: 'disabled',
     } as WorkflowProfileConfig);
     onSelect(null);
@@ -149,7 +149,7 @@ function ProfileEditor({
 
   return (
     <Panel
-      title="Profile 配置"
+      title="工作流配置"
       icon={<FileJson size={18} />}
       headerRight={
         <div className="flex flex-wrap gap-2">
@@ -171,7 +171,7 @@ function ProfileEditor({
       <div className="grid gap-3">
         <Section title="基础信息">
           <div className="grid gap-3 md:grid-cols-3">
-            <Field label="Profile ID">
+            <Field label="工作流 ID（系统内部标识,发布后别改）">
               <input
                 className={selectedId ? `${INPUT_CLASS} opacity-60` : INPUT_CLASS}
                 disabled={Boolean(selectedId)}
@@ -194,12 +194,15 @@ function ProfileEditor({
         <ContentMapSection config={activeConfig} onChange={replace} />
         <SkillMappingSection config={activeConfig} onChange={replace} />
 
-        <Section title="发布前预览">
-          <div className="grid gap-3 md:grid-cols-3">
-            <PreviewStat label="配置 Hash" value={preview?.definitionHash.slice(0, 12) ?? '—'} />
-            <PreviewStat label="校验结果" value={preview ? (preview.validation.valid ? '通过' : `${preview.validation.issues.length} 个问题`) : '—'} />
-            <PreviewStat label="已解析规则" value={preview ? String(preview.runtime.resolvedRuleCount) : '—'} />
-          </div>
+        <Section title="发布前检查">
+          {!preview ? (
+            <p className="text-[12px] text-[var(--color-muted)]">点上方「预览」,用最近的真实数据校验这套配置能不能跑。</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <PreviewStat label="校验结果" value={preview.validation.valid ? '通过' : `${preview.validation.issues.length} 个问题`} />
+              <PreviewStat label="生效规则数" value={String(preview.runtime.resolvedRuleCount)} />
+            </div>
+          )}
           {(preview?.validation.issues.length ?? 0) > 0 ? (
             <IssueList issues={preview!.validation.issues.map((issue) => `${issue.path ?? issue.ruleId ?? 'config'}: ${issue.message}`)} />
           ) : null}
@@ -268,10 +271,10 @@ function IssueList({ issues }: { issues: string[] }) {
 }
 
 function versionText(item: ProfileConfigAdminSummary): string {
-  if (!item.publishedVersionNo && item.source === 'builtin') return 'builtin';
-  const published = item.publishedVersionNo ? `发布 v${item.publishedVersionNo}` : '未发布';
-  const serving = item.servingVersionNo ? `服务 v${item.servingVersionNo}` : '未服务';
-  return published === serving.replace('服务', '发布') ? published : `${published} / ${serving}`;
+  if (!item.publishedVersionNo && item.source === 'builtin') return '内置';
+  if (item.servingVersionNo) return `生效中 v${item.servingVersionNo}`;
+  if (item.publishedVersionNo) return `草稿 v${item.publishedVersionNo}`;
+  return '未发布';
 }
 
 /** 新建 profile 的脚手架:source_backed + 三类内容路径规则 + 技能兜底,简单视图可直接编辑。 */

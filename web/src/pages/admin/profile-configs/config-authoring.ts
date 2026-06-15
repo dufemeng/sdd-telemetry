@@ -84,10 +84,19 @@ export const CONTENT_KIND_META: Record<ContentKind, { label: string; hint: strin
 
 export const CONTENT_SOURCE_TYPE_LABEL: Record<ContentSourceType, string> = {
   path_contains: '路径包含',
-  user_root: '按用户根',
-  code_catchall: '非文档的所有路径',
-  url: 'URL 前缀',
-  mcp: 'MCP 文档',
+  user_root: '每个用户的目录',
+  code_catchall: '其余所有路径',
+  url: '网址前缀',
+  mcp: '在线文档(MCP)',
+};
+
+/** 来源类型的一句话解释,显示在下拉旁边,免得用户猜。 */
+export const CONTENT_SOURCE_TYPE_DESC: Record<ContentSourceType, string> = {
+  path_contains: '文件路径里只要包含你填的一段,就算这一类。多人、多台电脑时最稳。',
+  user_root: '每个用户上报自己电脑上的目录(知识库 / 需求目录),你不用填路径,选一种即可。',
+  code_catchall: '凡是不在知识库 / 需求目录里的路径,都当作代码。',
+  url: '网址以你填的前缀开头,就算这一类。',
+  mcp: '通过 MCP 工具读到的在线文档。',
 };
 
 function asLines(value: string[] | undefined): string[] {
