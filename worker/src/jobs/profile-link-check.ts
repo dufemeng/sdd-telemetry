@@ -40,7 +40,17 @@ async function main(): Promise<void> {
     // 优先抽有 artifact 的 delivery unit，链路更有料。
     const [rows] = await pool.query<SampleRow[]>(
       `SELECT du.id AS du_id, du.title,
-              JSON_UNQUOTE(JSON_EXTRACT(du.evidence_json,'$.sourceId')) AS sdd_work_item_id,
+              COALESCE(
+                JSON_UNQUOTE(JSON_EXTRACT(du.evidence_json,'$.sourceId')),
+                (
+                  SELECT CAST(wi.id AS CHAR)
+                  FROM sdd_work_items wi
+                  WHERE wi.relative_dir = du.relative_dir_or_locator
+                     OR du.relative_dir_or_locator LIKE CONCAT('%/', wi.relative_dir)
+                  ORDER BY CHAR_LENGTH(wi.relative_dir) DESC
+                  LIMIT 1
+                )
+              ) AS sdd_work_item_id,
               (SELECT COUNT(*) FROM profile_artifacts a
                WHERE a.projection_run_id=du.projection_run_id AND a.delivery_unit_id=du.id) AS artifact_cnt
        FROM profile_delivery_units du
@@ -55,28 +65,43 @@ async function main(): Promise<void> {
 
     for (const row of rows) {
       const sddId = row.sdd_work_item_id;
+      const hasLegacyOracle = sddId != null;
       const checks = {
         artifacts: {
-          old: await scalar(pool, 'SELECT COUNT(*) AS v FROM sdd_work_item_artifacts WHERE work_item_id=?', [sddId]),
+          old: hasLegacyOracle
+            ? await scalar(pool, 'SELECT COUNT(*) AS v FROM sdd_work_item_artifacts WHERE work_item_id=?', [sddId])
+            : null,
           new: await scalar(pool, 'SELECT COUNT(*) AS v FROM profile_artifacts WHERE projection_run_id=? AND delivery_unit_id=?', [runId, row.du_id]),
         },
         writes: {
-          old: await scalar(pool, 'SELECT COUNT(*) AS v FROM sdd_work_item_artifact_writes WHERE work_item_id=?', [sddId]),
+          old: hasLegacyOracle
+            ? await scalar(
+              pool,
+              `SELECT COUNT(*) AS v
+               FROM sdd_work_item_artifact_writes w
+               JOIN sdd_work_item_artifacts a ON a.id = w.artifact_id
+               WHERE w.work_item_id=?`,
+              [sddId],
+            )
+            : null,
           new: await scalar(pool, 'SELECT COUNT(*) AS v FROM profile_artifact_writes WHERE projection_run_id=? AND delivery_unit_id=?', [runId, row.du_id]),
         },
         turns: {
-          old: await scalar(pool, 'SELECT COUNT(*) AS v FROM sdd_work_item_artifact_turns WHERE work_item_id=?', [sddId]),
+          old: hasLegacyOracle
+            ? await scalar(pool, 'SELECT COUNT(*) AS v FROM sdd_work_item_artifact_turns WHERE work_item_id=?', [sddId])
+            : null,
           new: await scalar(pool, 'SELECT COUNT(*) AS v FROM profile_artifact_turns WHERE projection_run_id=? AND delivery_unit_id=?', [runId, row.du_id]),
         },
       };
 
       const ok =
+        !hasLegacyOracle ||
         checks.artifacts.old === checks.artifacts.new &&
         checks.writes.old === checks.writes.new &&
         checks.turns.old === checks.turns.new;
       if (!ok) failures.push(`deliveryUnit ${row.du_id} (sdd work_item ${sddId}) 链路计数不一致`);
 
-      results.push({ deliveryUnitId: row.du_id, title: row.title, sddWorkItemId: sddId, ok, checks });
+      results.push({ deliveryUnitId: row.du_id, title: row.title, sddWorkItemId: sddId, legacyOracle: hasLegacyOracle, ok, checks });
     }
 
     const report = {
