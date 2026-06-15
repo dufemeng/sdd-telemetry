@@ -147,8 +147,10 @@ function matchRootedPath(
   if (!isInside(locator, root)) return null;
 
   const relativeLocator = locator === root ? '' : locator.slice(root.length + 1);
+  // namespace 取 relativeRoot 的末段(与模糊匹配 fuzzyPathResult 一致):'docs/plan' -> 'plan'。
+  // 否则 rooted 模式(单机精确验证)与生产 fuzzy 模式会得到不同的命名空间/交付单元口径。
   const sourceNamespace = rule.relativeRoot && rule.relativeRoot !== '.'
-    ? rule.relativeRoot
+    ? path.posix.basename(rule.relativeRoot)
     : path.posix.basename(root);
   return { relativeLocator, sourceNamespace, root };
 }
