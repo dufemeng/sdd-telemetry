@@ -18,6 +18,9 @@ export function resolvedProfileConfigHash(
     deliveryUnitRules: config.deliveryUnitRules,
     artifactRules: config.artifactRules,
     capabilityRules: config.capabilityRules,
+    // errorRules 驱动 error-operator 的投影产出,必须进 hash:否则改 errorRules 不会触发重投影,
+    // 且新增异常看板后内置 profile 不会自动重投影(看板会一直空)。
+    errorRules: config.errorRules,
     attributionPolicy: config.attributionPolicy,
   }));
 }
