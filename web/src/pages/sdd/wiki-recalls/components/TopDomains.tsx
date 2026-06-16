@@ -8,13 +8,16 @@ const RANK_COLORS = ['var(--color-primary)', 'var(--color-secondary)', 'var(--co
 export function TopDomains({
   domains,
   degraded,
+  recallFactsMode = false,
   onSelectDomain,
 }: {
   domains: WikiCoverageDomain[];
   degraded: boolean;
+  recallFactsMode?: boolean;
   onSelectDomain: (repo: string, domain: string) => void;
 }) {
   const top = [...domains].sort((a, b) => b.recalls - a.recalls).slice(0, 3);
+  const usesRecallCountLabel = degraded || recallFactsMode;
   return (
     <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
       <div className="mb-3 flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
@@ -26,9 +29,9 @@ export function TopDomains({
         {top.map((d, i) => (
           <div
             key={`${d.repo}-${d.domain}`}
-            className={`relative overflow-hidden rounded-[6px] p-[10px] pl-[14px] ${degraded ? '' : 'cursor-pointer'}`}
+            className="relative cursor-pointer overflow-hidden rounded-[6px] p-[10px] pl-[14px]"
             style={{ background: 'var(--color-hover)', border: '1px solid var(--color-border)' }}
-            onClick={degraded ? undefined : () => onSelectDomain(d.repo, d.domain)}
+            onClick={() => onSelectDomain(d.repo, d.domain)}
           >
             <span className="absolute bottom-0 left-0 top-0 w-[3px]" style={{ background: RANK_COLORS[i] }} />
             <span className="absolute right-0 top-0 px-2 py-[3px] text-[10px] font-bold" style={{ background: RANK_COLORS[i], color: i === 0 ? '#0a0a0a' : 'var(--color-surface)', borderRadius: '0 6px 0 6px' }}>#{i + 1}</span>
@@ -40,7 +43,7 @@ export function TopDomains({
             </div>
             <div className="mt-[6px] flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
               <span>召回 {formatInteger(d.recalls)}</span>
-              <span>{degraded ? `召回文档 ${d.recalledDocs}` : `覆盖 ${d.recalledDocs}/${d.totalDocs}`}</span>
+              <span>{usesRecallCountLabel ? `召回文档 ${d.recalledDocs}` : `覆盖 ${d.recalledDocs}/${d.totalDocs}`}</span>
               <span>{d.distinctUsers} 人</span>
             </div>
           </div>

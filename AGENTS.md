@@ -77,6 +77,10 @@ curl -sS http://127.0.0.1:4318/api/ingest/health
 
 Claude Code 客户端 OTel 推荐配置以 `README.md` 为准；当前服务只接 logs 通路 `/api/ingest/otlp-logs`，不要在无 traces ingest 的情况下要求开启 `OTEL_LOG_TOOL_CONTENT`。
 
+## 浏览器验证账号
+
+需要登录 dashboard 做 Browser / Playwright 验证时，默认使用本地测试账号 `test`。密码由用户在当前会话明确提供，或从本地安全凭据来源获取；不要把明文密码写入仓库文档、commit message、日志或截图。
+
 ## 提交要求
 
 - commit 消息使用中文。

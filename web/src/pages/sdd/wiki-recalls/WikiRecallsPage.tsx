@@ -20,7 +20,7 @@ export default function WikiRecallsPage() {
   const t = data?.totals;
 
   const goDomain = (repo: string, domain: string) => {
-    navigate(`/sdd/wiki-recalls/${repo}/${encodeURIComponent(domain)}`);
+    navigate(`/sdd/wiki-recalls/${encodeURIComponent(repo)}/${encodeURIComponent(domain)}`);
   };
 
   return (
@@ -58,10 +58,15 @@ export default function WikiRecallsPage() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: '2fr 1fr' }}>
         <RecallTrendChart />
-        <TopDomains domains={data?.domains ?? []} degraded={!!degraded || recallFactsMode} onSelectDomain={goDomain} />
+        <TopDomains
+          domains={data?.domains ?? []}
+          degraded={!!degraded}
+          recallFactsMode={recallFactsMode}
+          onSelectDomain={goDomain}
+        />
       </div>
 
-      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} degraded={!!degraded || recallFactsMode} recallFactsMode={recallFactsMode} onSelectDomain={goDomain} />
+      <AssetTable domains={data?.domains ?? []} repos={data?.repos ?? []} degraded={!!degraded} recallFactsMode={recallFactsMode} onSelectDomain={goDomain} />
     </div>
   );
 }

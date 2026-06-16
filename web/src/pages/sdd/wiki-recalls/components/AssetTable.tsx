@@ -46,6 +46,7 @@ export function AssetTable({
     }
     return list;
   }, [scoped, onlyDead, recallFactsMode, search]);
+  const usesRecallCountLabel = degraded || recallFactsMode;
 
   return (
     <section className="rounded-[6px]" style={CARD_STYLE}>
@@ -87,7 +88,7 @@ export function AssetTable({
       <table className="w-full" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {['业务域', degraded ? '召回文档' : '覆盖（已读/库内）', '召回', '文档', '参与人', '沉睡文档', '最近召回'].map((h, i) => (
+            {['业务域', usesRecallCountLabel ? '召回文档' : '覆盖（已读/库内）', '召回', '文档', '参与人', '沉睡文档', '最近召回'].map((h, i) => (
               <th
                 key={h}
                 className={`px-[12px] py-[8px] text-[10px] font-bold uppercase whitespace-nowrap text-[var(--color-muted)] ${i === 0 ? 'text-left' : 'text-right'}`}
@@ -106,9 +107,9 @@ export function AssetTable({
             return (
               <tr
                 key={`${d.repo}-${d.domain}`}
-                className={`group ${degraded ? '' : 'cursor-pointer'}`}
+                className="group cursor-pointer"
                 style={{ borderBottom: '1px solid var(--color-border)' }}
-                onClick={degraded ? undefined : () => onSelectDomain(d.repo, d.domain)}
+                onClick={() => onSelectDomain(d.repo, d.domain)}
               >
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px]">
                   <div className="flex items-center gap-[9px]">
@@ -119,7 +120,7 @@ export function AssetTable({
                   </div>
                 </td>
                 <td className="group-hover:bg-[#171717] px-[12px] py-[10px] text-right">
-                  {degraded ? (
+                  {usesRecallCountLabel ? (
                     <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>{formatInteger(d.recalledDocs)}</span>
                   ) : (
                     <div className="flex items-center justify-end gap-2">

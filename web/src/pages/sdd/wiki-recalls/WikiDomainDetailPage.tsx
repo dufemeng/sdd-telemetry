@@ -15,7 +15,7 @@ export default function WikiDomainDetailPage() {
   const navigate = useNavigate();
   const { profileId } = useShellContext();
   const profilePresentation = useProfilePresentation(profileId);
-  const repo = params.repo ?? '';
+  const repo = params.repo ? decodeURIComponent(params.repo) : '';
   const domain = params.domain ? decodeURIComponent(params.domain) : '';
   const isProfileLoaded = Boolean(profilePresentation);
   const usesFilesystemCoverage = profilePresentation?.knowledgeCoverageMode === 'filesystem_scan';
