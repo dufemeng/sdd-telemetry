@@ -2031,12 +2031,9 @@ async function loadKnowledgeDiagnostics(
   const baseClauses = ['e.profile_id = ?', 'e.projection_run_id = ?', "e.category = 'knowledge_read_failed'"];
   const baseParams: unknown[] = [profileId, runId];
   addTimeRangeWhere(baseClauses, baseParams, 'e.event_time', query);
-  const nonFallback = reasonGroups.filter((reason) => !reason.isFallback);
 
   const rows = await Promise.all(reasonGroups.map(async (reason) => {
-    const reasonWhere = reason.isFallback
-      ? buildFallbackReasonWhere(nonFallback)
-      : buildReasonWhere(reason);
+    const reasonWhere = buildExclusiveReasonWhere(reasonGroups, reason);
     const rows = await dataSource.query(
       `SELECT COUNT(*) AS count,
               COUNT(DISTINCT e.user_id) AS affected_user_count,
@@ -2076,12 +2073,38 @@ function buildReasonCodeWhere(
   for (const rule of errorRules) {
     const reason = rule.reasonGroups?.find((item) => item.reasonCode === reasonCode);
     if (!reason) continue;
-    if (reason.isFallback) {
-      return buildFallbackReasonWhere(rule.reasonGroups?.filter((item) => !item.isFallback) ?? []);
-    }
-    return buildReasonWhere(reason);
+    return buildExclusiveReasonWhere(rule.reasonGroups ?? [], reason);
   }
   return { sql: '1 = 0', params: [] };
+}
+
+/**
+ * 原因分布要构成「不重叠的划分」:同一事件只能落进一个原因。否则诊断分布之和会
+ * 超过分类总数,二级页按 reasonCode 过滤出的列表也会和分布数对不上。
+ * 规则:非 fallback 原因按 reasonGroups 配置顺序优先,后面的原因要排除前面原因已命中的事件;
+ * fallback 原因 = 不命中任何非 fallback 原因。
+ */
+function buildExclusiveReasonWhere(
+  reasonGroups: ProfileErrorReasonGroup[],
+  target: ProfileErrorReasonGroup,
+): { sql: string; params: unknown[] } {
+  const nonFallback = reasonGroups.filter((reason) => !reason.isFallback);
+  if (target.isFallback) return buildFallbackReasonWhere(nonFallback);
+
+  const self = buildReasonWhere(target);
+  if (self.sql === '1 = 0') return self;
+
+  const index = nonFallback.findIndex((reason) => reason.reasonCode === target.reasonCode);
+  const earlier = nonFallback
+    .slice(0, Math.max(index, 0))
+    .map(buildReasonWhere)
+    .filter((item) => item.sql !== '1 = 0');
+  if (earlier.length === 0) return self;
+
+  return {
+    sql: `(${self.sql} AND NOT (${earlier.map((item) => item.sql).join(' OR ')}))`,
+    params: [...self.params, ...earlier.flatMap((item) => item.params)],
+  };
 }
 
 function buildFallbackReasonWhere(nonFallback: ProfileErrorReasonGroup[]): { sql: string; params: unknown[] } {
@@ -2105,8 +2128,9 @@ function buildReasonWhere(reason: ProfileErrorReasonGroup): { sql: string; param
   }
   for (const toolName of reason.matchToolNames ?? []) {
     if (toolName.includes('*')) {
+      // 先转义字面量里的 LIKE 元字符(_ %),再把 glob 的 * 换成 %,否则 mcp__* 里的 _ 会被当通配符。
       parts.push('e.tool_name LIKE ?');
-      params.push(toolName.replaceAll('*', '%'));
+      params.push(escapeLikeLiteral(toolName).replaceAll('*', '%'));
     } else {
       parts.push('e.tool_name = ?');
       params.push(toolName);
@@ -2128,6 +2152,11 @@ function buildReasonWhere(reason: ProfileErrorReasonGroup): { sql: string; param
   return parts.length > 0
     ? { sql: `(${parts.join(' OR ')})`, params }
     : { sql: '1 = 0', params: [] };
+}
+
+/** 转义 LIKE 字面量里的 \ % _,配合默认 \ 转义符使用(只用于 glob→LIKE 翻译,* 不在此转义)。 */
+function escapeLikeLiteral(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
 
 function addErrorListFilters(
