@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CopyPlus, Eye, FileJson, PauseCircle, Rocket, Save, Settings2 } from 'lucide-react';
-import type { ProfileConfigAdminSummary, WorkflowProfileConfig } from '@sdd-telemetry/api';
+import { DEFAULT_PROFILE_ERROR_RULES, type ProfileConfigAdminSummary, type WorkflowProfileConfig } from '@sdd-telemetry/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Panel } from '@/components/ui/Panel';
@@ -291,7 +291,7 @@ function scaffoldProfileConfig(): WorkflowProfileConfig {
       artifactTimeline: true,
       knowledgeRecalls: true,
       codeChanges: true,
-      errors: false,
+      errors: true,
       evaluation: false,
       alerts: false,
     },
@@ -306,6 +306,7 @@ function scaffoldProfileConfig(): WorkflowProfileConfig {
     ],
     artifactRules: [{ ruleId: 'process-doc-artifact', sourceRuleIds: ['process-doc'], typePatterns: [], defaultArtifactType: 'process_doc' }],
     capabilityRules: [{ ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '其他技能' }],
+    errorRules: DEFAULT_PROFILE_ERROR_RULES,
     attributionPolicy: {
       anchorCategories: ['process_doc'],
       anchorActions: ['write', 'edit', 'update'],

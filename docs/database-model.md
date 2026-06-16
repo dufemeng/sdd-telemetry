@@ -618,6 +618,38 @@ Profile 自动投影 job 表，同时承担 CLI 和常驻 worker 的并发互斥
 | `locked_until` | DATETIME(3) | NULL, INDEX | job 锁过期时间 |
 | `last_projection_run_id` | BIGINT UNSIGNED | NULL | 最近成功 run |
 | `last_profile_config_version_id` | BIGINT UNSIGNED | NULL | 最近成功投影的配置版本 |
+
+### 7.4 profile_error_events
+
+Profile 异常看板的 current-run 明细表。来源来自清洗后的 `sdd_interaction_tool_calls` 与 `sdd_errors`，但只有能被当前 profile 强归因的失败才写入：工具失败依赖同 tool_call 的 `profile_source_matches` 或同 interaction 的当前 run facts；模型/API 异常只接受同 interaction 已进入当前 profile facts。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 主键 |
+| `profile_id` | VARCHAR(191) | NOT NULL, INDEX | Profile ID |
+| `projection_run_id` | BIGINT UNSIGNED | NOT NULL, UNIQUE(projection_run_id, error_key) | current-run 隔离 |
+| `error_key` | CHAR(64) | NOT NULL | 幂等 key |
+| `category` | VARCHAR(64) | NOT NULL, INDEX | `knowledge_read_failed` / `process_doc_access_failed` / `code_operation_failed` / `tool_execution_failed` / `model_or_api_failed` |
+| `display_name` | VARCHAR(191) | NOT NULL | 配置化展示名 |
+| `severity` | VARCHAR(32) | NOT NULL | error / warning / info |
+| `source_kind` | VARCHAR(32) | NOT NULL | tool_call / sdd_error |
+| `source_scope` | VARCHAR(32) | NULL | matched / unmatched / profile_interaction |
+| `source_category` | VARCHAR(32) | NULL | 命中的 source category |
+| `matched_rule_id` | VARCHAR(191) | NULL | 命中的 source rule |
+| `user_id` | BIGINT UNSIGNED | NULL | 影响用户 |
+| `interaction_id` | BIGINT UNSIGNED | NULL, INDEX | 关联交互 |
+| `delivery_unit_id` | BIGINT UNSIGNED | NULL, INDEX | 关联交付单元 |
+| `capability_usage_id` | BIGINT UNSIGNED | NULL | 关联能力调用 |
+| `tool_call_id` | BIGINT UNSIGNED | NULL, INDEX | 工具失败来源 |
+| `sdd_error_id` | BIGINT UNSIGNED | NULL, INDEX | 模型/API 异常来源 |
+| `tool_name` | VARCHAR(128) | NULL, INDEX | 工具名 |
+| `error_type` | VARCHAR(128) | NULL | 错误类型 |
+| `message_preview` | TEXT | NULL | 脱敏 / 截断后的错误摘要 |
+| `input_preview` | TEXT | NULL | 脱敏 / 截断后的工具输入 |
+| `locator` | VARCHAR(2048) | NULL | 关联 source locator |
+| `event_time` | DATETIME(3) | NULL, INDEX | 异常时间 |
+| `evidence_json` | JSON | NULL | 匹配证据 |
+| `rule_version` | VARCHAR(32) | NOT NULL | 异常投影规则版本 |
 | `last_error` | LONGTEXT | NULL | 最近失败信息 |
 
 ## 8. Retention

@@ -8,6 +8,9 @@ import type {
   ProfileCapabilityUsageSummaryItem,
   ProfileDemand,
   ProfileDemandDetail,
+  ProfileErrorDetail,
+  ProfileErrorListResponse,
+  ProfileErrorOverviewResponse,
   ProfileKnowledgeCoverageResponse,
   ProfileKnowledgeDeliveryUnitRankingResponse,
   ProfileKnowledgeRecallListResponse,
@@ -97,6 +100,80 @@ export function useProfileOverview(profileId: string, fromIso?: string) {
     staleTime: 15_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileErrorOverview(
+  profileId: string,
+  params: {
+    fromIso?: string;
+    toIso?: string;
+    category?: string | null;
+    reasonCode?: string | null;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params.fromIso) qs.set('from', params.fromIso);
+  if (params.toIso) qs.set('to', params.toIso);
+  if (params.category) qs.set('category', params.category);
+  if (params.reasonCode) qs.set('reasonCode', params.reasonCode);
+  return useQuery({
+    queryKey: ['profile-error-overview', profileId, params],
+    queryFn: () =>
+      requestData<ProfileErrorOverviewResponse>(
+        `/api/profiles/${profileId}/errors/overview${qs.toString() ? `?${qs}` : ''}`,
+      ),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileErrors(
+  profileId: string,
+  params: {
+    fromIso?: string;
+    toIso?: string;
+    category?: string | null;
+    severity?: string | null;
+    reasonCode?: string | null;
+    toolName?: string | null;
+    errorType?: string | null;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+  },
+) {
+  const qs = new URLSearchParams();
+  if (params.fromIso) qs.set('from', params.fromIso);
+  if (params.toIso) qs.set('to', params.toIso);
+  if (params.category) qs.set('category', params.category);
+  if (params.severity) qs.set('severity', params.severity);
+  if (params.reasonCode) qs.set('reasonCode', params.reasonCode);
+  if (params.toolName) qs.set('toolName', params.toolName);
+  if (params.errorType) qs.set('errorType', params.errorType);
+  if (params.keyword?.trim()) qs.set('keyword', params.keyword.trim());
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  return useQuery({
+    queryKey: ['profile-errors', profileId, params],
+    queryFn: () =>
+      requestData<ProfileErrorListResponse>(
+        `/api/profiles/${profileId}/errors${qs.toString() ? `?${qs}` : ''}`,
+      ),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: Boolean(profileId),
+  });
+}
+
+export function useProfileErrorDetail(profileId: string, errorEventId: string | null) {
+  return useQuery({
+    queryKey: ['profile-error-detail', profileId, errorEventId],
+    queryFn: () =>
+      requestData<ProfileErrorDetail>(`/api/profiles/${profileId}/errors/${errorEventId}`),
+    staleTime: 30_000,
+    enabled: Boolean(profileId) && Boolean(errorEventId),
   });
 }
 

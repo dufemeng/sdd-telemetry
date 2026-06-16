@@ -62,8 +62,18 @@ export function builtinProfileConfigSnapshot(profileId: string): ProfileConfigSn
 }
 
 export function parseWorkflowProfileConfig(value: unknown): WorkflowProfileConfig {
-  const parsed = WorkflowProfileConfigSchema.parse(parseJsonValue(value));
-  return parsed as WorkflowProfileConfig;
+  const raw = parseJsonValue(value);
+  const parsed = WorkflowProfileConfigSchema.parse(raw) as WorkflowProfileConfig;
+  if (isRecord(raw) && !('errorRules' in raw)) {
+    return {
+      ...parsed,
+      manifest: {
+        ...parsed.manifest,
+        errors: true,
+      },
+    };
+  }
+  return parsed;
 }
 
 export function canonicalProfileConfigJson(config: WorkflowProfileConfig): string {
@@ -99,6 +109,10 @@ function mergeWithBuiltinFallback(database: ProfileConfigSnapshot[]): ProfileCon
 function parseJsonValue(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   return JSON.parse(value) as unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function sortForStableStringify(value: unknown): unknown {

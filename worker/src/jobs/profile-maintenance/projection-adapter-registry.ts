@@ -5,6 +5,7 @@ import type {
   WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { codeOperator } from '../profile-projection/code-operator';
+import { profileErrorOperator } from '../profile-projection/error-operator';
 import { knowledgeOperator } from '../profile-projection/knowledge-operator';
 import type { ProjectionOperator } from '../profile-projection/runner';
 import { SDD_BRIDGE_OPERATORS } from '../profile-projection/sdd-bridge-operators';
@@ -28,7 +29,7 @@ export interface ProfileProjectionAdapter {
 
 class SddBridgeProjectionAdapter implements ProfileProjectionAdapter {
   mode: ProjectionMode = 'sdd_bridge';
-  operators = [...SDD_BRIDGE_OPERATORS, knowledgeOperator, codeOperator];
+  operators = [...SDD_BRIDGE_OPERATORS, knowledgeOperator, codeOperator, profileErrorOperator];
 
   async prepare(): Promise<ProjectionPrepareResult> {
     return {};
@@ -37,7 +38,7 @@ class SddBridgeProjectionAdapter implements ProfileProjectionAdapter {
 
 class SourceBackedProjectionAdapter implements ProfileProjectionAdapter {
   mode: ProjectionMode = 'source_backed';
-  operators = SOURCE_BACKED_OPERATORS;
+  operators = [...SOURCE_BACKED_OPERATORS, profileErrorOperator];
 
   async prepare(input: {
     pool: Pool;

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PROFILE_ERROR_RULES,
   ONLINE_DOCS_PROFILE_ID,
   SOURCE_BACKED_PRESENTATION,
   type WorkflowProfileConfig,
@@ -68,6 +69,7 @@ export const onlineDocsProfile: WorkflowProfileConfig = {
     { ruleId: 'cap-online-knowledge', sourceRuleIds: ['online-creditdoc-knowledge'], actions: ['read'], capabilityCode: 'knowledge-recall', displayName: '在线知识库读取' },
     { ruleId: 'cap-online-process-doc', sourceRuleIds: ['online-requirements-process-doc'], actions: ['write', 'update'], capabilityCode: 'process-doc-update', displayName: '在线过程文档更新' },
   ],
+  errorRules: DEFAULT_PROFILE_ERROR_RULES,
   attributionPolicy: {
     anchorCategories: ['process_doc'],
     anchorActions: ['write', 'update'],

@@ -14,6 +14,11 @@ import {
   ProfileDemandDetailSchema,
   ProfileDemandListSchema,
   ProfileDemandQuerySchema,
+  ProfileErrorDetailSchema,
+  ProfileErrorListQuerySchema,
+  ProfileErrorListResponseSchema,
+  ProfileErrorOverviewQuerySchema,
+  ProfileErrorOverviewResponseSchema,
   ProfileKnowledgeCoverageQuerySchema,
   ProfileKnowledgeContentSchema,
   ProfileKnowledgeCoverageResponseSchema,
@@ -40,6 +45,8 @@ import {
   type ProfileCapabilityTimeseries,
   type ProfileDemand,
   type ProfileDemandDetail,
+  type ProfileErrorDetail,
+  type ProfileErrorOverviewResponse,
   type ProfileKnowledgeContent,
   type ProfileKnowledgeDocDetailResponse,
   type ProfileKnowledgeDomainDocsResponse,
@@ -95,6 +102,30 @@ export class ProfilesController {
     const query = parseWithSchema(ProfileDemandQuerySchema, this.ctx.query);
     const data: ProfileDemand[] = await this.profilesService.listDemands(profileId, query);
     return ok(parseWithSchema(ProfileDemandListSchema, data));
+  }
+
+  @Get('/:profileId/errors/overview')
+  async errorOverview() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileErrorOverviewQuerySchema, this.ctx.query);
+    const data: ProfileErrorOverviewResponse = await this.profilesService.getErrorOverview(profileId, query);
+    return ok(parseWithSchema(ProfileErrorOverviewResponseSchema, data));
+  }
+
+  @Get('/:profileId/errors')
+  async errors() {
+    const profileId = this.ctx.params.profileId as string;
+    const query = parseWithSchema(ProfileErrorListQuerySchema, this.ctx.query);
+    const { items, total, page, pageSize } = await this.profilesService.listErrors(profileId, query);
+    return ok(parseWithSchema(ProfileErrorListResponseSchema, { items, total, page, pageSize }));
+  }
+
+  @Get('/:profileId/errors/:errorEventId')
+  async errorDetail() {
+    const profileId = this.ctx.params.profileId as string;
+    const errorEventId = this.ctx.params.errorEventId as string;
+    const data: ProfileErrorDetail = await this.profilesService.getErrorDetail(profileId, errorEventId);
+    return ok(parseWithSchema(ProfileErrorDetailSchema, data));
   }
 
   @Get('/:profileId/demands/:demandId')

@@ -11,7 +11,10 @@ export type ValidationIssueCode =
   | 'mcp_doc_rule_missing_matcher'
   | 'skill_rule_missing_matcher'
   | 'unknown_source_rule_id'
-  | 'capability_rule_missing_source';
+  | 'capability_rule_missing_source'
+  | 'duplicate_error_rule_id'
+  | 'duplicate_error_reason_code'
+  | 'error_rule_missing_source_category';
 
 export interface ValidationIssue {
   ruleId?: string;
@@ -148,6 +151,42 @@ export function validateProfileConfig(config: unknown): ValidationResult {
           message: `capabilityRule references unknown sourceRuleId: ${id}`,
         });
       }
+    }
+  }
+
+  const errorRuleIds = new Set<string>();
+  for (const rule of profile.errorRules) {
+    if (errorRuleIds.has(rule.ruleId)) {
+      issues.push({
+        ruleId: rule.ruleId,
+        code: 'duplicate_error_rule_id',
+        severity: 'error',
+        path: 'errorRules',
+        message: 'duplicate errorRule ruleId',
+      });
+    }
+    errorRuleIds.add(rule.ruleId);
+    const reasonCodes = new Set<string>();
+    for (const reason of rule.reasonGroups ?? []) {
+      if (reasonCodes.has(reason.reasonCode)) {
+        issues.push({
+          ruleId: rule.ruleId,
+          code: 'duplicate_error_reason_code',
+          severity: 'error',
+          path: `errorRules.${rule.ruleId}.reasonGroups`,
+          message: `duplicate error reasonCode: ${reason.reasonCode}`,
+        });
+      }
+      reasonCodes.add(reason.reasonCode);
+    }
+    if (rule.enabled && rule.sourceScope === 'matched' && !hasItems(rule.sourceCategories)) {
+      issues.push({
+        ruleId: rule.ruleId,
+        code: 'error_rule_missing_source_category',
+        severity: 'error',
+        path: `errorRules.${rule.ruleId}.sourceCategories`,
+        message: 'matched errorRule needs sourceCategories so it can reuse sourceRules semantics',
+      });
     }
   }
 

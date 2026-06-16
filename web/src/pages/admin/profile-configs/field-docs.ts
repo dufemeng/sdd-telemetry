@@ -17,6 +17,7 @@ export const CONFIG_FIELD_DOCS: Record<string, FieldDoc> = {
   deliveryUnitRules: { desc: '从过程文档路径里切出「需求 / 交付单元」的规则', example: 'parent_dir(取父目录名)' },
   artifactRules: { desc: '把过程文档写入归类成产物(proposal / design / task …)', example: 'design.md → design' },
   capabilityRules: { desc: 'source + 动作 → 一个能力统计项。看板按 capabilityCode 聚合', example: 'skill-design + invoke → design' },
+  errorRules: { desc: '失败事件如何进入异常看板。业务归类复用 sourceRules,这里只管分类 / 展示 / 降噪', example: 'knowledge + tool_call → 知识库读取失败' },
   attributionPolicy: { desc: '知识 / 代码事实归因到哪个需求的策略(同 interaction 优先,其次同 session 时间窗)', example: '同会话 120 分钟窗' },
   presentation: { desc: '前端展示降级:工作流类型、阶段顺序、隐藏哪些指标', example: 'workflowKind: sdd' },
 };

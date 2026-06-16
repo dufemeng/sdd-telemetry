@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSddSkillConfig,
+  DEFAULT_PROFILE_ERROR_RULES,
   validateProfileConfig,
   type SddSemanticInput,
   type WorkflowProfileConfig,
@@ -37,6 +38,7 @@ describe('buildSddSkillConfig (§10 skill→config)', () => {
       profileId: 'sdd-default', displayName: 'x', status: 'active', projectionMode: 'source_backed',
       manifest: { capabilityUsage: true, deliveryUnits: true, artifacts: true, artifactTimeline: true, knowledgeRecalls: true, codeChanges: true, errors: false, evaluation: false, alerts: false },
       sourceRules: cfg.sourceRules, deliveryUnitRules: [], artifactRules: [], capabilityRules: cfg.capabilityRules,
+      errorRules: DEFAULT_PROFILE_ERROR_RULES,
       attributionPolicy: { anchorCategories: [], anchorActions: [], sameInteraction: { enabled: false, preferActions: [] }, sameSessionWindow: { enabled: false, minutes: 0, requireSameUser: true, preferActions: [] } },
       presentation: { workflowKind: 'sdd', maturityStages: [], artifactStageOrder: [], hiddenMetrics: [], knowledgeCoverageMode: 'filesystem_scan' },
     };

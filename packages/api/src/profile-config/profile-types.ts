@@ -31,6 +31,18 @@ export type UserRootKey = 'wiki' | 'requirements';
 /** 投影分发模式：sdd_bridge 走旧 sdd_* 桥接算子；source_backed 走通用 source registry executor。 */
 export type ProjectionMode = 'sdd_bridge' | 'source_backed';
 
+/** 异常看板的固定主分类；展示名和严重级别可由 profile 配置覆盖。 */
+export type ProfileErrorCategory =
+  | 'knowledge_read_failed'
+  | 'process_doc_access_failed'
+  | 'code_operation_failed'
+  | 'tool_execution_failed'
+  | 'model_or_api_failed';
+
+export type ProfileErrorSeverity = 'error' | 'warning' | 'info';
+export type ProfileErrorFailureSource = 'tool_call' | 'sdd_error';
+export type ProfileErrorSourceScope = 'matched' | 'unmatched' | 'profile_interaction';
+
 /**
  * 所有 source rule 的公共字段。
  *
@@ -183,6 +195,40 @@ export interface CapabilityRule {
 }
 
 /**
+ * 异常规则只定义“失败如何进入哪个看板分类”，不重复定义 source 匹配 DSL。
+ * source 语义必须来自 sourceRules / profile_source_matches。
+ */
+export interface ProfileErrorRule {
+  ruleId: string;
+  category: ProfileErrorCategory;
+  displayName: string;
+  enabled: boolean;
+  severity: ProfileErrorSeverity;
+  failureSources: ProfileErrorFailureSource[];
+  /** matched scope 下消费哪些 source category；为空表示不按 category 约束。 */
+  sourceCategories?: SourceCategory[];
+  /** matched=同 tool_call source 命中；unmatched=工具失败但无业务 source；profile_interaction=同 interaction 已进入当前 profile facts。 */
+  sourceScope: ProfileErrorSourceScope;
+  includeToolNames?: string[];
+  excludeToolNames?: string[];
+  includeErrorTypes?: string[];
+  excludeErrorTypes?: string[];
+  reasonGroups?: ProfileErrorReasonGroup[];
+}
+
+export interface ProfileErrorReasonGroup {
+  reasonCode: string;
+  displayName: string;
+  description?: string;
+  matchErrorTypes?: string[];
+  matchToolNames?: string[];
+  locatorIncludes?: string[];
+  messageIncludes?: string[];
+  inputIncludes?: string[];
+  isFallback?: boolean;
+}
+
+/**
  * 知识库 / 代码事实归因到需求的策略。
  *
  * 设计取舍：
@@ -248,11 +294,110 @@ export interface WorkflowProfileConfig {
   artifactRules: ArtifactRule[];
   /** matched source -> capability usage。 */
   capabilityRules: CapabilityRule[];
+  /** failed tool / sdd_errors -> profile_error_events。 */
+  errorRules: ProfileErrorRule[];
   /** knowledge/code -> delivery unit 归因策略。 */
   attributionPolicy: AttributionPolicy;
   /** 展示层降级和阶段顺序。 */
   presentation: ProfilePresentationConfig;
 }
+
+export const DEFAULT_PROFILE_ERROR_RULES: ProfileErrorRule[] = [
+  {
+    ruleId: 'knowledge-read-failed',
+    category: 'knowledge_read_failed',
+    displayName: '知识库读取失败',
+    enabled: true,
+    severity: 'error',
+    failureSources: ['tool_call'],
+    sourceScope: 'matched',
+    sourceCategories: ['knowledge'],
+    reasonGroups: [
+      {
+        reasonCode: 'empty_locator',
+        displayName: '空链接 / 空路径',
+        description: '工具输入或知识库 locator 为空，无法定位文档。',
+        matchErrorTypes: ['empty_locator'],
+        messageIncludes: ['path 为空', 'locator 为空', '链接为空'],
+      },
+      {
+        reasonCode: 'file_missing',
+        displayName: '文件不存在',
+        description: '本地知识库文件被移动、删除或路径无法解析。',
+        matchErrorTypes: ['file_missing', 'ENOENT', 'not_found'],
+        messageIncludes: ['文件不存在', 'not found', 'no such file'],
+      },
+      {
+        reasonCode: 'mcp_read_failed',
+        displayName: 'MCP 文档读取失败',
+        description: 'MCP resource/doc 读取失败或远端文档不存在。',
+        matchErrorTypes: ['mcp_resource_not_found', 'mcp_error', 'resource_not_found'],
+        matchToolNames: ['mcp__*'],
+        messageIncludes: ['MCP resource', 'mcp resource', 'MCP 文档'],
+      },
+      {
+        reasonCode: 'read_token_limit',
+        displayName: '读取 token 超限',
+        description: '文档过大或上下文限制导致内容无法读取。',
+        matchErrorTypes: ['read_token_limit', 'token_limit', 'context_length_exceeded'],
+        messageIncludes: ['token 超限', 'token 限制', 'token limit', 'maximum context'],
+      },
+      {
+        reasonCode: 'permission_denied',
+        displayName: '权限或访问失败',
+        description: '知识库链接或文件因权限、403、EACCES 等原因无法读取。',
+        matchErrorTypes: ['permission_denied', 'EACCES', 'forbidden'],
+        messageIncludes: ['403', 'permission denied', '无权限', 'forbidden'],
+      },
+      {
+        reasonCode: 'other_knowledge_error',
+        displayName: '其他知识库异常',
+        description: '已确认属于知识库读取失败，但不在已配置原因组内。',
+        isFallback: true,
+      },
+    ],
+  },
+  {
+    ruleId: 'process-doc-access-failed',
+    category: 'process_doc_access_failed',
+    displayName: '过程文档访问失败',
+    enabled: true,
+    severity: 'error',
+    failureSources: ['tool_call'],
+    sourceScope: 'matched',
+    sourceCategories: ['process_doc'],
+  },
+  {
+    ruleId: 'code-operation-failed',
+    category: 'code_operation_failed',
+    displayName: '代码操作失败',
+    enabled: true,
+    severity: 'error',
+    failureSources: ['tool_call'],
+    sourceScope: 'matched',
+    sourceCategories: ['code'],
+  },
+  {
+    ruleId: 'tool-execution-failed',
+    category: 'tool_execution_failed',
+    displayName: '工具调用失败',
+    enabled: true,
+    severity: 'warning',
+    failureSources: ['tool_call'],
+    sourceScope: 'unmatched',
+    includeToolNames: ['*'],
+  },
+  {
+    ruleId: 'model-or-api-failed',
+    category: 'model_or_api_failed',
+    displayName: '模型/API 异常',
+    enabled: true,
+    severity: 'error',
+    failureSources: ['sdd_error'],
+    sourceScope: 'profile_interaction',
+    includeErrorTypes: ['api_error', 'internal_error', 'exception'],
+  },
+];
 
 export const SDD_PRESENTATION: ProfilePresentationConfig = {
   workflowKind: 'sdd',

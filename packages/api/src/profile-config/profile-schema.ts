@@ -4,12 +4,23 @@ import {
   ProfilePresentationSchema,
   ProfileStatusSchema,
 } from '../contracts/profile.contract';
+import { DEFAULT_PROFILE_ERROR_RULES } from './profile-types';
 
 export const ProfileRuleConfidenceSchema = z.enum(['high', 'medium', 'low']);
 export const SourceActionSchema = z.enum(['read', 'grep', 'glob', 'write', 'edit', 'update', 'delete', 'invoke']);
 export const SourceCategorySchema = z.enum(['process_doc', 'knowledge', 'code', 'unknown', 'skill']);
 export const UserRootKeySchema = z.enum(['wiki', 'requirements']);
 export const ProjectionModeSchema = z.enum(['sdd_bridge', 'source_backed']);
+export const ProfileErrorCategorySchema = z.enum([
+  'knowledge_read_failed',
+  'process_doc_access_failed',
+  'code_operation_failed',
+  'tool_execution_failed',
+  'model_or_api_failed',
+]);
+export const ProfileErrorSeveritySchema = z.enum(['error', 'warning', 'info']);
+export const ProfileErrorFailureSourceSchema = z.enum(['tool_call', 'sdd_error']);
+export const ProfileErrorSourceScopeSchema = z.enum(['matched', 'unmatched', 'profile_interaction']);
 
 const SourceRuleBaseSchema = z.object({
   ruleId: z.string().trim().min(1),
@@ -117,6 +128,32 @@ export const CapabilityRuleSchema = z.object({
   triggerSource: z.string().nullable().optional(),
 });
 
+export const ProfileErrorRuleSchema = z.object({
+  ruleId: z.string().trim().min(1),
+  category: ProfileErrorCategorySchema,
+  displayName: z.string().trim().min(1),
+  enabled: z.boolean(),
+  severity: ProfileErrorSeveritySchema,
+  failureSources: z.array(ProfileErrorFailureSourceSchema).min(1),
+  sourceCategories: z.array(SourceCategorySchema).optional(),
+  sourceScope: ProfileErrorSourceScopeSchema,
+  includeToolNames: z.array(z.string().trim().min(1)).optional(),
+  excludeToolNames: z.array(z.string().trim().min(1)).optional(),
+  includeErrorTypes: z.array(z.string().trim().min(1)).optional(),
+  excludeErrorTypes: z.array(z.string().trim().min(1)).optional(),
+  reasonGroups: z.array(z.object({
+    reasonCode: z.string().trim().min(1),
+    displayName: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    matchErrorTypes: z.array(z.string().trim().min(1)).optional(),
+    matchToolNames: z.array(z.string().trim().min(1)).optional(),
+    locatorIncludes: z.array(z.string().trim().min(1)).optional(),
+    messageIncludes: z.array(z.string().trim().min(1)).optional(),
+    inputIncludes: z.array(z.string().trim().min(1)).optional(),
+    isFallback: z.boolean().optional(),
+  })).optional(),
+});
+
 export const AttributionPolicySchema = z.object({
   anchorCategories: z.array(SourceCategorySchema),
   anchorActions: z.array(SourceActionSchema),
@@ -142,6 +179,7 @@ export const WorkflowProfileConfigSchema = z.object({
   deliveryUnitRules: z.array(DeliveryUnitRuleSchema),
   artifactRules: z.array(ArtifactRuleSchema),
   capabilityRules: z.array(CapabilityRuleSchema),
+  errorRules: z.array(ProfileErrorRuleSchema).default(DEFAULT_PROFILE_ERROR_RULES),
   attributionPolicy: AttributionPolicySchema,
   presentation: ProfilePresentationSchema,
 });

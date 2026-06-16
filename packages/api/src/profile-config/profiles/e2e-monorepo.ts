@@ -1,5 +1,6 @@
 import {
   ALL_CODE_ACTIONS,
+  DEFAULT_PROFILE_ERROR_RULES,
   E2E_MONOREPO_PROFILE_ID,
   IMPLEMENTATION_ACTIONS,
   READ_ACTIONS,
@@ -40,7 +41,7 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
     artifactTimeline: true,
     knowledgeRecalls: true,
     codeChanges: true,
-    errors: false,
+    errors: true,
     evaluation: false,
     alerts: false,
   },
@@ -122,6 +123,7 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
     { ruleId: 'cap-knowledge', sourceRuleIds: ['e2e-knowledge-docs'], actions: READ_ACTIONS, capabilityCode: 'knowledge-recall', displayName: '知识库读取' },
     { ruleId: 'cap-code-implementation', sourceRuleIds: ['e2e-implementation-code'], actions: IMPLEMENTATION_ACTIONS, capabilityCode: 'code-implementation', displayName: '代码实施' },
   ],
+  errorRules: DEFAULT_PROFILE_ERROR_RULES,
   // 代码实施和知识库读取只归因到写/改/更新过的过程文档；读过程文档不作为核心归因锚点。
   attributionPolicy: {
     anchorCategories: ['process_doc'],

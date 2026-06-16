@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_PROFILE_ERROR_RULES,
   E2E_MONOREPO_PROFILE_ID,
   ONLINE_DOCS_PROFILE_ID,
   ProfileConfigCatalog,
   SDD_DEFAULT_PROFILE_ID,
   WorkflowProfileConfigSchema,
   getProfileConfig,
+  parseWorkflowProfileConfig,
   resolveRuntimeProfileConfig,
   validateProfileConfig,
   type WorkflowProfileConfig,
@@ -112,6 +114,16 @@ describe('ProfileConfigCatalog serving semantics', () => {
     expect(store.listServingProfileConfigs).toHaveBeenCalledTimes(1);
     expect(store.getServingProfileConfig).toHaveBeenCalledWith(SDD_DEFAULT_PROFILE_ID);
   });
+
+  it('enables errors for legacy persisted configs without errorRules', () => {
+    const legacyConfig = { ...baseConfig({}) } as Record<string, unknown>;
+    delete legacyConfig.errorRules;
+
+    const parsed = parseWorkflowProfileConfig(legacyConfig);
+
+    expect(parsed.errorRules).toEqual(DEFAULT_PROFILE_ERROR_RULES);
+    expect(parsed.manifest.errors).toBe(true);
+  });
 });
 
 function baseConfig(over: Partial<WorkflowProfileConfig>): WorkflowProfileConfig {
@@ -128,6 +140,7 @@ function baseConfig(over: Partial<WorkflowProfileConfig>): WorkflowProfileConfig
     deliveryUnitRules: [],
     artifactRules: [],
     capabilityRules: [],
+    errorRules: DEFAULT_PROFILE_ERROR_RULES,
     attributionPolicy: {
       anchorCategories: [], anchorActions: [],
       sameInteraction: { enabled: false, preferActions: [] },
@@ -231,5 +244,20 @@ describe('validateProfileConfig rejects malformed configs', () => {
       artifactRules: [{ ruleId: 'art', sourceRuleIds: ['missing'], typePatterns: [], defaultArtifactType: 'process_doc' }],
     });
     expect(validateProfileConfig(art).valid).toBe(false);
+  });
+
+  it('rejects matched errorRule without sourceCategories', () => {
+    const cfg = baseConfig({
+      errorRules: [{
+        ruleId: 'bad-error',
+        category: 'knowledge_read_failed',
+        displayName: 'Bad',
+        enabled: true,
+        severity: 'error',
+        failureSources: ['tool_call'],
+        sourceScope: 'matched',
+      }],
+    });
+    expect(validateProfileConfig(cfg).valid).toBe(false);
   });
 });

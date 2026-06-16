@@ -1,5 +1,6 @@
 import {
   ALL_CODE_ACTIONS,
+  DEFAULT_PROFILE_ERROR_RULES,
   IMPLEMENTATION_ACTIONS,
   READ_ACTIONS,
   SDD_DEFAULT_PROFILE_ID,
@@ -46,7 +47,7 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
     artifactTimeline: true,
     knowledgeRecalls: true,
     codeChanges: true,
-    errors: false,
+    errors: true,
     evaluation: false,
     alerts: false,
   },
@@ -94,6 +95,7 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
     ...skillCfg.capabilityRules,
     { ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '其他技能' },
   ],
+  errorRules: DEFAULT_PROFILE_ERROR_RULES,
   attributionPolicy: {
     anchorCategories: ['process_doc'],
     anchorActions: WRITE_ACTIONS,

@@ -1,6 +1,6 @@
 # API Contract 设计
 
-更新时间：2026-06-15
+更新时间：2026-06-16
 原则：后端 API 按新领域模型设计，不兼容旧接口；前端以最低成本适配新 API。
 
 ## 1. Contract 原则
@@ -1128,6 +1128,84 @@ Response：`ProfileKnowledgeContentSchema`
   truncated: boolean,
 }
 ```
+
+### 7.5 GET /api/profiles/:profileId/errors/overview
+
+Profile 异常分析概览。只读取当前 profile 的 current projection run，不回退 legacy `/api/sdd/errors`。
+
+Query：
+
+```text
+from      ISO datetime (optional)
+to        ISO datetime (optional)
+category  knowledge_read_failed | process_doc_access_failed | code_operation_failed | tool_execution_failed | model_or_api_failed (optional)
+reasonCode string (optional, knowledge_read_failed reason group from profile errorRules)
+```
+
+Response：`ProfileErrorOverviewResponseSchema`
+
+```ts
+{
+  kpis: {
+    totalCount: number,
+    knowledgeReadFailedCount: number,
+    toolExecutionFailedCount: number,
+    affectedUserCount: number,
+    affectedInteractionCount: number,
+    latestAt: string | null,
+  },
+  categories: Array<{
+    category: string,
+    displayName: string,
+    severity: 'error' | 'warning' | 'info',
+    count: number,
+    affectedUserCount: number,
+    affectedInteractionCount: number,
+    affectedDeliveryUnitCount: number,
+    latestAt: string | null,
+  }>,
+  knowledgeDiagnostics: Array<{
+    reasonCode: string,
+    displayName: string,
+    description: string | null,
+    count: number,
+    affectedUserCount: number,
+    affectedInteractionCount: number,
+    affectedDeliveryUnitCount: number,
+    latestAt: string | null,
+    sampleLocator: string | null,
+  }>,
+}
+```
+
+### 7.6 GET /api/profiles/:profileId/errors
+
+Profile 异常明细列表，服务异常分类页和单事件详情页的表格入口。
+
+Query：
+
+```text
+from            ISO datetime (optional)
+to              ISO datetime (optional)
+category        same as overview (optional)
+severity        error | warning | info (optional)
+reasonCode      string (optional, knowledge_read_failed reason group from profile errorRules)
+toolName        string (optional)
+errorType       string (optional)
+userId          string (optional)
+deliveryUnitId  string (optional)
+keyword         string (optional)
+page            number default 1
+pageSize        number default 50 max 200
+```
+
+Response：`ProfileErrorListResponseSchema`
+
+### 7.7 GET /api/profiles/:profileId/errors/:errorEventId
+
+Profile 异常详情。返回列表字段，加上 `sessionId`、`promptId`、`errorMessageHash`、`stackPreview` 和 `evidence`。
+
+Response：`ProfileErrorDetailSchema`
 
 ## 8. ops API
 

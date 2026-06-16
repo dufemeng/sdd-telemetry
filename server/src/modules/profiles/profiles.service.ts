@@ -13,6 +13,11 @@ import type {
   ProfileCapabilityUsageSummaryQuery,
   ProfileDemand,
   ProfileDemandDetail,
+  ProfileErrorDetail,
+  ProfileErrorListQuery,
+  ProfileErrorItem,
+  ProfileErrorOverviewQuery,
+  ProfileErrorOverviewResponse,
   ProfileKnowledgeCoverageResponse,
   ProfileKnowledgeContent,
   ProfileKnowledgeDeliveryUnitRankingQuery,
@@ -125,6 +130,7 @@ export class ProfilesService {
         deliveryUnitRules: config.deliveryUnitRules.map((rule) => ({ ...rule })),
         artifactRules: config.artifactRules.map((rule) => ({ ...rule })),
         capabilityRules: config.capabilityRules.map((rule) => ({ ...rule })),
+        errorRules: config.errorRules.map((rule) => ({ ...rule })),
         attributionPolicy: { ...config.attributionPolicy },
       },
     };
@@ -189,6 +195,86 @@ export class ProfilesService {
       errorCount: w.errorCount,
       coverageStages: w.coverageStages,
     }));
+  }
+
+  async getErrorOverview(
+    profileId: string,
+    query: ProfileErrorOverviewQuery,
+  ): Promise<ProfileErrorOverviewResponse> {
+    const config = await this.requireProfile(profileId);
+    if (!config.manifest.errors) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'errors not supported for this profile');
+    }
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      return this.profileProjectionRepository.getErrorOverview(profileId, read.runId, query, config.errorRules);
+    }
+    return {
+      kpis: {
+        totalCount: 0,
+        knowledgeReadFailedCount: 0,
+        toolExecutionFailedCount: 0,
+        affectedUserCount: 0,
+        affectedInteractionCount: 0,
+        latestAt: null,
+      },
+      categories: config.errorRules.filter((rule) => rule.enabled).map((rule) => ({
+        category: rule.category,
+        displayName: rule.displayName,
+        severity: rule.severity,
+        count: 0,
+        affectedUserCount: 0,
+        affectedInteractionCount: 0,
+        affectedDeliveryUnitCount: 0,
+        latestAt: null,
+      })),
+      knowledgeDiagnostics: config.errorRules
+        .find((rule) => rule.enabled && rule.category === 'knowledge_read_failed')
+        ?.reasonGroups?.map((reason) => ({
+          reasonCode: reason.reasonCode,
+          displayName: reason.displayName,
+          description: reason.description ?? null,
+          count: 0,
+          affectedUserCount: 0,
+          affectedInteractionCount: 0,
+          affectedDeliveryUnitCount: 0,
+          latestAt: null,
+          sampleLocator: null,
+        })) ?? [],
+    };
+  }
+
+  async listErrors(
+    profileId: string,
+    query: ProfileErrorListQuery,
+  ): Promise<{ items: ProfileErrorItem[]; total: number; page: number; pageSize: number }> {
+    const config = await this.requireProfile(profileId);
+    if (!config.manifest.errors) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'errors not supported for this profile');
+    }
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode === 'projection') {
+      const { items, total } = await this.profileProjectionRepository.listErrors(profileId, read.runId, query, config.errorRules);
+      return { items, total, page: query.page, pageSize: query.pageSize };
+    }
+    return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
+  }
+
+  async getErrorDetail(
+    profileId: string,
+    errorEventId: string,
+  ): Promise<ProfileErrorDetail> {
+    const config = await this.requireProfile(profileId);
+    if (!config.manifest.errors) {
+      throw new ApiHttpError(501, 'UNSUPPORTED', 'errors not supported for this profile');
+    }
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode !== 'projection') {
+      throw new ApiHttpError(404, 'PROFILE_DATA_NOT_READY', `profile data is not ready: ${profileId}`);
+    }
+    const detail = await this.profileProjectionRepository.getErrorDetail(profileId, read.runId, errorEventId);
+    if (detail) return detail;
+    throw new ApiHttpError(404, 'ERROR_EVENT_NOT_FOUND', `error event not found: ${errorEventId}`);
   }
 
   async getDemandDetail(

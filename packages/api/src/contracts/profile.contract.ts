@@ -118,6 +118,7 @@ export const ProfileInspectorFactCountsSchema = z.object({
   capabilityUsages: z.number(),
   knowledgeRecalls: z.number(),
   codeActivities: z.number(),
+  errorEvents: z.number(),
 });
 export type ProfileInspectorFactCounts = z.infer<typeof ProfileInspectorFactCountsSchema>;
 
@@ -198,6 +199,7 @@ export const ProfileInspectorResponseSchema = z.object({
     deliveryUnitRules: z.array(ProfileInspectorRecordSchema),
     artifactRules: z.array(ProfileInspectorRecordSchema),
     capabilityRules: z.array(ProfileInspectorRecordSchema),
+    errorRules: z.array(ProfileInspectorRecordSchema),
     attributionPolicy: ProfileInspectorRecordSchema,
   }),
 });
@@ -218,6 +220,127 @@ export const ProfileOverviewSchema = z.object({
   codeReadCount: z.number(),
 });
 export type ProfileOverview = z.infer<typeof ProfileOverviewSchema>;
+
+// ── 异常分析 ─────────────────────────────────────────────────────────────────
+
+export const ProfileErrorCategoryContractSchema = z.enum([
+  'knowledge_read_failed',
+  'process_doc_access_failed',
+  'code_operation_failed',
+  'tool_execution_failed',
+  'model_or_api_failed',
+]);
+export type ProfileErrorCategoryContract = z.infer<typeof ProfileErrorCategoryContractSchema>;
+
+export const ProfileErrorSeverityContractSchema = z.enum(['error', 'warning', 'info']);
+export type ProfileErrorSeverityContract = z.infer<typeof ProfileErrorSeverityContractSchema>;
+
+export const ProfileErrorOverviewQuerySchema = TimeRangeQuerySchema.extend({
+  category: ProfileErrorCategoryContractSchema.optional(),
+  reasonCode: z.string().trim().max(128).optional(),
+});
+export type ProfileErrorOverviewQuery = z.infer<typeof ProfileErrorOverviewQuerySchema>;
+
+export const ProfileErrorListQuerySchema = TimeRangeQuerySchema.extend({
+  category: ProfileErrorCategoryContractSchema.optional(),
+  severity: ProfileErrorSeverityContractSchema.optional(),
+  reasonCode: z.string().trim().max(128).optional(),
+  toolName: z.string().trim().max(128).optional(),
+  errorType: z.string().trim().max(128).optional(),
+  userId: IdSchema.optional(),
+  deliveryUnitId: IdSchema.optional(),
+  keyword: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type ProfileErrorListQuery = z.infer<typeof ProfileErrorListQuerySchema>;
+
+export const ProfileErrorKpisSchema = z.object({
+  totalCount: z.number(),
+  knowledgeReadFailedCount: z.number(),
+  toolExecutionFailedCount: z.number(),
+  affectedUserCount: z.number(),
+  affectedInteractionCount: z.number(),
+  latestAt: ISODateTimeSchema.nullable(),
+});
+export type ProfileErrorKpis = z.infer<typeof ProfileErrorKpisSchema>;
+
+export const ProfileErrorCategorySummarySchema = z.object({
+  category: ProfileErrorCategoryContractSchema,
+  displayName: z.string(),
+  severity: ProfileErrorSeverityContractSchema,
+  count: z.number(),
+  affectedUserCount: z.number(),
+  affectedInteractionCount: z.number(),
+  affectedDeliveryUnitCount: z.number(),
+  latestAt: ISODateTimeSchema.nullable(),
+});
+export type ProfileErrorCategorySummary = z.infer<typeof ProfileErrorCategorySummarySchema>;
+
+export const ProfileErrorKnowledgeDiagnosticSchema = z.object({
+  reasonCode: z.string(),
+  displayName: z.string(),
+  description: z.string().nullable(),
+  count: z.number(),
+  affectedUserCount: z.number(),
+  affectedInteractionCount: z.number(),
+  affectedDeliveryUnitCount: z.number(),
+  latestAt: ISODateTimeSchema.nullable(),
+  sampleLocator: z.string().nullable(),
+});
+export type ProfileErrorKnowledgeDiagnostic = z.infer<typeof ProfileErrorKnowledgeDiagnosticSchema>;
+
+export const ProfileErrorOverviewResponseSchema = z.object({
+  kpis: ProfileErrorKpisSchema,
+  categories: z.array(ProfileErrorCategorySummarySchema),
+  knowledgeDiagnostics: z.array(ProfileErrorKnowledgeDiagnosticSchema),
+});
+export type ProfileErrorOverviewResponse = z.infer<typeof ProfileErrorOverviewResponseSchema>;
+
+export const ProfileErrorItemSchema = z.object({
+  id: IdSchema,
+  category: ProfileErrorCategoryContractSchema,
+  displayName: z.string(),
+  severity: ProfileErrorSeverityContractSchema,
+  sourceKind: z.enum(['tool_call', 'sdd_error']),
+  sourceScope: z.string().nullable(),
+  sourceCategory: z.string().nullable(),
+  userId: IdSchema.nullable(),
+  userName: z.string().nullable(),
+  interactionId: IdSchema.nullable(),
+  deliveryUnitId: IdSchema.nullable(),
+  deliveryUnitTitle: z.string().nullable(),
+  capabilityUsageId: IdSchema.nullable(),
+  toolCallId: IdSchema.nullable(),
+  sddErrorId: IdSchema.nullable(),
+  eventId: z.string().nullable(),
+  toolName: z.string().nullable(),
+  errorType: z.string().nullable(),
+  messagePreview: z.string().nullable(),
+  inputPreview: z.string().nullable(),
+  locator: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+  matchedRuleId: z.string().nullable(),
+  confidence: z.string().nullable(),
+});
+export type ProfileErrorItem = z.infer<typeof ProfileErrorItemSchema>;
+
+export const ProfileErrorListResponseSchema = z.object({
+  items: z.array(ProfileErrorItemSchema),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+});
+export type ProfileErrorListResponse = z.infer<typeof ProfileErrorListResponseSchema>;
+
+export const ProfileErrorDetailSchema = ProfileErrorItemSchema.extend({
+  sessionId: z.string().nullable(),
+  promptId: z.string().nullable(),
+  errorMessageHash: z.string().nullable(),
+  stackPreview: z.string().nullable(),
+  evidence: z.record(z.string(), z.unknown()),
+});
+export type ProfileErrorDetail = z.infer<typeof ProfileErrorDetailSchema>;
 
 // ── MetricWithPrevious ────────────────────────────────────────────────────────
 

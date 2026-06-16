@@ -22,6 +22,7 @@ import { CreateProfileSourceMatches1780000011000 } from './migrations/1780000011
 import { CreateProfileProjectionJobs1780000012000 } from './migrations/1780000012000-create-profile-projection-jobs';
 import { CreateProfileConfigs1780000013000 } from './migrations/1780000013000-create-profile-configs';
 import { ProfileConfigServingVersion1780000014000 } from './migrations/1780000014000-profile-config-serving-version';
+import { CreateProfileErrorEvents1780000015000 } from './migrations/1780000015000-create-profile-error-events';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -60,6 +61,7 @@ export function createAppDataSource(): DataSource {
       CreateProfileProjectionJobs1780000012000,
       CreateProfileConfigs1780000013000,
       ProfileConfigServingVersion1780000014000,
+      CreateProfileErrorEvents1780000015000,
     ],
   });
 }

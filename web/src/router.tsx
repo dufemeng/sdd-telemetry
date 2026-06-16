@@ -30,6 +30,9 @@ const WorkItemsPage     = lazy(() => import('./pages/sdd/work-items/WorkItemsPag
 const WorkItemDetailPage = lazy(() => import('./pages/sdd/work-items/WorkItemDetailPage'));
 const WikiRecallsPage   = lazy(() => import('./pages/sdd/wiki-recalls/WikiRecallsPage'));
 const WikiDomainDetailPage = lazy(() => import('./pages/sdd/wiki-recalls/WikiDomainDetailPage'));
+const ErrorsPage        = lazy(() => import('./pages/sdd/errors/ErrorsPage'));
+const ErrorCategoryPage = lazy(() => import('./pages/sdd/errors/ErrorCategoryPage'));
+const ErrorEventPage    = lazy(() => import('./pages/sdd/errors/ErrorEventPage'));
 const DatabasePage      = lazy(() => import('./pages/ops/database/DatabasePage'));
 const ResourcesPage     = lazy(() => import('./pages/ops/resources/ResourcesPage'));
 const TroubleshootPage  = lazy(() => import('./pages/troubleshoot/TroubleshootPage'));
@@ -64,6 +67,9 @@ export const router = createBrowserRouter([
           { path: 'sdd/work-items/:id',   element: wrap(WorkItemDetailPage),  errorElement: <RouteError /> },
           { path: 'sdd/wiki-recalls',     element: wrap(WikiRecallsPage),  errorElement: <RouteError /> },
           { path: 'sdd/wiki-recalls/:repo/:domain', element: wrap(WikiDomainDetailPage), errorElement: <RouteError /> },
+          { path: 'sdd/errors',           element: wrap(ErrorsPage),       errorElement: <RouteError /> },
+          { path: 'sdd/errors/events/:eventId', element: wrap(ErrorEventPage), errorElement: <RouteError /> },
+          { path: 'sdd/errors/:category', element: wrap(ErrorCategoryPage), errorElement: <RouteError /> },
           { path: 'reports/daily',          element: wrap(DailyReportsPage), errorElement: <RouteError /> },
           { path: 'reports/daily/latest',   element: wrap(DailyReportsPage), errorElement: <RouteError /> },
           { path: 'reports/daily/:date',    element: wrap(DailyReportsPage), errorElement: <RouteError /> },

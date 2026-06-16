@@ -12,6 +12,13 @@ import type {
   ProfileDemand,
   ProfileDemandArtifact,
   ProfileDemandDetail,
+  ProfileErrorDetail,
+  ProfileErrorItem,
+  ProfileErrorListQuery,
+  ProfileErrorOverviewQuery,
+  ProfileErrorOverviewResponse,
+  ProfileErrorReasonGroup,
+  ProfileErrorRule,
   ProfileKnowledgeCoverageDomain,
   ProfileKnowledgeCoverageRepo,
   ProfileKnowledgeCoverageResponse,
@@ -36,7 +43,7 @@ import type {
   ProfileUsersQuery,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, whereSql } from '../query-utils';
+import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText, whereSql } from '../query-utils';
 import {
   collapseProfileUserActivityItems,
   expandProfileUserActivityFetchLimit,
@@ -220,6 +227,7 @@ export class ProfileProjectionRepository {
       capabilityUsages,
       knowledgeRecalls,
       codeActivities,
+      errorEvents,
     ] = await Promise.all([
       count('profile_delivery_units'),
       count('profile_artifacts'),
@@ -228,6 +236,7 @@ export class ProfileProjectionRepository {
       count('profile_capability_usages'),
       count('profile_knowledge_recalls'),
       count('profile_code_activities'),
+      count('profile_error_events'),
     ]);
 
     return {
@@ -238,6 +247,7 @@ export class ProfileProjectionRepository {
       capabilityUsages,
       knowledgeRecalls,
       codeActivities,
+      errorEvents,
     };
   }
 
@@ -281,6 +291,131 @@ export class ProfileProjectionRepository {
     };
   }
 
+  async getErrorOverview(
+    profileId: string,
+    runId: number,
+    query: ProfileErrorOverviewQuery,
+    errorRules: ProfileErrorRule[],
+  ): Promise<ProfileErrorOverviewResponse> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const { clauses, params } = buildErrorClauses(profileId, runId, query, errorRules);
+
+    const kpiQuery = dataSource.query(
+      `SELECT
+         COUNT(*) AS total_count,
+         SUM(CASE WHEN e.category = 'knowledge_read_failed' THEN 1 ELSE 0 END) AS knowledge_read_failed_count,
+         SUM(CASE WHEN e.category = 'tool_execution_failed' THEN 1 ELSE 0 END) AS tool_execution_failed_count,
+         COUNT(DISTINCT e.user_id) AS affected_user_count,
+         COUNT(DISTINCT e.interaction_id) AS affected_interaction_count,
+         MAX(e.event_time) AS latest_at
+       FROM profile_error_events e
+       ${whereSql(clauses)}`,
+      params,
+    ) as Promise<Array<Record<string, unknown>>>;
+
+    const categoryQuery = dataSource.query(
+      `SELECT e.category, MAX(e.display_name) AS display_name, MAX(e.severity) AS severity,
+              COUNT(*) AS count, COUNT(DISTINCT e.user_id) AS affected_user_count,
+              COUNT(DISTINCT e.interaction_id) AS affected_interaction_count,
+              COUNT(DISTINCT e.delivery_unit_id) AS affected_delivery_unit_count,
+              MAX(e.event_time) AS latest_at
+       FROM profile_error_events e
+       ${whereSql(clauses)}
+       GROUP BY e.category
+       ORDER BY count DESC, latest_at DESC`,
+      params,
+    ) as Promise<Array<Record<string, unknown>>>;
+
+    const knowledgeDiagnosticsQuery = loadKnowledgeDiagnostics(dataSource, profileId, runId, query, errorRules);
+
+    const [kpiRows, categoryRows, knowledgeDiagnostics] = await Promise.all([
+      kpiQuery,
+      categoryQuery,
+      knowledgeDiagnosticsQuery,
+    ]);
+
+    const k = kpiRows[0] ?? {};
+    const categories = mergeErrorCategorySummaries(errorRules, categoryRows, query.category ?? null);
+
+    return {
+      kpis: {
+        totalCount: toNumber(k.total_count),
+        knowledgeReadFailedCount: toNumber(k.knowledge_read_failed_count),
+        toolExecutionFailedCount: toNumber(k.tool_execution_failed_count),
+        affectedUserCount: toNumber(k.affected_user_count),
+        affectedInteractionCount: toNumber(k.affected_interaction_count),
+        latestAt: toIsoDate(k.latest_at),
+      },
+      categories,
+      knowledgeDiagnostics,
+    };
+  }
+
+  async listErrors(
+    profileId: string,
+    runId: number,
+    query: ProfileErrorListQuery,
+    errorRules: ProfileErrorRule[],
+  ): Promise<{ items: ProfileErrorItem[]; total: number }> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const { clauses, params } = buildErrorClauses(profileId, runId, query, errorRules);
+    addErrorListFilters(clauses, params, query);
+    const offset = (query.page - 1) * query.pageSize;
+
+    const [countRows, rows] = await Promise.all([
+      dataSource.query(
+        `SELECT COUNT(*) AS v
+         FROM profile_error_events e
+         ${whereSql(clauses)}`,
+        params,
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT e.*, su.user_name, du.title AS delivery_unit_title, du.unit_slug, du.business_domain
+         FROM profile_error_events e
+         LEFT JOIN sdd_users su ON su.id = e.user_id
+         LEFT JOIN profile_delivery_units du ON du.id = e.delivery_unit_id
+         ${whereSql(clauses)}
+         ORDER BY e.event_time IS NULL, e.event_time DESC, e.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, query.pageSize, offset],
+      ) as Promise<Array<Record<string, unknown>>>,
+    ]);
+
+    return {
+      items: rows.map(toProfileErrorItem),
+      total: toNumber(countRows[0]?.v),
+    };
+  }
+
+  async getErrorDetail(
+    profileId: string,
+    runId: number,
+    errorEventId: string,
+  ): Promise<ProfileErrorDetail | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT e.*, su.user_name, du.title AS delivery_unit_title, du.unit_slug, du.business_domain,
+              se.stack_trace
+       FROM profile_error_events e
+       LEFT JOIN sdd_users su ON su.id = e.user_id
+       LEFT JOIN profile_delivery_units du ON du.id = e.delivery_unit_id
+       LEFT JOIN sdd_errors se ON se.id = e.sdd_error_id
+       WHERE e.profile_id = ? AND e.projection_run_id = ? AND e.id = ?
+       LIMIT 1`,
+      [profileId, runId, errorEventId],
+    )) as Array<Record<string, unknown>>;
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      ...toProfileErrorItem(row),
+      sessionId: (row.session_id as string | null) ?? null,
+      promptId: (row.prompt_id as string | null) ?? null,
+      errorMessageHash: (row.error_message_hash as string | null) ?? null,
+      stackPreview: truncateText(row.stack_trace, 2000),
+      evidence: toRecord(row.evidence_json),
+    };
+  }
+
   /** 产出分析列表：delivery unit + 文档数 + 覆盖阶段（current run）。 */
   async listDemands(
     profileId: string,
@@ -301,7 +436,8 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              0 AS error_count
+              (SELECT COUNT(*) FROM profile_error_events e
+                WHERE e.projection_run_id = du.projection_run_id AND e.delivery_unit_id = du.id) AS error_count
        FROM profile_delivery_units du
        ${whereSql(clauses)}
        ORDER BY du.last_seen_at DESC, du.id DESC`,
@@ -340,7 +476,8 @@ export class ProfileProjectionRepository {
                 WHERE a.projection_run_id = du.projection_run_id AND a.delivery_unit_id = du.id) AS stages,
               (SELECT COUNT(*) FROM profile_capability_usages cu
                 WHERE cu.projection_run_id = du.projection_run_id AND cu.delivery_unit_id = du.id) AS capability_usage_count,
-              0 AS error_count
+              (SELECT COUNT(*) FROM profile_error_events e
+                WHERE e.projection_run_id = du.projection_run_id AND e.delivery_unit_id = du.id) AS error_count
        FROM profile_delivery_units du
        WHERE du.profile_id = ? AND du.projection_run_id = ? AND du.id = ?
        LIMIT 1`,
@@ -1853,7 +1990,243 @@ function emptyFactCounts(): ProfileInspectorFactCounts {
     capabilityUsages: 0,
     knowledgeRecalls: 0,
     codeActivities: 0,
+    errorEvents: 0,
   };
+}
+
+function buildErrorClauses(
+  profileId: string,
+  runId: number,
+  query: ProfileErrorOverviewQuery | ProfileErrorListQuery,
+  errorRules: ProfileErrorRule[] = [],
+): { clauses: string[]; params: unknown[] } {
+  const clauses = ['e.profile_id = ?', 'e.projection_run_id = ?'];
+  const params: unknown[] = [profileId, runId];
+  addTimeRangeWhere(clauses, params, 'e.event_time', query);
+  if ('category' in query && query.category) {
+    clauses.push('e.category = ?');
+    params.push(query.category);
+  }
+  const reasonCode = 'reasonCode' in query ? query.reasonCode : undefined;
+  if (reasonCode) {
+    const reason = buildReasonCodeWhere(errorRules, reasonCode);
+    clauses.push(reason.sql);
+    params.push(...reason.params);
+  }
+  return { clauses, params };
+}
+
+async function loadKnowledgeDiagnostics(
+  dataSource: { query(sql: string, params?: unknown[]): Promise<unknown> },
+  profileId: string,
+  runId: number,
+  query: ProfileErrorOverviewQuery,
+  errorRules: ProfileErrorRule[],
+): Promise<ProfileErrorOverviewResponse['knowledgeDiagnostics']> {
+  if (query.category && query.category !== 'knowledge_read_failed') return [];
+  const knowledgeRule = errorRules.find((rule) => rule.enabled && rule.category === 'knowledge_read_failed');
+  const reasonGroups = knowledgeRule?.reasonGroups ?? [];
+  if (reasonGroups.length === 0) return [];
+
+  const baseClauses = ['e.profile_id = ?', 'e.projection_run_id = ?', "e.category = 'knowledge_read_failed'"];
+  const baseParams: unknown[] = [profileId, runId];
+  addTimeRangeWhere(baseClauses, baseParams, 'e.event_time', query);
+  const nonFallback = reasonGroups.filter((reason) => !reason.isFallback);
+
+  const rows = await Promise.all(reasonGroups.map(async (reason) => {
+    const reasonWhere = reason.isFallback
+      ? buildFallbackReasonWhere(nonFallback)
+      : buildReasonWhere(reason);
+    const rows = await dataSource.query(
+      `SELECT COUNT(*) AS count,
+              COUNT(DISTINCT e.user_id) AS affected_user_count,
+              COUNT(DISTINCT e.interaction_id) AS affected_interaction_count,
+              COUNT(DISTINCT e.delivery_unit_id) AS affected_delivery_unit_count,
+              MAX(e.event_time) AS latest_at,
+              SUBSTRING_INDEX(
+                GROUP_CONCAT(NULLIF(e.locator, '') ORDER BY e.event_time DESC SEPARATOR '\n'),
+                '\n',
+                1
+              ) AS sample_locator
+       FROM profile_error_events e
+       ${whereSql([...baseClauses, reasonWhere.sql])}`,
+      [...baseParams, ...reasonWhere.params],
+    ) as Array<Record<string, unknown>>;
+    const row = rows[0] ?? {};
+    return {
+      reasonCode: reason.reasonCode,
+      displayName: reason.displayName,
+      description: reason.description ?? null,
+      count: toNumber(row.count),
+      affectedUserCount: toNumber(row.affected_user_count),
+      affectedInteractionCount: toNumber(row.affected_interaction_count),
+      affectedDeliveryUnitCount: toNumber(row.affected_delivery_unit_count),
+      latestAt: toIsoDate(row.latest_at),
+      sampleLocator: (row.sample_locator as string | null) ?? null,
+    };
+  }));
+
+  return rows.sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
+}
+
+function buildReasonCodeWhere(
+  errorRules: ProfileErrorRule[],
+  reasonCode: string,
+): { sql: string; params: unknown[] } {
+  for (const rule of errorRules) {
+    const reason = rule.reasonGroups?.find((item) => item.reasonCode === reasonCode);
+    if (!reason) continue;
+    if (reason.isFallback) {
+      return buildFallbackReasonWhere(rule.reasonGroups?.filter((item) => !item.isFallback) ?? []);
+    }
+    return buildReasonWhere(reason);
+  }
+  return { sql: '1 = 0', params: [] };
+}
+
+function buildFallbackReasonWhere(nonFallback: ProfileErrorReasonGroup[]): { sql: string; params: unknown[] } {
+  const parts = nonFallback
+    .map(buildReasonWhere)
+    .filter((item) => item.sql !== '1 = 0');
+  if (parts.length === 0) return { sql: '1 = 1', params: [] };
+  return {
+    sql: `NOT (${parts.map((item) => item.sql).join(' OR ')})`,
+    params: parts.flatMap((item) => item.params),
+  };
+}
+
+function buildReasonWhere(reason: ProfileErrorReasonGroup): { sql: string; params: unknown[] } {
+  const parts: string[] = [];
+  const params: unknown[] = [];
+
+  if (reason.matchErrorTypes?.length) {
+    parts.push(`e.error_type IN (${reason.matchErrorTypes.map(() => '?').join(',')})`);
+    params.push(...reason.matchErrorTypes);
+  }
+  for (const toolName of reason.matchToolNames ?? []) {
+    if (toolName.includes('*')) {
+      parts.push('e.tool_name LIKE ?');
+      params.push(toolName.replaceAll('*', '%'));
+    } else {
+      parts.push('e.tool_name = ?');
+      params.push(toolName);
+    }
+  }
+  for (const value of reason.locatorIncludes ?? []) {
+    parts.push('e.locator LIKE ?');
+    params.push(`%${value}%`);
+  }
+  for (const value of reason.messageIncludes ?? []) {
+    parts.push('e.message_preview LIKE ?');
+    params.push(`%${value}%`);
+  }
+  for (const value of reason.inputIncludes ?? []) {
+    parts.push('e.input_preview LIKE ?');
+    params.push(`%${value}%`);
+  }
+
+  return parts.length > 0
+    ? { sql: `(${parts.join(' OR ')})`, params }
+    : { sql: '1 = 0', params: [] };
+}
+
+function addErrorListFilters(
+  clauses: string[],
+  params: unknown[],
+  query: ProfileErrorListQuery,
+): void {
+  if (query.severity) {
+    clauses.push('e.severity = ?');
+    params.push(query.severity);
+  }
+  if (query.toolName) {
+    clauses.push('e.tool_name = ?');
+    params.push(query.toolName);
+  }
+  if (query.errorType) {
+    clauses.push('e.error_type = ?');
+    params.push(query.errorType);
+  }
+  if (query.userId) {
+    clauses.push('e.user_id = ?');
+    params.push(query.userId);
+  }
+  if (query.deliveryUnitId) {
+    clauses.push('e.delivery_unit_id = ?');
+    params.push(query.deliveryUnitId);
+  }
+  if (query.keyword) {
+    clauses.push('(e.error_type LIKE ? OR e.tool_name LIKE ? OR e.message_preview LIKE ? OR e.input_preview LIKE ? OR e.locator LIKE ?)');
+    const kw = `%${query.keyword}%`;
+    params.push(kw, kw, kw, kw, kw);
+  }
+}
+
+function mergeErrorCategorySummaries(
+  errorRules: ProfileErrorRule[],
+  rows: Array<Record<string, unknown>>,
+  onlyCategory: string | null,
+): ProfileErrorOverviewResponse['categories'] {
+  const rowByCategory = new Map(rows.map((row) => [String(row.category), row]));
+  const ruleByCategory = new Map<string, ProfileErrorRule>();
+  for (const rule of errorRules) {
+    if (!rule.enabled) continue;
+    if (onlyCategory && rule.category !== onlyCategory) continue;
+    if (!ruleByCategory.has(rule.category)) ruleByCategory.set(rule.category, rule);
+  }
+
+  const categories = [...ruleByCategory.values()].map((rule) => {
+    const row = rowByCategory.get(rule.category);
+    return {
+      category: rule.category,
+      displayName: row ? String(row.display_name ?? rule.displayName) : rule.displayName,
+      severity: (row ? String(row.severity ?? rule.severity) : rule.severity) as ProfileErrorOverviewResponse['categories'][number]['severity'],
+      count: toNumber(row?.count),
+      affectedUserCount: toNumber(row?.affected_user_count),
+      affectedInteractionCount: toNumber(row?.affected_interaction_count),
+      affectedDeliveryUnitCount: toNumber(row?.affected_delivery_unit_count),
+      latestAt: toIsoDate(row?.latest_at),
+    };
+  });
+  return categories.sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
+}
+
+function toProfileErrorItem(row: Record<string, unknown>): ProfileErrorItem {
+  return {
+    id: toStringId(row.id),
+    category: row.category as ProfileErrorItem['category'],
+    displayName: String(row.display_name ?? ''),
+    severity: row.severity as ProfileErrorItem['severity'],
+    sourceKind: row.source_kind as ProfileErrorItem['sourceKind'],
+    sourceScope: (row.source_scope as string | null) ?? null,
+    sourceCategory: (row.source_category as string | null) ?? null,
+    userId: row.user_id == null ? null : toStringId(row.user_id),
+    userName: (row.user_name as string | null) ?? null,
+    interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
+    deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
+    deliveryUnitTitle: deliveryUnitLabel(row),
+    capabilityUsageId: row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
+    toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
+    sddErrorId: row.sdd_error_id == null ? null : toStringId(row.sdd_error_id),
+    eventId: (row.event_id as string | null) ?? null,
+    toolName: (row.tool_name as string | null) ?? null,
+    errorType: (row.error_type as string | null) ?? null,
+    messagePreview: (row.message_preview as string | null) ?? null,
+    inputPreview: (row.input_preview as string | null) ?? null,
+    locator: (row.locator as string | null) ?? null,
+    eventTime: toIsoDate(row.event_time),
+    matchedRuleId: (row.matched_rule_id as string | null) ?? null,
+    confidence: (row.confidence as string | null) ?? null,
+  };
+}
+
+function deliveryUnitLabel(row: Record<string, unknown>): string | null {
+  const title = (row.delivery_unit_title as string | null) ?? null;
+  if (title) return title;
+  const domain = (row.business_domain as string | null) ?? null;
+  const slug = (row.unit_slug as string | null) ?? null;
+  if (domain && slug) return `${domain}/${slug}`;
+  return slug;
 }
 
 function knowledgeSourceNamespaceSql(alias: string): string {
