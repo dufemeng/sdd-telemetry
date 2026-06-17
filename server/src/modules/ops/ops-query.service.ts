@@ -45,17 +45,7 @@ export class OpsQueryService {
       .map(row => String(row.table_name ?? row.TABLE_NAME))
       .filter(name => !excludedTables.has(name));
 
-    const [columnRows, countRows] = await Promise.all([
-      this.opsQueryRepository.listColumnsForTables(tableNames),
-      Promise.all(
-        tableNames.map(async name => ({
-          name,
-          count: await this.opsQueryRepository.countRows(name),
-        })),
-      ),
-    ]);
-
-    const rowCountByTable = new Map(countRows.map(r => [r.name, r.count]));
+    const columnRows = await this.opsQueryRepository.listColumnsForTables(tableNames);
     const columnsByTable = groupColumnsByTable(columnRows);
 
     const tables: OpsTable[] = tableRows
@@ -66,7 +56,9 @@ export class OpsQueryService {
         const indexBytes = toNullableNumber(row.index_bytes ?? row.INDEX_LENGTH);
         return {
           tableName,
-          estimatedRows: rowCountByTable.get(tableName) ?? 0,
+          // 用 information_schema 的近似行数(TABLE_ROWS),避免对每张表做 COUNT(*) 全表扫——
+          // 大表逐个精确 count 正是 /ops/database 列表页加载慢的根因。
+          estimatedRows: toNumber(row.estimated_rows ?? row.TABLE_ROWS),
           updatedAt: toIsoDate(row.updated_at ?? row.UPDATE_TIME),
           dataBytes,
           indexBytes,

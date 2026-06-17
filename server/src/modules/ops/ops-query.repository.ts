@@ -81,10 +81,6 @@ export interface ResourceHistoryRow {
   value: string | number | null;
 }
 
-interface CountRow {
-  cnt: string | number;
-}
-
 export interface ListTableRowsOptions {
   tableName: string;
   whereClauses: string[];
@@ -110,14 +106,6 @@ export class OpsQueryRepository {
        WHERE table_schema = DATABASE()
        ORDER BY table_name ASC`,
     )) as TableRow[];
-  }
-
-  async countRows(tableName: string): Promise<number> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT COUNT(*) AS cnt FROM \`${tableName}\``,
-    )) as CountRow[];
-    return Number(rows[0]?.cnt ?? 0);
   }
 
   async listColumnsForTables(tableNames: string[]): Promise<ColumnRow[]> {
