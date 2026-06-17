@@ -10,19 +10,47 @@ export const BUTTON_CLASS =
 export const PRIMARY_BUTTON_CLASS =
   'inline-flex h-8 items-center gap-1.5 rounded-[4px] border-0 bg-[var(--color-primary)] px-3 text-[12px] font-bold text-[var(--color-base)] disabled:opacity-60';
 
+export function ConfigGroup({
+  title,
+  action,
+  children,
+  className = '',
+  bodyClassName = 'mt-2',
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}) {
+  return (
+    <section className={`border-t border-[var(--color-border)] pt-3 ${className}`}>
+      <div className="flex min-h-8 items-center justify-between gap-3">
+        <h2 className="text-[13px] font-semibold text-[#f5f5f5]">{title}</h2>
+        {action}
+      </div>
+      <div className={bodyClassName}>{children}</div>
+    </section>
+  );
+}
+
 export function Section({
   title,
   hint,
   action,
   children,
+  bodyClassName = 'p-3',
+  className = '',
 }: {
   title: string;
   hint?: string;
   action?: ReactNode;
   children: ReactNode;
+  bodyClassName?: string;
+  className?: string;
 }) {
   return (
-    <section className="rounded-[6px] border border-[var(--color-border)] bg-[#0d0d0d]">
+    <section className={`rounded-[6px] border border-[var(--color-border)] bg-[#0d0d0d] ${className}`}>
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-2">
         <div className="min-w-0">
           <h2 className="text-[13px] font-semibold text-[#f5f5f5]">{title}</h2>
@@ -30,7 +58,7 @@ export function Section({
         </div>
         {action}
       </div>
-      <div className="p-3">{children}</div>
+      <div className={bodyClassName}>{children}</div>
     </section>
   );
 }

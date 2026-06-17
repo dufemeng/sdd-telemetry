@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "总览页重设计": {
+      "versions": [
+        {
+          "path": "Overview Redesign.html",
+          "createdAt": "2026-06-17T07:17:33.683Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-06-17T07:17:33.686Z",
+  "updatedAt": "2026-06-17T07:17:33.686Z"
+}

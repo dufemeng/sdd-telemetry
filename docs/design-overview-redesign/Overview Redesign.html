@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1280, initial-scale=1" />
+<title>总览页重设计 · SDD Quality Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ════════════════════════════════════════════════════════════════════════════
+   设计 token —— 严格沿用项目 tokens.css 的深色 + 亮黄体系，只做收敛，不新增色相
+   ════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --base:        #0a0a0a;
+  --surface:     #101010;
+  --panel:       #14140b;
+  --raised:      #161613;   /* 卡片轻微抬升层，panel 的近邻 */
+  --hover:       #1a1a16;
+  --active:      #222222;
+
+  --primary:     #faff69;   /* 单一强调色：只给焦点，不给背景 */
+  --primary-dim: rgba(250,255,105,0.14);
+
+  --text:        #e5e3d3;
+  --secondary:   #c9c8af;
+  --muted:       #93927c;
+  --faint:       #5c5b4d;   /* 比 muted 更弱，用于次要分隔/占位 */
+
+  --border:      rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+
+  --good:        #22c55e;
+  --good-bg:     rgba(34,197,94,0.10);
+  --bad:         #ffb4ab;
+  --bad-bg:      rgba(239,68,68,0.14);
+  --info:        #60a5fa;
+  --info-bg:     rgba(96,165,250,0.10);
+
+  --font-ui:   Inter, "PingFang SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--base);
+  color: var(--text);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1, h2, h3, p { margin: 0; }
+
+/* 模拟 AppShell：240 侧栏 + 48 顶栏 + 内容区 */
+.stage {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 48px 1fr;
+  height: 100vh;
+  min-width: 1180px;
+  background: var(--base);
+}
+
+/* —— 侧栏（精简示意，非设计重点）—— */
+.stage__sidebar {
+  grid-row: 1 / 3;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px 14px;
+}
+.brand__mark {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--primary);
+  display: grid; place-items: center;
+  color: #14140b; font-weight: 700; font-size: 12px;
+  font-family: var(--font-mono);
+}
+.brand__name { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.nav-group-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--faint); padding: 14px 10px 6px; font-weight: 600;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; border-radius: var(--r-sm);
+  font-size: 12.5px; color: var(--secondary); cursor: default;
+}
+.nav-item--active { background: var(--active); color: var(--text); }
+.nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+
+/* —— 顶栏 —— */
+.stage__topbar {
+  grid-column: 2; grid-row: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.crumbs strong { color: var(--text); font-weight: 600; }
+.topbar__tools { display: flex; align-items: center; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; padding: 5px 10px; border-radius: 999px;
+  background: var(--hover); border: 1px solid var(--border); color: var(--secondary);
+  font-family: var(--font-ui);
+}
+.chip--active { border-color: var(--border-strong); color: var(--text); }
+.chip .seg { width: 4px; height: 4px; border-radius: 50%; background: var(--primary); }
+
+/* —— 内容滚动区 —— */
+.stage__main {
+  grid-column: 2; grid-row: 2;
+  overflow: auto;
+  padding: 20px 22px 40px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   变体切换器（skill 要求的 in-page control）
+   ════════════════════════════════════════════════════════════════════════════ */
+.variant-bar {
+  position: sticky; top: -20px; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between;
+  margin: -20px -22px 18px;
+  padding: 12px 22px 12px;
+  background: linear-gradient(to bottom, var(--base) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.variant-bar__label {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.variant-bar__title { font-size: 13px; font-weight: 600; color: var(--text); }
+.variant-bar__sub { font-size: 11px; color: var(--muted); }
+.variant-switch {
+  display: inline-flex; padding: 3px; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.variant-switch button {
+  font: inherit; font-size: 11.5px; font-weight: 500;
+  padding: 6px 14px; border: 0; background: transparent;
+  color: var(--muted); border-radius: 4px; cursor: pointer;
+  transition: background .15s, color .15s;
+  font-family: var(--font-ui);
+}
+.variant-switch button[aria-pressed="true"] {
+  background: var(--primary); color: #14140b; font-weight: 600;
+}
+
+.variant { display: none; }
+.variant--active { display: block; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   共享组件
+   ════════════════════════════════════════════════════════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.card__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.card__head-left { display: flex; align-items: center; gap: 8px; }
+.card__icon {
+  width: 16px; height: 16px; color: var(--primary);
+  display: grid; place-items: center;
+}
+.card__title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.card__meta { font-size: 11px; color: var(--muted); }
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* delta 标签 */
+.delta { font-size: 10.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 3px; }
+.delta--up   { color: var(--good); }
+.delta--down { color: var(--bad); }
+.delta--flat { color: var(--muted); }
+
+/* 表格（重做层级：可见表头 + 合适字号）*/
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl thead th {
+  text-align: left;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 9px 14px;
+  background: #0c0c0c;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tbl tbody td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  vertical-align: middle;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr { transition: background .12s; }
+.tbl tbody tr:hover { background: var(--hover); }
+.row-accent { position: relative; }
+.row-accent::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 2px; border-radius: 0 2px 2px 0; background: var(--accent, transparent);
+}
+
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 600; color: #f5f5f5;
+  border: 1px solid var(--border-strong); flex-shrink: 0;
+}
+
+.tag {
+  font-size: 9.5px; padding: 1.5px 6px; border-radius: 3px;
+  border: 1px solid var(--border-strong); background: rgba(255,255,255,0.03);
+  color: var(--secondary); white-space: nowrap;
+}
+.tag--info { color: var(--info); border-color: rgba(96,165,250,0.25); background: var(--info-bg); }
+
+.minibar { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.minibar > i { display: block; height: 100%; background: var(--primary); border-radius: 2px; }
+
+/* 阶段圆点 */
+.dots { display: inline-flex; align-items: center; gap: 4px; }
+.dots .d { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.10); }
+.dots .d.on { background: var(--primary); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   方案 A —— 活力驾驶舱（Vitality Cockpit）
+   核心：KPI 压成一条横向指标带；主区是「成员活力 + 交付单元流」并排；
+         底部是「能力热度 + 阶段覆盖」。强调"谁在活跃 + 产出了什么"。
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* —— 指标带：核心 3 个 + 累计 3 个 分组，不再是平铺大卡墙 —— */
+.kpiband {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;   /* 左：核心实时指标（带 delta）；右：累计快照（更轻） */
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.kpiband__group { background: var(--surface); padding: 13px 16px; }
+.kpigroup-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--faint); font-weight: 600; margin-bottom: 11px;
+}
+.kpigroup-label .live {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--good);
+  box-shadow: 0 0 0 3px var(--good-bg);
+}
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.kpi { min-width: 0; }
+.kpi__label { font-size: 11px; color: var(--secondary); margin-bottom: 4px; }
+.kpi__value {
+  font-family: var(--font-mono); font-size: 24px; font-weight: 600;
+  color: var(--text); line-height: 1.05; letter-spacing: -0.01em;
+}
+.kpi__value--hero { color: var(--primary); }   /* 仅单个焦点指标上色 */
+.kpi__foot { margin-top: 5px; display: flex; align-items: center; gap: 6px; }
+.kpi__spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+.kpi__spark i { width: 3px; background: var(--border-strong); border-radius: 1px; }
+.kpi__spark i.hi { background: var(--primary); }
+
+/* 累计组更轻：更小字号、无 delta */
+.kpis--cumulative .kpi__value { font-size: 18px; color: var(--secondary); }
+.kpis--cumulative .kpi__label { color: var(--muted); }
+.kpis--cumulative { gap: 14px; }
+
+/* —— 主区：成员活力（左大）+ 交付单元流（右）—— */
+.main-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+/* 成员表 */
+.member-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.member-cell .nm { font-size: 12.5px; font-weight: 500; color: var(--text); }
+.count-cell { display: flex; flex-direction: column; gap: 4px; }
+.count-cell .n { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text); }
+.count-cell .minibar { width: 40px; }
+
+.member-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.member-foot strong { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+
+/* 交付单元流（右侧）—— 用"时间轴流"而非表格，呼应"活力优先" */
+.flow-list { padding: 4px 0; }
+.flow-item {
+  display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.flow-item:last-child { border-bottom: 0; }
+.flow-item:hover { background: var(--hover); }
+.flow-rail { position: relative; height: 100%; display: flex; align-items: center; }
+.flow-rail::before {
+  content: ""; position: absolute; left: 5px; top: -10px; bottom: -10px; width: 1px;
+  background: var(--border);
+}
+.flow-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--surface);
+  border: 2px solid var(--accent, var(--faint)); position: relative; z-index: 1;
+}
+.flow-body { min-width: 0; }
+.flow-title { font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.flow-time { font-size: 10.5px; color: var(--muted); }
+.flow-side { text-align: right; }
+.flow-count { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text); }
+.flow-side .lab { font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* —— 底部：能力热度（左）+ 阶段覆盖（右）—— */
+.bottom-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+
+.skill-row { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 12px; padding: 8px 14px; }
+.skill-row:hover { background: var(--hover); }
+.skill-rank { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--faint); text-align: right; }
+.skill-body { min-width: 0; }
+.skill-name { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.05); margin-top: 5px; overflow: hidden; }
+.skill-bar > i { display: block; height: 100%; border-radius: 2px; background: var(--primary); }
+.skill-side { font-family: var(--font-mono); font-size: 11.5px; color: var(--secondary); white-space: nowrap; }
+.skill-side .u { color: var(--faint); margin-left: 6px; }
+
+/* 阶段覆盖（横向条，替代原柱状图）*/
+.cover-list { padding: 6px 0; }
+.cover-row {
+  display: grid; grid-template-columns: 90px 1fr 44px; align-items: center; gap: 12px;
+  padding: 9px 14px;
+}
+.cover-label { font-size: 12px; color: var(--secondary); }
+.cover-track { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.05); overflow: hidden; }
+.cover-track > i { display: block; height: 100%; border-radius: 4px; background: var(--primary); opacity: 0.92; }
+.cover-val { font-family: var(--font-mono); font-size: 12px; color: var(--text); text-align: right; }
+.cover-foot {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px;
+  padding: 11px 14px; border-top: 1px solid var(--border);
+}
+.cover-stat { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+.cover-stat .k { color: var(--muted); }
+.cover-stat .v { font-family: var(--font-mono); color: var(--secondary); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   方案 B —— 编辑流（Editorial Flow）
+   核心：用"大标题数字 + 注释"的编辑式叙事开场，去掉卡片网格的均质感；
+         中段是窄指标条 + 宽主体；强调"读数 → 洞察"的阅读节奏。
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* —— 编辑式开场：左侧大数字 hero，右侧上下文注释 —— */
+.editorial-hero {
+  display: grid; grid-template-columns: 1.1fr 1fr; gap: 0;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(250,255,105,0.06), transparent 50%),
+    var(--surface);
+  margin-bottom: 16px; overflow: hidden;
+}
+.hero-figure {
+  padding: 22px 24px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.hero-kicker { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; }
+.hero-num {
+  font-family: var(--font-mono); font-size: 56px; font-weight: 600;
+  color: var(--primary); line-height: 1; letter-spacing: -0.02em;
+  margin: 10px 0 6px;
+}
+.hero-sub { font-size: 12px; color: var(--secondary); }
+.hero-sub strong { color: var(--good); }
+.hero-context {
+  padding: 22px 24px;
+  display: flex; flex-direction: column; gap: 16px; justify-content: center;
+}
+.hero-ctx-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.hero-ctx-row .kpi__value { font-size: 20px; }
+
+/* —— 编辑式中段：窄竖向指标条 + 宽主体 —— */
+.editorial-mid { display: grid; grid-template-columns: 200px 1fr; gap: 16px; margin-bottom: 16px; }
+.rail {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 16px;
+  align-self: start;
+}
+.rail__group-label {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--faint); font-weight: 600;
+}
+.rail__kpi .kpi__value { font-size: 19px; }
+.rail__divider { height: 1px; background: var(--border); }
+
+/* —— 编辑式底部：双栏阅读 —— */
+.editorial-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* 方案 B 的成员/交付用更紧凑的列表卡 */
+.e-list { padding: 2px 0; }
+.e-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+}
+.e-row:last-child { border-bottom: 0; }
+.e-row:hover { background: var(--hover); }
+.e-row-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.e-name { font-size: 12px; color: var(--text); }
+.e-right { display: flex; align-items: center; gap: 10px; }
+.e-count { font-family: var(--font-mono); font-size: 12px; color: var(--secondary); }
+
+.legend-note {
+  font-size: 10.5px; color: var(--faint); padding: 0 14px 12px; line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- 侧栏（示意） -->
+  <aside class="stage__sidebar">
+    <div class="brand">
+      <div class="brand__mark">S</div>
+      <div class="brand__name">SDD Quality Observatory</div>
+    </div>
+    <div class="nav-item nav-item--active"><span class="dot"></span>总览</div>
+    <div class="nav-item">能力分析</div>
+    <div class="nav-item">交互追踪</div>
+    <div class="nav-item">异常看板</div>
+    <div class="nav-group-label">交付</div>
+    <div class="nav-item">工作项</div>
+    <div class="nav-item">用户</div>
+    <div class="nav-item">知识召回</div>
+    <div class="nav-group-label">运维</div>
+    <div class="nav-item">资源</div>
+    <div class="nav-item">队列</div>
+  </aside>
+
+  <!-- 顶栏（示意） -->
+  <header class="stage__topbar">
+    <div class="crumbs">Profile <span style="opacity:.4">/</span> <strong>sdd-default</strong> <span style="opacity:.4">/</span> 总览</div>
+    <div class="topbar__tools">
+      <span class="chip chip--active"><span class="seg"></span>近 7 天</span>
+      <span class="chip">导出</span>
+    </div>
+  </header>
+
+  <!-- 主内容 -->
+  <main class="stage__main">
+
+    <!-- 变体切换器 -->
+    <div class="variant-bar">
+      <div class="variant-bar__label">
+        <span class="variant-bar__title">总览页重设计 · 2 个方案对比</span>
+        <span class="variant-bar__sub">同一份数据，两种信息架构取向 · 点上方切换</span>
+      </div>
+      <div class="variant-switch" role="group" aria-label="方案切换">
+        <button data-variant="A" aria-pressed="true">A · 活力驾驶舱</button>
+        <button data-variant="B" aria-pressed="false">B · 编辑流</button>
+      </div>
+    </div>
+
+    <!-- ════════════ 方案 A ════════════ -->
+    <section class="variant variant--active" data-variant="A">
+
+      <!-- 指标带 -->
+      <div class="kpiband">
+        <div class="kpiband__group">
+          <div class="kpigroup-label"><span class="live"></span>实时指标 · 近 7 天</div>
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi__label">技能调用量</div>
+              <div class="kpi__value kpi__value--hero mono">12,847</div>
+              <div class="kpi__foot">
+                <span class="kpi__spark"><i style="height:40%"></i><i style="height:60%"></i><i style="height:45%"></i><i style="height:75%"></i><i style="height:55%"></i><i style="height:85%"></i><i class="hi" style="height:100%"></i></span>
+                <span class="delta delta--up">↑ 18.2%</span>
+              </div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">活跃用户</div>
+              <div class="kpi__value mono">36</div>
+              <div class="kpi__foot">
+                <span class="kpi__spark"><i style="height:50%"></i><i style="height:55%"></i><i style="height:70%"></i><i style="height:60%"></i><i style="height:80%"></i><i style="height:72%"></i><i class="hi" style="height:90%"></i></span>
+                <span class="delta delta--up">↑ 5 人</span>
+              </div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">覆盖交付单元</div>
+              <div class="kpi__value mono">128</div>
+              <div class="kpi__foot">
+                <span class="kpi__spark"><i style="height:60%"></i><i style="height:65%"></i><i style="height:58%"></i><i style="height:72%"></i><i style="height:68%"></i><i style="height:78%"></i><i class="hi" style="height:82%"></i></span>
+                <span class="delta delta--up">↑ 9.4%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="kpiband__group">
+          <div class="kpigroup-label">累计快照 · 本 profile</div>
+          <div class="kpis kpis--cumulative">
+            <div class="kpi">
+              <div class="kpi__label">知识库读取</div>
+              <div class="kpi__value mono">48,210</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">代码读取</div>
+              <div class="kpi__value mono">31,560</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">代码写入</div>
+              <div class="kpi__value mono">7,892</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主区：成员活力 + 交付流 -->
+      <div class="main-grid">
+
+        <!-- 成员活力 -->
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left">
+              <span class="card__icon">●</span>
+              <span class="card__title">成员活力</span>
+            </div>
+            <span class="chip">36 人</span>
+          </div>
+          <table class="tbl">
+            <thead><tr>
+              <th>成员</th><th>工作项</th><th>成熟度</th><th style="text-align:right">最近活跃</th>
+            </tr></thead>
+            <tbody>
+              <tr class="row-accent" style="--accent: var(--good)">
+                <td><div class="member-cell"><div class="avatar" style="background:#1a2a1a">L</div><div><div class="nm">李伟</div></div></div></td>
+                <td><div class="count-cell"><span class="n">42</span><div class="minibar"><i style="width:100%"></i></div></div></td>
+                <td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span></span> <span class="mono" style="font-size:10px;color:var(--muted)">3/5</span></td>
+                <td style="text-align:right;color:var(--secondary)">3 分钟前</td>
+              </tr>
+              <tr class="row-accent" style="--accent: var(--good)">
+                <td><div class="member-cell"><div class="avatar" style="background:#1a1a2a">王</div><div><div class="nm">王芳</div></div></div></td>
+                <td><div class="count-cell"><span class="n">38</span><div class="minibar"><i style="width:90%"></i></div></div></td>
+                <td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span></span> <span class="mono" style="font-size:10px;color:var(--muted)">4/5</span></td>
+                <td style="text-align:right;color:var(--secondary)">12 分钟前</td>
+              </tr>
+              <tr class="row-accent" style="--accent: var(--info)">
+                <td><div class="member-cell"><div class="avatar" style="background:#2a1a1a">张</div><div><div class="nm">张敏 <span class="tag tag--info">新成员</span></div></div></div></td>
+                <td><div class="count-cell"><span class="n">6</span><div class="minibar"><i style="width:14%"></i></div></div></td>
+                <td><span class="dots"><span class="d on"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span></span> <span class="mono" style="font-size:10px;color:var(--muted)">1/5</span></td>
+                <td style="text-align:right;color:var(--secondary)">1 小时前</td>
+              </tr>
+              <tr class="row-accent" style="--accent: var(--good)">
+                <td><div class="member-cell"><div class="avatar" style="background:#1a2a2a">陈</div><div><div class="nm">陈晨</div></div></div></td>
+                <td><div class="count-cell"><span class="n">29</span><div class="minibar"><i style="width:69%"></i></div></div></td>
+                <td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span><span class="d"></span></span> <span class="mono" style="font-size:10px;color:var(--muted)">2/5</span></td>
+                <td style="text-align:right;color:var(--secondary)">2 小时前</td>
+              </tr>
+              <tr class="row-accent" style="--accent: rgba(255,255,255,0.12)">
+                <td><div class="member-cell"><div class="avatar" style="background:#251a25">赵</div><div><div class="nm">赵磊</div></div></div></td>
+                <td><div class="count-cell"><span class="n">15</span><div class="minibar"><i style="width:36%"></i></div></div></td>
+                <td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span></span> <span class="mono" style="font-size:10px;color:var(--muted)">3/5</span></td>
+                <td style="text-align:right;color:var(--muted)">昨天</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="member-foot">
+            <span>产物总产出 <strong>2,184</strong> 个</span>
+            <span>近 7 天活跃 <strong>36</strong> 人</span>
+          </div>
+        </section>
+
+        <!-- 交付单元流 -->
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left">
+              <span class="card__icon">◐</span>
+              <span class="card__title">最近活跃交付单元</span>
+            </div>
+          </div>
+          <div class="flow-list">
+            <div class="flow-item" style="--accent: var(--bad)">
+              <div class="flow-rail"><div class="flow-dot"></div></div>
+              <div class="flow-body">
+                <div class="flow-title">用户中心重构 · 登录态优化</div>
+                <div class="flow-meta">
+                  <span class="tag">前端</span>
+                  <span class="flow-time">5 分钟前</span>
+                </div>
+              </div>
+              <div class="flow-side"><div class="flow-count">14</div><div class="lab">产物 · 含错误</div></div>
+            </div>
+            <div class="flow-item" style="--accent: var(--good)">
+              <div class="flow-rail"><div class="flow-dot"></div></div>
+              <div class="flow-body">
+                <div class="flow-title">支付网关 v3 接入</div>
+                <div class="flow-meta">
+                  <span class="tag">后端</span>
+                  <span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span></span>
+                  <span class="flow-time">28 分钟前</span>
+                </div>
+              </div>
+              <div class="flow-side"><div class="flow-count">22</div><div class="lab">产物</div></div>
+            </div>
+            <div class="flow-item" style="--accent: var(--good)">
+              <div class="flow-rail"><div class="flow-dot"></div></div>
+              <div class="flow-body">
+                <div class="flow-title">移动端首页改版</div>
+                <div class="flow-meta">
+                  <span class="tag">前端</span>
+                  <span class="dots"><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span></span>
+                  <span class="flow-time">1 小时前</span>
+                </div>
+              </div>
+              <div class="flow-side"><div class="flow-count">9</div><div class="lab">产物</div></div>
+            </div>
+            <div class="flow-item" style="--accent: rgba(255,255,255,0.12)">
+              <div class="flow-rail"><div class="flow-dot"></div></div>
+              <div class="flow-body">
+                <div class="flow-title">数据看板性能优化</div>
+                <div class="flow-meta">
+                  <span class="tag">全栈</span>
+                  <span class="flow-time">昨天</span>
+                </div>
+              </div>
+              <div class="flow-side"><div class="flow-count">17</div><div class="lab">产物</div></div>
+            </div>
+            <div class="flow-item" style="--accent: rgba(255,255,255,0.12)">
+              <div class="flow-rail"><div class="flow-dot"></div></div>
+              <div class="flow-body">
+                <div class="flow-title">订单导出功能</div>
+                <div class="flow-meta">
+                  <span class="tag">后端</span>
+                  <span class="flow-time">2 天前</span>
+                </div>
+              </div>
+              <div class="flow-side"><div class="flow-count">5</div><div class="lab">产物</div></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 底部：能力热度 + 阶段覆盖 -->
+      <div class="bottom-grid">
+
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left"><span class="card__icon">▦</span><span class="card__title">热门技能</span></div>
+            <span class="card__meta">近 7 天</span>
+          </div>
+          <div style="padding:6px 0">
+            <div class="skill-row"><span class="skill-rank">01</span><div class="skill-body"><div class="skill-name">SearchCodebase</div><div class="skill-bar"><i style="width:100%"></i></div></div><span class="skill-side">2,840<span class="u">42 人</span></span></div>
+            <div class="skill-row"><span class="skill-rank">02</span><div class="skill-body"><div class="skill-name">Edit</div><div class="skill-bar"><i style="width:74%"></i></div></div><span class="skill-side">2,103<span class="u">31 人</span></span></div>
+            <div class="skill-row"><span class="skill-rank">03</span><div class="skill-body"><div class="skill-name">Read</div><div class="skill-bar"><i style="width:61%"></i></div></div><span class="skill-side">1,732<span class="u">28 人</span></span></div>
+            <div class="skill-row"><span class="skill-rank">04</span><div class="skill-body"><div class="skill-name">Write</div><div class="skill-bar"><i style="width:48%"></i></div></div><span class="skill-side">1,364<span class="u">22 人</span></span></div>
+            <div class="skill-row"><span class="skill-rank">05</span><div class="skill-body"><div class="skill-name">ListFiles</div><div class="skill-bar"><i style="width:39%"></i></div></div><span class="skill-side">1,107<span class="u">36 人</span></span></div>
+            <div class="skill-row"><span class="skill-rank">06</span><div class="skill-body"><div class="skill-name">RunCommands</div><div class="skill-bar"><i style="width:31%"></i></div></div><span class="skill-side">881<span class="u">18 人</span></span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left"><span class="card__icon">⊓</span><span class="card__title">SDD 链路覆盖</span></div>
+            <span class="card__meta">包含该阶段的交付单元数</span>
+          </div>
+          <div class="cover-list">
+            <div class="cover-row"><span class="cover-label">需求</span><div class="cover-track"><i style="width:92%"></i></div><span class="cover-val">118</span></div>
+            <div class="cover-row"><span class="cover-label">设计</span><div class="cover-track"><i style="width:78%"></i></div><span class="cover-val">100</span></div>
+            <div class="cover-row"><span class="cover-label">开发</span><div class="cover-track"><i style="width:69%"></i></div><span class="cover-val">88</span></div>
+            <div class="cover-row"><span class="cover-label">测试</span><div class="cover-track"><i style="width:47%"></i></div><span class="cover-val">60</span></div>
+            <div class="cover-row"><span class="cover-label">部署</span><div class="cover-track"><i style="width:31%"></i></div><span class="cover-val">40</span></div>
+          </div>
+          <div class="cover-foot">
+            <div class="cover-stat"><span class="k">总交付单元</span><span class="v">128</span></div>
+            <div class="cover-stat"><span class="k">全阶段覆盖</span><span class="v">31</span></div>
+            <div class="cover-stat"><span class="k">活跃交付单元</span><span class="v">96</span></div>
+            <div class="cover-stat"><span class="k">含错误</span><span class="v" style="color:var(--bad)">12</span></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ════════════ 方案 B ════════════ -->
+    <section class="variant" data-variant="B">
+
+      <!-- 编辑式开场 hero -->
+      <div class="editorial-hero">
+        <div class="hero-figure">
+          <div class="hero-kicker">本周技能调用量 · 近 7 天</div>
+          <div class="hero-num mono">12,847</div>
+          <div class="hero-sub">较上周 <strong>↑ 18.2%</strong>　由 <strong style="color:var(--text)">36</strong> 位活跃用户产生</div>
+        </div>
+        <div class="hero-context">
+          <div class="hero-ctx-row">
+            <div class="kpi">
+              <div class="kpi__label">覆盖交付单元</div>
+              <div class="kpi__value mono">128</div>
+              <div class="delta delta--up" style="margin-top:4px">↑ 9.4%</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">全链路交付</div>
+              <div class="kpi__value mono">31</div>
+              <div class="delta delta--flat" style="margin-top:4px">覆盖 ≥ 3 阶段</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi__label">含错误交付</div>
+              <div class="kpi__value mono" style="color:var(--bad)">12</div>
+              <div class="delta delta--flat" style="margin-top:4px">需关注</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 中段：窄指标条 + 宽成员表 -->
+      <div class="editorial-mid">
+
+        <!-- 竖向指标条：累计快照 -->
+        <aside class="rail">
+          <div class="rail__group-label">累计快照</div>
+          <div class="rail__kpi">
+            <div class="kpi__label">知识库读取</div>
+            <div class="kpi__value mono">48,210</div>
+          </div>
+          <div class="rail__kpi">
+            <div class="kpi__label">代码读取</div>
+            <div class="kpi__value mono">31,560</div>
+          </div>
+          <div class="rail__kpi">
+            <div class="kpi__label">代码写入</div>
+            <div class="kpi__value mono">7,892</div>
+          </div>
+          <div class="rail__divider"></div>
+          <div class="rail__group-label">活跃</div>
+          <div class="rail__kpi">
+            <div class="kpi__label">近 7 天活跃</div>
+            <div class="kpi__value mono">36 <span style="font-size:12px;color:var(--good)">人</span></div>
+          </div>
+        </aside>
+
+        <!-- 宽主体：成员表 -->
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left"><span class="card__icon">●</span><span class="card__title">成员产出排行</span></div>
+            <span class="card__meta">按工作项数排序</span>
+          </div>
+          <table class="tbl">
+            <thead><tr><th>成员</th><th>工作项</th><th>成熟度</th><th style="text-align:right">最近活跃</th></tr></thead>
+            <tbody>
+              <tr class="row-accent" style="--accent:var(--good)"><td><div class="member-cell"><div class="avatar" style="background:#1a2a1a">L</div><div class="nm">李伟</div></div></td><td><div class="count-cell"><span class="n">42</span><div class="minibar"><i style="width:100%"></i></div></div></td><td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span></span></td><td style="text-align:right;color:var(--secondary)">3 分钟前</td></tr>
+              <tr class="row-accent" style="--accent:var(--good)"><td><div class="member-cell"><div class="avatar" style="background:#1a1a2a">王</div><div class="nm">王芳</div></div></td><td><div class="count-cell"><span class="n">38</span><div class="minibar"><i style="width:90%"></i></div></div></td><td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d on"></span><span class="d"></span></span></td><td style="text-align:right;color:var(--secondary)">12 分钟前</td></tr>
+              <tr class="row-accent" style="--accent:var(--info)"><td><div class="member-cell"><div class="avatar" style="background:#2a1a1a">张</div><div class="nm">张敏</div> <span class="tag tag--info">新</span></div></td><td><div class="count-cell"><span class="n">6</span><div class="minibar"><i style="width:14%"></i></div></div></td><td><span class="dots"><span class="d on"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span></span></td><td style="text-align:right;color:var(--secondary)">1 小时前</td></tr>
+              <tr class="row-accent" style="--accent:var(--good)"><td><div class="member-cell"><div class="avatar" style="background:#1a2a2a">陈</div><div class="nm">陈晨</div></div></td><td><div class="count-cell"><span class="n">29</span><div class="minibar"><i style="width:69%"></i></div></div></td><td><span class="dots"><span class="d on"></span><span class="d on"></span><span class="d"></span><span class="d"></span><span class="d"></span></span></td><td style="text-align:right;color:var(--secondary)">2 小时前</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <!-- 底部双栏：热门能力 + 链路覆盖 -->
+      <div class="editorial-bottom">
+
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left"><span class="card__icon">▦</span><span class="card__title">热门技能</span></div>
+            <span class="card__meta">近 7 天</span>
+          </div>
+          <div class="e-list">
+            <div class="e-row"><div class="e-row-left"><span class="skill-rank">01</span><div style="flex:1"><div class="e-name">SearchCodebase</div><div class="skill-bar" style="margin-top:5px"><i style="width:100%"></i></div></div></div><div class="e-right"><span class="e-count">2,840</span><span class="tag">42 人</span></div></div>
+            <div class="e-row"><div class="e-row-left"><span class="skill-rank">02</span><div style="flex:1"><div class="e-name">Edit</div><div class="skill-bar" style="margin-top:5px"><i style="width:74%"></i></div></div></div><div class="e-right"><span class="e-count">2,103</span><span class="tag">31 人</span></div></div>
+            <div class="e-row"><div class="e-row-left"><span class="skill-rank">03</span><div style="flex:1"><div class="e-name">Read</div><div class="skill-bar" style="margin-top:5px"><i style="width:61%"></i></div></div></div><div class="e-right"><span class="e-count">1,732</span><span class="tag">28 人</span></div></div>
+            <div class="e-row"><div class="e-row-left"><span class="skill-rank">04</span><div style="flex:1"><div class="e-name">Write</div><div class="skill-bar" style="margin-top:5px"><i style="width:48%"></i></div></div></div><div class="e-right"><span class="e-count">1,364</span><span class="tag">22 人</span></div></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__head">
+            <div class="card__head-left"><span class="card__icon">⊓</span><span class="card__title">SDD 链路覆盖</span></div>
+            <span class="card__meta">交付单元数</span>
+          </div>
+          <div class="cover-list">
+            <div class="cover-row"><span class="cover-label">需求</span><div class="cover-track"><i style="width:92%"></i></div><span class="cover-val">118</span></div>
+            <div class="cover-row"><span class="cover-label">设计</span><div class="cover-track"><i style="width:78%"></i></div><span class="cover-val">100</span></div>
+            <div class="cover-row"><span class="cover-label">开发</span><div class="cover-track"><i style="width:69%"></i></div><span class="cover-val">88</span></div>
+            <div class="cover-row"><span class="cover-label">测试</span><div class="cover-track"><i style="width:47%"></i></div><span class="cover-val">60</span></div>
+            <div class="cover-row"><span class="cover-label">部署</span><div class="cover-track"><i style="width:31%"></i></div><span class="cover-val">40</span></div>
+          </div>
+          <p class="legend-note">31 个交付单元覆盖全部 5 个阶段，占总量 24%。<span style="color:var(--bad)">12 个</span>含错误，集中在部署与测试阶段。</p>
+        </section>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // 变体切换器
+  const buttons = document.querySelectorAll('.variant-switch button');
+  const sections = document.querySelectorAll('.variant');
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.variant;
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      sections.forEach((s) => s.classList.toggle('variant--active', s.dataset.variant === target));
+      // 滚回顶部，便于对比
+      document.querySelector('.stage__main').scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+</script>
+</body>
+</html>
