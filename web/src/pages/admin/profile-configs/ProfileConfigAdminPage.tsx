@@ -271,9 +271,17 @@ function IssueList({ issues }: { issues: string[] }) {
 }
 
 function versionText(item: ProfileConfigAdminSummary): string {
-  if (!item.publishedVersionNo && item.source === 'builtin') return '内置';
-  if (item.servingVersionNo) return `生效中 v${item.servingVersionNo}`;
-  if (item.publishedVersionNo) return `草稿 v${item.publishedVersionNo}`;
+  // 版本状态机：serving=真正生效中；published 领先 serving=已发布待投影晋升；
+  // 仅 published（未 serving）=待生效；仅 draft=草稿；都没有则内置/未发布。
+  if (item.servingVersionNo) {
+    if (item.publishedVersionNo && item.publishedVersionNo > item.servingVersionNo) {
+      return `生效中 v${item.servingVersionNo}·待生效 v${item.publishedVersionNo}`;
+    }
+    return `生效中 v${item.servingVersionNo}`;
+  }
+  if (item.publishedVersionNo) return `待生效 v${item.publishedVersionNo}`;
+  if (item.draftVersionId) return '草稿';
+  if (item.source === 'builtin') return '内置';
   return '未发布';
 }
 

@@ -36,9 +36,13 @@ export async function rematchProfileSourceReferences(
   }
 
   await withTransaction(pool, async (connection) => {
+    // 唯一键 uk_profile_source_matches_ref 只含 (profile_id, source_reference_key)，与版本无关；
+    // 任意时刻只有一个版本在 serving，rematch 即「整表按 profile 全删 + 重插当前版本」。
+    // 若按 (profile_id, version) 删，新版本 INSERT 会撞上历史版本遗留的同 source_reference_key 行，
+    // 触发 ER_DUP_ENTRY 让投影失败，serving_version_id 永远晋升不上去。
     await connection.query(
-      'DELETE FROM profile_source_matches WHERE profile_id = ? AND profile_config_version_id = ?',
-      [config.profileId, profileConfigVersionId],
+      'DELETE FROM profile_source_matches WHERE profile_id = ?',
+      [config.profileId],
     );
     for (const match of matches) {
       await insertMatch(connection, match, profileConfigVersionId);
