@@ -126,6 +126,7 @@ export const CapabilityRuleSchema = z.object({
   capabilityCode: z.string().trim().min(1),
   displayName: z.string().trim().min(1),
   triggerSource: z.string().nullable().optional(),
+  surfaceRole: z.enum(['core', 'fallback']).optional(),
 });
 
 export const ProfileErrorRuleSchema = z.object({

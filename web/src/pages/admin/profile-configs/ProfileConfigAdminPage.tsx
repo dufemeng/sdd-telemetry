@@ -313,7 +313,7 @@ function scaffoldProfileConfig(): WorkflowProfileConfig {
       { ruleId: 'process-doc-unit', sourceRuleIds: ['process-doc'], locatorStrategy: { kind: 'parent_dir', stripExtensions: true }, titleStrategy: 'unit_slug' },
     ],
     artifactRules: [{ ruleId: 'process-doc-artifact', sourceRuleIds: ['process-doc'], typePatterns: [], defaultArtifactType: 'process_doc' }],
-    capabilityRules: [{ ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '其他技能' }],
+    capabilityRules: [{ ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '未纳入体系', surfaceRole: 'fallback' }],
     errorRules: DEFAULT_PROFILE_ERROR_RULES,
     attributionPolicy: {
       anchorCategories: ['process_doc'],

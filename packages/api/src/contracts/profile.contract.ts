@@ -412,7 +412,7 @@ export const ProfileArtifactTimelineResponseSchema = z.object({
 });
 export type ProfileArtifactTimelineResponse = z.infer<typeof ProfileArtifactTimelineResponseSchema>;
 
-// ── 能力分析（capability；SDD profile 可展示为「技能」，source-backed profile 展示为「能力」）──
+// ── 技能分析（内部模型仍为 capability；所有 profile 对老板统一展示为「技能」）──
 
 export const ProfileCapabilityAnalyticsQuerySchema = TimeRangeQuerySchema;
 export type ProfileCapabilityAnalyticsQuery = z.infer<typeof ProfileCapabilityAnalyticsQuerySchema>;
@@ -460,6 +460,8 @@ export const ProfileCapabilityAnalyticsSchema = z.object({
       )
       .max(5),
   }),
+  /** 当前 profile 实际读取模式；legacy 表示该视图依赖投影但暂走 sdd_bridge，前端据此降级为空态。 */
+  readMode: z.enum(['projection', 'legacy', 'empty']).optional(),
 });
 export type ProfileCapabilityAnalytics = z.infer<typeof ProfileCapabilityAnalyticsSchema>;
 
@@ -484,8 +486,10 @@ export type ProfileCapabilityTimeseries = z.infer<typeof ProfileCapabilityTimese
 
 export const ProfileCapabilityUsageSummaryQuerySchema = TimeRangeQuerySchema.extend({
   capabilityCode: z.string().optional(),
+  rawCapabilityName: z.string().optional(),
   status: z.string().optional(),
   matched: z.enum(['all', 'matched', 'unmatched']).default('all'),
+  groupBy: z.enum(['raw', 'capability']).default('raw'),
   keyword: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(20),
@@ -503,6 +507,12 @@ export const ProfileCapabilityUsageSummaryItemSchema = z.object({
   activeUserCount: z.number(),
   sessionCount: z.number(),
   deliveryUnitCount: z.number(),
+  rawCapabilityCount: z.number().optional(),
+  rawCapabilityNames: z.array(z.string()).optional(),
+  userTriggeredCount: z.number().optional(),
+  autoTriggeredCount: z.number().optional(),
+  failedCount: z.number().optional(),
+  surfaceRole: z.enum(['core', 'fallback']).optional(),
   versions: z.array(
     z.object({
       version: z.string(),
@@ -546,6 +556,7 @@ export const ProfileCapabilityUsageItemSchema = z.object({
   capabilityDisplayName: z.string().nullable(),
   rawCapabilityName: z.string(),
   capabilitySource: z.string().nullable(),
+  triggerSource: z.string().nullable().optional(),
   status: z.string(),
   userId: IdSchema.nullable(),
   interactionId: IdSchema.nullable(),

@@ -10,7 +10,7 @@
 - server / worker 共用同一份 profile config。
 - 非 SDD profile 已阻断 legacy SDD fallback 污染；无 current run 时返回空态或 `PROFILE_DATA_NOT_READY`。
 - Boss A 本地 monorepo 路径 matcher、projection operators、diff gate 已实现。
-- 总览、用户分析、技能/能力分析、产出分析已按 profile presentation 隐藏 SDD 专属指标。
+- 总览、用户分析、技能分析、产出分析已按 profile presentation 隐藏 SDD 专属指标。
 - Profile Switcher 对未配置 `BOSS_A_MONOREPO_ROOT` 的 profile 显示为 disabled，避免误选。
 
 ## 本次实现
@@ -71,7 +71,7 @@
 - 总览：
   - Boss A 隐藏“全链路需求”、成员 SDD 深度、SDD 链路覆盖。
   - 最近活跃需求用“产物类型”替代 SDD 阶段点。
-- 技能/能力分析：
+- 技能分析：
   - Boss A 隐藏用户触发/自动触发、有效配对率、调用质量、未匹配健康度、全链路需求。
 - 用户分析：
   - Boss A 隐藏 SDD 成熟度 KPI、SDD 阶段漏斗、表格 SDD 成熟度列。
@@ -160,4 +160,3 @@ pnpm profile:diff -- --profile boss-a-monorepo
 - 代码活动依赖 `source_references` 能抽到 code path。如果某些 bash/git 操作不进 source registry，代码概况会低估。
 - Boss A 知识库覆盖率当前是 recall facts 口径，不是文件系统扫描覆盖率。
 - Boss B 在线 MCP 知识库 / requirements 不在本阶段范围内。
-

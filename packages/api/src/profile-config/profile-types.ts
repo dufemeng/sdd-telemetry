@@ -42,6 +42,7 @@ export type ProfileErrorCategory =
 export type ProfileErrorSeverity = 'error' | 'warning' | 'info';
 export type ProfileErrorFailureSource = 'tool_call' | 'sdd_error';
 export type ProfileErrorSourceScope = 'matched' | 'unmatched' | 'profile_interaction';
+export type CapabilitySurfaceRole = 'core' | 'fallback';
 
 /**
  * 所有 source rule 的公共字段。
@@ -192,6 +193,8 @@ export interface CapabilityRule {
   displayName: string;
   /** 可选触发来源。source-backed profile 没有 SDD invocation 时通常为 null。 */
   triggerSource?: string | null;
+  /** 页面归类角色。fallback 表示进入“配置缺口”区域，不进入核心技能语义列表。 */
+  surfaceRole?: CapabilitySurfaceRole;
 }
 
 /**

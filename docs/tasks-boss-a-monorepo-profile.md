@@ -31,7 +31,7 @@ raw/tool events
   -> 现有总览 + 四大看板
 ```
 
-完成后，Profile Switcher 中应能选择 `boss-a-monorepo`，总览、用户分析、技能/能力分析、产出分析、知识库分析可以在 Boss A 数据下运行。
+完成后，Profile Switcher 中应能选择 `boss-a-monorepo`，总览、用户分析、技能分析、产出分析、知识库分析可以在 Boss A 数据下运行。
 
 ## 2. 当前基线
 
@@ -572,7 +572,7 @@ curl -sS http://127.0.0.1:4318/api/profiles/boss-a-monorepo/knowledge/coverage
 - 产出分析能看到 `plan/` 下需求。
 - 知识库分析能看到 `docs/` 读取。
 - 用户分析能看到参与者、代码读写和知识库读取。
-- 技能/能力分析展示的是 Boss A capability，不出现 SDD skill 映射文案。
+- 技能分析展示的是 Boss A profile 技能，不出现 SDD 专属映射文案。
 - §4.8 中列出的 SDD 专属卡片和漏斗必须已隐藏、标 N/A、或改成 profile 配置化语义；不得显示明显错误的 0/0、0/4 或 100% matched。
 - 产出分析和用户分析的阶段点如果仍硬编码 SDD stage，Boss A 下必须隐藏或替换为 generic artifact stage chips。
 

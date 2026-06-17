@@ -368,12 +368,14 @@ export class ProfilesService {
     const read = await this.resolveReadMode(profileId);
 
     if (read.mode === 'projection') {
-      return this.profileProjectionRepository.getCapabilityAnalytics(profileId, read.runId, query, config.presentation);
+      const analytics = await this.profileProjectionRepository.getCapabilityAnalytics(profileId, read.runId, query, config);
+      return { ...analytics, readMode: 'projection' };
     }
-    if (read.mode === 'empty') return emptyCapabilityAnalytics();
+    if (read.mode === 'empty') return { ...emptyCapabilityAnalytics(), readMode: 'empty' };
 
     const sdd = await this.sddQueryService.getSkillAnalytics(query);
     return {
+      readMode: 'legacy',
       kpis: {
         capabilityUsageCount: sdd.kpis.skillUsageCount,
         activeUserCount: sdd.kpis.activeUserCount,
@@ -421,10 +423,11 @@ export class ProfilesService {
     profileId: string,
     query: ProfileCapabilityUsageSummaryQuery,
   ): Promise<{ items: ProfileCapabilityUsageSummaryItem[]; total: number; page: number; pageSize: number }> {
+    const config = await this.requireProfile(profileId);
     const read = await this.resolveReadMode(profileId);
 
     if (read.mode === 'projection') {
-      const { items, total } = await this.profileProjectionRepository.listCapabilityUsageSummary(profileId, read.runId, query);
+      const { items, total } = await this.profileProjectionRepository.listCapabilityUsageSummary(profileId, read.runId, query, config);
       return { items, total, page: query.page, pageSize: query.pageSize };
     }
     if (read.mode === 'empty') return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
@@ -443,6 +446,12 @@ export class ProfilesService {
         activeUserCount: s.activeUserCount,
         sessionCount: s.sessionCount,
         deliveryUnitCount: s.workItemCount,
+        rawCapabilityCount: 1,
+        rawCapabilityNames: [s.rawSkillName],
+        userTriggeredCount: 0,
+        autoTriggeredCount: 0,
+        failedCount: 0,
+        surfaceRole: s.semanticCode ? 'core' : 'fallback',
         versions: s.versions,
         firstSeenAt: s.firstSeenAt,
         lastSeenAt: s.lastSeenAt,
@@ -479,6 +488,7 @@ export class ProfilesService {
       capabilityDisplayName: s.semanticDisplayName,
       rawCapabilityName: s.rawSkillName,
       capabilitySource: null,
+      triggerSource: null,
       status: s.status,
       userId: s.userId,
       interactionId: s.interactionId,

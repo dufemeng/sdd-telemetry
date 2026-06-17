@@ -31,8 +31,8 @@ const SOURCE_BACKED_LABELS: ProfilePresentationLabels = {
   deliveryUnitPlural: '交付单元',
   artifactSingular: '产物',
   artifactPlural: '产物',
-  capabilitySingular: '能力',
-  capabilityPlural: '能力',
+  capabilitySingular: '技能',
+  capabilityPlural: '技能',
   knowledgeSingular: '知识',
   knowledgePlural: '知识',
 };
@@ -61,7 +61,11 @@ export function normalizeProfilePresentation(
 
   return {
     ...base,
-    labels: base.labels ?? defaultLabels(base.workflowKind),
+    labels: {
+      ...(base.labels ?? defaultLabels(base.workflowKind)),
+      capabilitySingular: '技能',
+      capabilityPlural: '技能',
+    },
     stages: base.stages ?? {
       artifactStages: deriveStageDescriptors(base.artifactStageOrder),
       maturityStages: deriveStageDescriptors(base.maturityStages),

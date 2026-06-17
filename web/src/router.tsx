@@ -23,6 +23,7 @@ const BatchesPage       = lazy(() => import('./pages/batches/BatchesPage'));
 const EventsPage        = lazy(() => import('./pages/events/EventsPage'));
 const QualityPage       = lazy(() => import('./pages/quality/QualityPage'));
 const SkillsPage        = lazy(() => import('./pages/sdd/skills/SkillsPage'));
+const SkillDetailPage   = lazy(() => import('./pages/sdd/skills/SkillDetailPage'));
 const InteractionsPage  = lazy(() => import('./pages/sdd/interactions/InteractionsPage'));
 const UsersPage         = lazy(() => import('./pages/sdd/users/UsersPage'));
 const UserProfilePage   = lazy(() => import('./pages/sdd/users/UserProfilePage'));
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           { path: 'events',               element: wrap(EventsPage),       errorElement: <RouteError /> },
           { path: 'quality',              element: wrap(QualityPage),      errorElement: <RouteError /> },
           { path: 'sdd/skills',           element: wrap(SkillsPage),       errorElement: <RouteError /> },
+          { path: 'sdd/skills/detail',    element: wrap(SkillDetailPage),  errorElement: <RouteError /> },
           { path: 'sdd/interactions',     element: wrap(InteractionsPage), errorElement: <RouteError /> },
           { path: 'sdd/users',            element: wrap(UsersPage),        errorElement: <RouteError /> },
           { path: 'sdd/users/:id',        element: wrap(UserProfilePage),  errorElement: <RouteError /> },

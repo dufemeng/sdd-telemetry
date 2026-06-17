@@ -209,8 +209,10 @@ export function useProfileCapabilityUsageSummary(
   params: {
     fromIso?: string;
     matched?: 'all' | 'matched' | 'unmatched';
+    groupBy?: 'raw' | 'capability';
     keyword?: string;
     capabilityCode?: string;
+    rawCapabilityName?: string;
     page: number;
     pageSize: number;
   },
@@ -218,8 +220,10 @@ export function useProfileCapabilityUsageSummary(
   const qs = new URLSearchParams();
   if (params.fromIso) qs.set('from', params.fromIso);
   if (params.matched) qs.set('matched', params.matched);
+  if (params.groupBy) qs.set('groupBy', params.groupBy);
   if (params.keyword?.trim()) qs.set('keyword', params.keyword.trim());
   if (params.capabilityCode) qs.set('capabilityCode', params.capabilityCode);
+  if (params.rawCapabilityName) qs.set('rawCapabilityName', params.rawCapabilityName);
   qs.set('page', String(params.page));
   qs.set('pageSize', String(params.pageSize));
   return useQuery({
@@ -257,7 +261,7 @@ export function useProfileCapabilityUsages(
         `/api/profiles/${profileId}/capabilities/usages?${qs}`,
       ),
     staleTime: 15_000,
-    enabled: Boolean(profileId) && Boolean(params.rawCapabilityName),
+    enabled: Boolean(profileId) && (Boolean(params.rawCapabilityName) || Boolean(params.capabilityCode)),
   });
 }
 

@@ -93,7 +93,7 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
   ],
   capabilityRules: [
     ...skillCfg.capabilityRules,
-    { ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '其他技能' },
+    { ruleId: 'cap-other-skill', sourceRuleIds: ['skill-other'], actions: ['invoke'], capabilityCode: 'other-skill', displayName: '未纳入体系', surfaceRole: 'fallback' },
   ],
   errorRules: DEFAULT_PROFILE_ERROR_RULES,
   attributionPolicy: {

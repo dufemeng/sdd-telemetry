@@ -41,6 +41,7 @@ import type {
   ProfileUserMaturityStage,
   ProfileUserSummary,
   ProfileUsersQuery,
+  WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText, whereSql } from '../query-utils';
@@ -79,6 +80,22 @@ interface UserActivityOptions {
   deliveryUnitId?: string | null;
   rangeSinceDate?: Date | null;
   limit: number;
+}
+
+function getFallbackCapabilityRuleIds(config: WorkflowProfileConfig | undefined): string[] {
+  return config?.capabilityRules
+    .filter((rule) => rule.surfaceRole === 'fallback')
+    .map((rule) => rule.ruleId) ?? [];
+}
+
+function fallbackRuleSql(alias: string, fallbackRuleIds: string[]): string {
+  if (fallbackRuleIds.length === 0) return '0=1';
+  return `${alias}.matched_rule_id IN (${fallbackRuleIds.map(() => '?').join(',')})`;
+}
+
+function parseGroupConcat(value: unknown): string[] {
+  if (typeof value !== 'string' || value.length === 0) return [];
+  return value.split('\n').filter(Boolean);
 }
 
 export interface ProfileKnowledgeContentSource {
@@ -615,11 +632,13 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: ProfileOverviewQuery,
-    presentationConfig: ProfilePresentation | undefined,
+    profileConfig: WorkflowProfileConfig | undefined,
   ): Promise<ProfileCapabilityAnalytics> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const presentation = normalizeProfilePresentation(presentationConfig);
+    const presentation = normalizeProfilePresentation(profileConfig?.presentation);
     const multiStageArtifactTypes = presentation.stages.artifactStages.map((stage) => stage.code);
+    const fallbackRuleIds = getFallbackCapabilityRuleIds(profileConfig);
+    const fallbackSql = fallbackRuleSql('cu', fallbackRuleIds);
 
     const buildClauses = (extra: string[] = []): { clauses: string[]; params: unknown[] } => {
       const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?', ...extra];
@@ -690,6 +709,7 @@ export class ProfileProjectionRepository {
 
     const topCapabilitiesQuery = () => {
       const { clauses, params } = buildClauses([]);
+      const topClauses = [...clauses, 'cu.capability_code IS NOT NULL', `NOT (${fallbackSql})`];
       return dataSource.query(
         `SELECT
            cu.capability_code,
@@ -698,11 +718,11 @@ export class ProfileProjectionRepository {
            COUNT(DISTINCT cu.user_id) AS user_count,
            COUNT(DISTINCT cu.delivery_unit_id) AS delivery_unit_count
          FROM profile_capability_usages cu
-         ${whereSql(clauses)} AND cu.capability_code IS NOT NULL
+         ${whereSql(topClauses)}
          GROUP BY cu.capability_code
          ORDER BY usage_count DESC
          LIMIT 10`,
-        params,
+        [...params, ...fallbackRuleIds],
       ) as Promise<Array<Record<string, unknown>>>;
     };
 
@@ -710,24 +730,25 @@ export class ProfileProjectionRepository {
       const { clauses, params } = buildClauses([]);
       return dataSource.query(
         `SELECT
-           SUM(CASE WHEN cu.capability_code IS NOT NULL THEN 1 ELSE 0 END) AS matched_count,
-           SUM(CASE WHEN cu.capability_code IS NULL THEN 1 ELSE 0 END) AS unmatched_count
+           SUM(CASE WHEN cu.capability_code IS NOT NULL AND NOT (${fallbackSql}) THEN 1 ELSE 0 END) AS matched_count,
+           SUM(CASE WHEN cu.capability_code IS NULL OR ${fallbackSql} THEN 1 ELSE 0 END) AS unmatched_count
          FROM profile_capability_usages cu
          ${whereSql(clauses)}`,
-        params,
+        [...fallbackRuleIds, ...fallbackRuleIds, ...params],
       ) as Promise<Array<Record<string, unknown>>>;
     };
 
     const topUnmatchedQuery = () => {
       const { clauses, params } = buildClauses([]);
+      const unmatchedClauses = [...clauses, `(cu.capability_code IS NULL OR ${fallbackSql})`];
       return dataSource.query(
         `SELECT cu.raw_capability_name, COUNT(*) AS usage_count
          FROM profile_capability_usages cu
-         ${whereSql(clauses)} AND cu.capability_code IS NULL
+         ${whereSql(unmatchedClauses)}
          GROUP BY cu.raw_capability_name
          ORDER BY usage_count DESC
          LIMIT 5`,
-        params,
+        [...params, ...fallbackRuleIds],
       ) as Promise<Array<Record<string, unknown>>>;
     };
 
@@ -829,35 +850,50 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: ProfileCapabilityUsageSummaryQuery,
+    profileConfig?: WorkflowProfileConfig,
   ): Promise<{ items: ProfileCapabilityUsageSummaryItem[]; total: number }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const clauses = ['cu.profile_id = ?', 'cu.projection_run_id = ?'];
     const params: unknown[] = [profileId, runId];
+    const fallbackRuleIds = getFallbackCapabilityRuleIds(profileConfig);
+    const fallbackSql = fallbackRuleSql('cu', fallbackRuleIds);
     addTimeRangeWhere(clauses, params, 'cu.event_time', query);
 
     if (query.capabilityCode) {
       clauses.push('cu.capability_code = ?');
       params.push(query.capabilityCode);
     }
+    if (query.rawCapabilityName) {
+      clauses.push('cu.raw_capability_name = ?');
+      params.push(query.rawCapabilityName);
+    }
     if (query.status) {
       clauses.push('cu.status = ?');
       params.push(query.status);
     }
     if (query.matched === 'matched') {
-      clauses.push('cu.capability_code IS NOT NULL');
+      clauses.push(`cu.capability_code IS NOT NULL AND NOT (${fallbackSql})`);
+      params.push(...fallbackRuleIds);
     } else if (query.matched === 'unmatched') {
-      clauses.push('cu.capability_code IS NULL');
+      clauses.push(`(cu.capability_code IS NULL OR ${fallbackSql})`);
+      params.push(...fallbackRuleIds);
     }
     if (query.keyword) {
-      clauses.push('(cu.raw_capability_name LIKE ? OR cu.display_name LIKE ?)');
+      clauses.push('(cu.raw_capability_name LIKE ? OR cu.display_name LIKE ? OR cu.capability_code LIKE ?)');
       const kw = `%${query.keyword}%`;
-      params.push(kw, kw);
+      params.push(kw, kw, kw);
     }
 
     const offset = (query.page - 1) * query.pageSize;
+    const groupExpr = query.groupBy === 'capability'
+      ? 'COALESCE(cu.capability_code, cu.raw_capability_name)'
+      : 'cu.raw_capability_name';
+    const surfaceRoleSelect = fallbackRuleIds.length > 0
+      ? `CASE WHEN SUM(CASE WHEN ${fallbackSql} THEN 1 ELSE 0 END) > 0 THEN 'fallback' ELSE 'core' END AS surface_role`
+      : `'core' AS surface_role`;
 
     const countRows = (await dataSource.query(
-      `SELECT COUNT(DISTINCT cu.raw_capability_name) AS v
+      `SELECT COUNT(DISTINCT ${groupExpr}) AS v
        FROM profile_capability_usages cu
        ${whereSql(clauses)}`,
       params,
@@ -867,19 +903,25 @@ export class ProfileProjectionRepository {
       `SELECT
          MAX(cu.capability_code) AS capability_code,
          MAX(cu.display_name) AS capability_display_name,
-         cu.raw_capability_name,
+         MIN(cu.raw_capability_name) AS raw_capability_name,
          COUNT(*) AS usage_count,
          COUNT(DISTINCT cu.user_id) AS active_user_count,
          COUNT(DISTINCT cu.session_id) AS session_count,
          COUNT(DISTINCT cu.delivery_unit_id) AS delivery_unit_count,
+         COUNT(DISTINCT cu.raw_capability_name) AS raw_capability_count,
+         GROUP_CONCAT(DISTINCT cu.raw_capability_name ORDER BY cu.raw_capability_name SEPARATOR '\n') AS raw_capability_names,
+         SUM(CASE WHEN cu.trigger_source = 'user-slash' THEN 1 ELSE 0 END) AS user_triggered_count,
+         SUM(CASE WHEN cu.trigger_source IN ('claude-proactive', 'nested-skill') THEN 1 ELSE 0 END) AS auto_triggered_count,
+         SUM(CASE WHEN cu.status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+         ${surfaceRoleSelect},
          MIN(cu.event_time) AS first_seen_at,
          MAX(cu.event_time) AS last_seen_at
        FROM profile_capability_usages cu
        ${whereSql(clauses)}
-       GROUP BY cu.raw_capability_name
-       ORDER BY usage_count DESC
+       GROUP BY ${groupExpr}
+       ORDER BY usage_count DESC, last_seen_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, query.pageSize, offset],
+      [...fallbackRuleIds, ...params, query.pageSize, offset],
     )) as Array<Record<string, unknown>>;
 
     const items: ProfileCapabilityUsageSummaryItem[] = rows.map((row) => ({
@@ -890,6 +932,12 @@ export class ProfileProjectionRepository {
       activeUserCount: toNumber(row.active_user_count),
       sessionCount: toNumber(row.session_count),
       deliveryUnitCount: toNumber(row.delivery_unit_count),
+      rawCapabilityCount: toNumber(row.raw_capability_count),
+      rawCapabilityNames: parseGroupConcat(row.raw_capability_names),
+      userTriggeredCount: toNumber(row.user_triggered_count),
+      autoTriggeredCount: toNumber(row.auto_triggered_count),
+      failedCount: toNumber(row.failed_count),
+      surfaceRole: row.surface_role === 'fallback' ? 'fallback' : 'core',
       versions: [],
       firstSeenAt: toIsoDate(row.first_seen_at),
       lastSeenAt: toIsoDate(row.last_seen_at),
@@ -946,7 +994,7 @@ export class ProfileProjectionRepository {
 
     const rows = (await dataSource.query(
       `SELECT cu.id, cu.usage_key, cu.capability_code, cu.display_name AS capability_display_name,
-              cu.raw_capability_name, cu.capability_source, cu.status,
+              cu.raw_capability_name, cu.capability_source, cu.trigger_source, cu.status,
               cu.user_id, cu.interaction_id, cu.delivery_unit_id,
               cu.session_id, cu.prompt_id, cu.event_time,
               sr.reference_key AS source_reference_key,
@@ -968,6 +1016,7 @@ export class ProfileProjectionRepository {
       capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
       rawCapabilityName: String(row.raw_capability_name ?? ''),
       capabilitySource: (row.capability_source as string | null) ?? null,
+      triggerSource: (row.trigger_source as string | null) ?? null,
       status: String(row.status ?? ''),
       userId: row.user_id == null ? null : toStringId(row.user_id),
       interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
