@@ -69,6 +69,9 @@ export async function runScheduledCleaning(
           // 如果上次 clean 已经成功但 maintenance 失败，outbox 重试时 batch 会是 parsed/skipped。
           // 这时仍要标记 profile dirty，避免“清洗成功、投影维护丢失”的真空。
           derivedCount: cleanResult.skipped ? 1 : cleanResult.derivedCount,
+          // skipped 重试拿不到本批写出的 keys，传 null 回退全表重建以保证完整；
+          // 正常清洗只增量重建本批写出的 skill 引用。
+          skillUsageKeys: cleanResult.skipped ? null : cleanResult.skillUsageKeys,
         },
       );
       await markOutboxSucceeded(options.pool, claimed);

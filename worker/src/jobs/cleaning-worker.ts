@@ -34,6 +34,8 @@ export interface CleaningWorkerDependencies {
 export interface CleanBatchResult {
   batchId: string;
   skipped: boolean;
+  /** 本批实际写出的 skill usage_key,供 source-reference 增量重建用（skipped 时为空）。 */
+  skillUsageKeys: string[];
   eventCount: number;
   derivedCount: number;
 }
@@ -91,6 +93,7 @@ export async function cleanBatch(
       return {
         batchId: job.batchId,
         skipped: true,
+        skillUsageKeys: [],
         eventCount: 0,
         derivedCount: 0,
       };
@@ -111,7 +114,7 @@ export async function cleanBatch(
       );
     }
 
-    const derivedCount = await persistCleanedData(dependencies.pool, {
+    const { derivedCount, skillUsageKeys } = await persistCleanedData(dependencies.pool, {
       batch: loadedBatch,
       events,
       eventRetentionDays,
@@ -129,6 +132,7 @@ export async function cleanBatch(
     return {
       batchId: loadedBatch.batchId,
       skipped: false,
+      skillUsageKeys,
       eventCount: events.length,
       derivedCount,
     };
@@ -210,7 +214,7 @@ async function persistCleanedData(
     textRetentionDays: number;
     logger: Logger;
   },
-): Promise<number> {
+): Promise<{ derivedCount: number; skillUsageKeys: string[] }> {
   return withTransaction(pool, async (connection) => {
     for (const event of input.events) {
       await upsertLogEvent(
@@ -299,16 +303,16 @@ async function persistCleanedData(
       input.logger,
     );
 
-    return (
+    const derivedCount =
       interactions.size +
       toolCalls +
-      usages +
+      usages.length +
       errors +
       artifacts +
       toolCallAttachments +
       subagentAttachments +
-      wikiRecallCount
-    );
+      wikiRecallCount;
+    return { derivedCount, skillUsageKeys: usages };
   });
 }
 
@@ -632,12 +636,12 @@ async function upsertSkillUsages(
   events: EventRow[],
   interactions: Map<string, InteractionRef>,
   eventToKey: Map<string, string>,
-): Promise<number> {
+): Promise<string[]> {
   const aliases = await cleaningRepository.loadSkillAliases(connection);
   const aliasBySkillName = new Map(
     aliases.map((alias) => [alias.skill_name, alias]),
   );
-  let count = 0;
+  const usageKeys: string[] = [];
 
   for (const event of events) {
     if (normalizeEventName(event.event_name) !== "skill_activated") {
@@ -685,10 +689,10 @@ async function upsertSkillUsages(
       eventSequence: event.event_sequence ?? null,
       eventTime: asDate(event.event_time),
     });
-    count += 1;
+    usageKeys.push(usageKey);
   }
 
-  return count;
+  return usageKeys;
 }
 
 // 纯函数版本，便于单测

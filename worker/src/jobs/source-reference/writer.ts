@@ -7,6 +7,10 @@ import {
 } from '../source-reference-extractor';
 
 export const SOURCE_REFERENCE_PAGE_SIZE = 1000;
+// 批量 INSERT 每条语句最多塞多少行（25 列/行，留足 max_allowed_packet 余量，evidence_json 可能较大）。
+const SOURCE_REFERENCE_INSERT_CHUNK = 200;
+// 增量按 usage_key IN (...) 取数时每条 SELECT 最多带多少个 key。
+const SKILL_USAGE_KEY_CHUNK = 500;
 
 export interface ToolCallSourceRow extends RowDataPacket {
   source_batch_id: string | null;
@@ -64,12 +68,10 @@ export class SourceReferenceWriter {
   }
 
   /**
-   * 全量把 sdd_skill_usages emit 成 locator_type='skill' 的 source_reference（rebuildAll + updateForBatch 都用)。
+   * 全量把 sdd_skill_usages emit 成 locator_type='skill' 的 source_reference。
+   * 仅 rebuildAll（reclean）和 updateForBatch 的回退路径（skillUsageKeys=null）用——
+   * 全量重建幂等且完整。常规 per-batch 路径走 emitSkillReferencesForKeys 增量。
    * 粒度 = skill_usage（reference_key 绑 usage_key），upsert 幂等。
-   *
-   * 为何不做 per-batch 增量:skill_usage 可能在批 Y 清洗时创建,但其 interaction.source_batch_id=X(更早的批),
-   * updateForBatch(X) 时它还不存在、updateForBatch(Y) 又不在 X 作用域 → 漏掉(reclean 实测 48~69/81,随批序非确定)。
-   * 全量重建幂等且完整;skill 量小开销可接受(大规模可再优化成每 worker pass 一次)。
    */
   private async rebuildSkillReferences(pool: Pool, stats: SourceReferenceWriteStats): Promise<void> {
     let lastId = 0;
@@ -84,32 +86,54 @@ export class SourceReferenceWriter {
         [lastId, SOURCE_REFERENCE_PAGE_SIZE],
       );
       if (rows.length === 0) break;
-      for (const row of rows) {
-        lastId = row.id;
-        await this.emitSkillRow(pool, row, stats);
-      }
+      const refs = rows.map((row) => skillRefFromRow(row)).filter((ref): ref is SourceReferenceInput => ref !== null);
+      for (const row of rows) lastId = row.id;
+      stats.skillUsages += refs.length;
+      stats.affectedRows += await this.batchUpsert(pool, refs, null);
     }
   }
 
-  private async emitSkillRow(pool: Pool, row: SkillUsageRow, stats: SourceReferenceWriteStats): Promise<void> {
-    const ref = extractSkillSourceReference({
-      usageKey: row.usage_key,
-      skillName: row.raw_skill_name,
-      interactionId: row.interaction_id,
-      userId: row.user_id,
-      sessionId: row.session_id,
-      promptId: row.prompt_id,
-      invocationTrigger: row.invocation_trigger,
-      skillSource: row.skill_source,
-      status: row.status,
-      eventTime: row.event_time,
-    });
-    if (!ref) return;
-    stats.skillUsages += 1;
-    stats.affectedRows += await this.upsert(pool, ref, null);
+  /**
+   * per-batch 增量:只 emit 本批 clean 实际写出的那批 skill_usage（用其 usage_key 精确取数）。
+   * 增量键来自 cleanBatch 写库返回的 usage_key,而非按 source_batch_id 反推——
+   * 后者会漏掉「skill_usage 在批 Y 创建、但其 interaction.source_batch_id=X(更早批)」的行。
+   * 按 usage_key 取数与 batch 无关,天然绕开该缺口,且批量写入只一条 INSERT。
+   */
+  async emitSkillReferencesForKeys(
+    pool: Pool,
+    usageKeys: string[],
+    stats: SourceReferenceWriteStats,
+  ): Promise<void> {
+    if (usageKeys.length === 0) return;
+    const refs: SourceReferenceInput[] = [];
+    for (let i = 0; i < usageKeys.length; i += SKILL_USAGE_KEY_CHUNK) {
+      const chunk = usageKeys.slice(i, i + SKILL_USAGE_KEY_CHUNK);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const [rows] = await pool.query<SkillUsageRow[]>(
+        `SELECT id, usage_key, raw_skill_name, interaction_id, user_id, session_id, prompt_id,
+                invocation_trigger, skill_source, status, event_time
+         FROM sdd_skill_usages
+         WHERE usage_key IN (${placeholders})`,
+        chunk,
+      );
+      for (const row of rows) {
+        const ref = skillRefFromRow(row);
+        if (ref) refs.push(ref);
+      }
+    }
+    stats.skillUsages += refs.length;
+    stats.affectedRows += await this.batchUpsert(pool, refs, null);
   }
 
-  async updateForBatch(pool: Pool, batchId: string): Promise<SourceReferenceWriteStats> {
+  /**
+   * @param skillUsageKeys 本批 clean 实际写出的 skill usage_key(增量);传 null 时回退全表重建
+   *   （reclean、以及 clean 已成功但维护失败的 skipped 重试——此时拿不到本批的 keys）。
+   */
+  async updateForBatch(
+    pool: Pool,
+    batchId: string,
+    skillUsageKeys: string[] | null,
+  ): Promise<SourceReferenceWriteStats> {
     const stats = emptyStats();
     let lastId = 0;
     for (;;) {
@@ -125,7 +149,11 @@ export class SourceReferenceWriter {
         await this.extractAndUpsert(pool, row, stats);
       }
     }
-    await this.rebuildSkillReferences(pool, stats);
+    if (skillUsageKeys === null) {
+      await this.rebuildSkillReferences(pool, stats);
+    } else {
+      await this.emitSkillReferencesForKeys(pool, skillUsageKeys, stats);
+    }
     return stats;
   }
 
@@ -189,52 +217,99 @@ export class SourceReferenceWriter {
 
   async upsert(pool: Pool, ref: SourceReferenceInput, sourceBatchId: string | null): Promise<number> {
     const [result] = await pool.query<ResultSetHeader>(
-      `INSERT INTO source_references
-         (reference_key, interaction_id, tool_call_id, event_id, source_batch_id, user_id, session_id, prompt_id,
-          action_type, locator_type, direction, raw_locator, normalized_locator, normalized_locator_hash,
-          mcp_server, mcp_tool_name, doc_id, url, title, space_id, collection_id, doc_type,
-          event_time, evidence_json, rule_version)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE
-          interaction_id=VALUES(interaction_id), tool_call_id=VALUES(tool_call_id), event_id=VALUES(event_id),
-          source_batch_id=COALESCE(VALUES(source_batch_id), source_batch_id),
-          user_id=VALUES(user_id), session_id=VALUES(session_id), prompt_id=VALUES(prompt_id),
-          action_type=VALUES(action_type), locator_type=VALUES(locator_type), direction=VALUES(direction),
-          raw_locator=VALUES(raw_locator), normalized_locator=VALUES(normalized_locator),
-          normalized_locator_hash=VALUES(normalized_locator_hash), mcp_server=VALUES(mcp_server),
-          mcp_tool_name=VALUES(mcp_tool_name), doc_id=VALUES(doc_id), url=VALUES(url), title=VALUES(title),
-          space_id=VALUES(space_id), collection_id=VALUES(collection_id), doc_type=VALUES(doc_type),
-          event_time=VALUES(event_time), evidence_json=VALUES(evidence_json), rule_version=VALUES(rule_version)`,
-      [
-        ref.referenceKey,
-        ref.interactionId,
-        ref.toolCallId,
-        ref.eventId,
-        sourceBatchId,
-        ref.userId,
-        ref.sessionId,
-        ref.promptId,
-        ref.actionType,
-        ref.locatorType,
-        ref.direction,
-        ref.rawLocator,
-        ref.normalizedLocator,
-        ref.normalizedLocatorHash,
-        ref.mcpServer,
-        ref.mcpToolName,
-        ref.docId,
-        ref.url,
-        ref.title,
-        ref.spaceId,
-        ref.collectionId,
-        ref.docType,
-        ref.eventTime,
-        JSON.stringify(ref.evidenceJson),
-        ref.ruleVersion,
-      ],
+      `${SOURCE_REFERENCE_INSERT_PREFIX}
+       VALUES ${SOURCE_REFERENCE_ROW_PLACEHOLDERS}
+       ${SOURCE_REFERENCE_ON_DUPLICATE}`,
+      sourceReferenceParams(ref, sourceBatchId),
     );
     return result.affectedRows;
   }
+
+  /** 多行合并成单条 INSERT（按 chunk 分批），把 N 次往返/fsync 压成 ceil(N/chunk) 次。 */
+  async batchUpsert(
+    pool: Pool,
+    refs: SourceReferenceInput[],
+    sourceBatchId: string | null,
+  ): Promise<number> {
+    let affected = 0;
+    for (let i = 0; i < refs.length; i += SOURCE_REFERENCE_INSERT_CHUNK) {
+      const chunk = refs.slice(i, i + SOURCE_REFERENCE_INSERT_CHUNK);
+      const values = chunk.map(() => SOURCE_REFERENCE_ROW_PLACEHOLDERS).join(', ');
+      const params = chunk.flatMap((ref) => sourceReferenceParams(ref, sourceBatchId));
+      const [result] = await pool.query<ResultSetHeader>(
+        `${SOURCE_REFERENCE_INSERT_PREFIX}
+         VALUES ${values}
+         ${SOURCE_REFERENCE_ON_DUPLICATE}`,
+        params,
+      );
+      affected += result.affectedRows;
+    }
+    return affected;
+  }
+}
+
+const SOURCE_REFERENCE_INSERT_COLUMN_LIST = [
+  'reference_key', 'interaction_id', 'tool_call_id', 'event_id', 'source_batch_id', 'user_id', 'session_id', 'prompt_id',
+  'action_type', 'locator_type', 'direction', 'raw_locator', 'normalized_locator', 'normalized_locator_hash',
+  'mcp_server', 'mcp_tool_name', 'doc_id', 'url', 'title', 'space_id', 'collection_id', 'doc_type',
+  'event_time', 'evidence_json', 'rule_version',
+] as const;
+
+// source_batch_id 用 COALESCE 保护已有值不被 NULL 覆盖；其余列以新值为准（与原单行 upsert 语义一致）。
+const SOURCE_REFERENCE_INSERT_PREFIX =
+  `INSERT INTO source_references (${SOURCE_REFERENCE_INSERT_COLUMN_LIST.join(', ')})`;
+const SOURCE_REFERENCE_ROW_PLACEHOLDERS =
+  `(${SOURCE_REFERENCE_INSERT_COLUMN_LIST.map(() => '?').join(',')})`;
+const SOURCE_REFERENCE_ON_DUPLICATE =
+  `ON DUPLICATE KEY UPDATE ${SOURCE_REFERENCE_INSERT_COLUMN_LIST
+    .filter((column) => column !== 'reference_key' && column !== 'source_batch_id')
+    .map((column) => `${column}=VALUES(${column})`)
+    .concat('source_batch_id=COALESCE(VALUES(source_batch_id), source_batch_id)')
+    .join(', ')}`;
+
+function sourceReferenceParams(ref: SourceReferenceInput, sourceBatchId: string | null): unknown[] {
+  return [
+    ref.referenceKey,
+    ref.interactionId,
+    ref.toolCallId,
+    ref.eventId,
+    sourceBatchId,
+    ref.userId,
+    ref.sessionId,
+    ref.promptId,
+    ref.actionType,
+    ref.locatorType,
+    ref.direction,
+    ref.rawLocator,
+    ref.normalizedLocator,
+    ref.normalizedLocatorHash,
+    ref.mcpServer,
+    ref.mcpToolName,
+    ref.docId,
+    ref.url,
+    ref.title,
+    ref.spaceId,
+    ref.collectionId,
+    ref.docType,
+    ref.eventTime,
+    JSON.stringify(ref.evidenceJson),
+    ref.ruleVersion,
+  ];
+}
+
+function skillRefFromRow(row: SkillUsageRow): SourceReferenceInput | null {
+  return extractSkillSourceReference({
+    usageKey: row.usage_key,
+    skillName: row.raw_skill_name,
+    interactionId: row.interaction_id,
+    userId: row.user_id,
+    sessionId: row.session_id,
+    promptId: row.prompt_id,
+    invocationTrigger: row.invocation_trigger,
+    skillSource: row.skill_source,
+    status: row.status,
+    eventTime: row.event_time,
+  });
 }
 
 function emptyStats(): SourceReferenceWriteStats {

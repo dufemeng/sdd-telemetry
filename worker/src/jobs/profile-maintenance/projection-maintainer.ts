@@ -40,6 +40,8 @@ export interface CleanBatchMaintenanceResult {
 export interface CleanBatchMaintenanceInput {
   batchId: string;
   derivedCount: number;
+  /** 本批 clean 写出的 skill usage_key,用于 source-reference 增量；null 时回退全表重建。 */
+  skillUsageKeys: string[] | null;
 }
 
 const jobStore = new ProjectionJobStore();
@@ -52,7 +54,11 @@ export async function maintainProfilesAfterCleanBatch(
   },
   input: CleanBatchMaintenanceInput,
 ): Promise<CleanBatchMaintenanceResult> {
-  const sourceReferences = await sourceReferenceWriter.updateForBatch(options.pool, input.batchId);
+  const sourceReferences = await sourceReferenceWriter.updateForBatch(
+    options.pool,
+    input.batchId,
+    input.skillUsageKeys,
+  );
   const dirtyProfiles = new Set<string>();
 
   if (input.derivedCount > 0) {
