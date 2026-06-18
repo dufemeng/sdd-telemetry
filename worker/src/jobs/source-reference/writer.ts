@@ -50,6 +50,13 @@ interface SkillUsageRow extends RowDataPacket {
   event_time: Date | null;
 }
 
+// source_batch_id 随 tool-call 行而变(rebuildAll 横跨所有批),故批量写入时按行携带,
+// 不在 batchUpsert 里用单一 batchId。skill 引用统一 sourceBatchId=null。
+interface SourceReferenceUpsertItem {
+  ref: SourceReferenceInput;
+  sourceBatchId: string | null;
+}
+
 export class SourceReferenceWriter {
   async rebuildAll(pool: Pool): Promise<SourceReferenceWriteStats> {
     const stats = emptyStats();
@@ -58,10 +65,12 @@ export class SourceReferenceWriter {
       const rows = await this.loadToolCallRows(pool, { lastId, limit: SOURCE_REFERENCE_PAGE_SIZE });
       if (rows.length === 0) break;
 
+      const items: SourceReferenceUpsertItem[] = [];
       for (const row of rows) {
         lastId = row.tool_call_id;
-        await this.extractAndUpsert(pool, row, stats);
+        items.push(...this.collectToolCallRefs(row, stats));
       }
+      stats.affectedRows += await this.batchUpsert(pool, items);
     }
     await this.rebuildSkillReferences(pool, stats);
     return stats;
@@ -86,10 +95,14 @@ export class SourceReferenceWriter {
         [lastId, SOURCE_REFERENCE_PAGE_SIZE],
       );
       if (rows.length === 0) break;
-      const refs = rows.map((row) => skillRefFromRow(row)).filter((ref): ref is SourceReferenceInput => ref !== null);
-      for (const row of rows) lastId = row.id;
-      stats.skillUsages += refs.length;
-      stats.affectedRows += await this.batchUpsert(pool, refs, null);
+      const items: SourceReferenceUpsertItem[] = [];
+      for (const row of rows) {
+        lastId = row.id;
+        const ref = skillRefFromRow(row);
+        if (ref) items.push({ ref, sourceBatchId: null });
+      }
+      stats.skillUsages += items.length;
+      stats.affectedRows += await this.batchUpsert(pool, items);
     }
   }
 
@@ -105,7 +118,7 @@ export class SourceReferenceWriter {
     stats: SourceReferenceWriteStats,
   ): Promise<void> {
     if (usageKeys.length === 0) return;
-    const refs: SourceReferenceInput[] = [];
+    const items: SourceReferenceUpsertItem[] = [];
     for (let i = 0; i < usageKeys.length; i += SKILL_USAGE_KEY_CHUNK) {
       const chunk = usageKeys.slice(i, i + SKILL_USAGE_KEY_CHUNK);
       const placeholders = chunk.map(() => '?').join(', ');
@@ -118,11 +131,11 @@ export class SourceReferenceWriter {
       );
       for (const row of rows) {
         const ref = skillRefFromRow(row);
-        if (ref) refs.push(ref);
+        if (ref) items.push({ ref, sourceBatchId: null });
       }
     }
-    stats.skillUsages += refs.length;
-    stats.affectedRows += await this.batchUpsert(pool, refs, null);
+    stats.skillUsages += items.length;
+    stats.affectedRows += await this.batchUpsert(pool, items);
   }
 
   /**
@@ -144,10 +157,12 @@ export class SourceReferenceWriter {
       });
       if (rows.length === 0) break;
 
+      const items: SourceReferenceUpsertItem[] = [];
       for (const row of rows) {
         lastId = row.tool_call_id;
-        await this.extractAndUpsert(pool, row, stats);
+        items.push(...this.collectToolCallRefs(row, stats));
       }
+      stats.affectedRows += await this.batchUpsert(pool, items);
     }
     if (skillUsageKeys === null) {
       await this.rebuildSkillReferences(pool, stats);
@@ -186,11 +201,11 @@ export class SourceReferenceWriter {
     return rows;
   }
 
-  private async extractAndUpsert(
-    pool: Pool,
+  /** 抽出一条 tool-call 行的 source reference(纯收集 + 累计 stats,不落库),交由调用方批量写入。 */
+  private collectToolCallRefs(
     row: ToolCallSourceRow,
     stats: SourceReferenceWriteStats,
-  ): Promise<void> {
+  ): SourceReferenceUpsertItem[] {
     stats.toolCalls += 1;
 
     const fact: ToolCallFact = {
@@ -207,35 +222,23 @@ export class SourceReferenceWriter {
       eventTime: row.event_time,
     };
 
+    const items: SourceReferenceUpsertItem[] = [];
     for (const ref of extractSourceReferences(fact)) {
       stats.extracted += 1;
       if (ref.evidenceJson.parseFailed === true) stats.parseFailed += 1;
       if (ref.locatorType === 'unknown') stats.unknown += 1;
-      stats.affectedRows += await this.upsert(pool, ref, row.source_batch_id);
+      items.push({ ref, sourceBatchId: row.source_batch_id });
     }
-  }
-
-  async upsert(pool: Pool, ref: SourceReferenceInput, sourceBatchId: string | null): Promise<number> {
-    const [result] = await pool.query<ResultSetHeader>(
-      `${SOURCE_REFERENCE_INSERT_PREFIX}
-       VALUES ${SOURCE_REFERENCE_ROW_PLACEHOLDERS}
-       ${SOURCE_REFERENCE_ON_DUPLICATE}`,
-      sourceReferenceParams(ref, sourceBatchId),
-    );
-    return result.affectedRows;
+    return items;
   }
 
   /** 多行合并成单条 INSERT（按 chunk 分批），把 N 次往返/fsync 压成 ceil(N/chunk) 次。 */
-  async batchUpsert(
-    pool: Pool,
-    refs: SourceReferenceInput[],
-    sourceBatchId: string | null,
-  ): Promise<number> {
+  async batchUpsert(pool: Pool, items: SourceReferenceUpsertItem[]): Promise<number> {
     let affected = 0;
-    for (let i = 0; i < refs.length; i += SOURCE_REFERENCE_INSERT_CHUNK) {
-      const chunk = refs.slice(i, i + SOURCE_REFERENCE_INSERT_CHUNK);
+    for (let i = 0; i < items.length; i += SOURCE_REFERENCE_INSERT_CHUNK) {
+      const chunk = items.slice(i, i + SOURCE_REFERENCE_INSERT_CHUNK);
       const values = chunk.map(() => SOURCE_REFERENCE_ROW_PLACEHOLDERS).join(', ');
-      const params = chunk.flatMap((ref) => sourceReferenceParams(ref, sourceBatchId));
+      const params = chunk.flatMap(({ ref, sourceBatchId }) => sourceReferenceParams(ref, sourceBatchId));
       const [result] = await pool.query<ResultSetHeader>(
         `${SOURCE_REFERENCE_INSERT_PREFIX}
          VALUES ${values}

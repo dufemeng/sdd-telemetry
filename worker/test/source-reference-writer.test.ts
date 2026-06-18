@@ -25,6 +25,25 @@ function emptyStats(): SourceReferenceWriteStats {
   return { toolCalls: 0, extracted: 0, parseFailed: 0, unknown: 0, skillUsages: 0, affectedRows: 0 };
 }
 
+// Read + file_path 会被 extractSourceReferences 抽出恰好 1 条 path 类 source reference。
+function toolCallRow(over: Record<string, unknown> = {}) {
+  return {
+    source_batch_id: 'batch-X',
+    tool_call_id: 1,
+    tool_use_id: 'toolu_1',
+    tool_name: 'Read',
+    mcp_server_scope: null,
+    interaction_id: 10,
+    user_id: 7,
+    session_id: 's1',
+    prompt_id: 'p1',
+    source_event_id: 'evt-1',
+    event_time: new Date('2026-06-17T10:00:00Z'),
+    attributes_json: { tool_input: { file_path: '/repo/wiki/a.md' } },
+    ...over,
+  };
+}
+
 /**
  * 构造一个按 SQL 内容路由的 mock pool。
  * sdd_skill_usages 的 SELECT 只在「第一次」匹配时返回行、之后返回空——
@@ -108,5 +127,38 @@ describe('SourceReferenceWriter 增量 skill 引用（增量键 + 批量写）',
 
     const skillSelects = pool.query.mock.calls.filter((c) => /FROM sdd_skill_usages/.test(c[0] as string));
     expect(skillSelects.some((c) => /id > \?/.test(c[0] as string))).toBe(true); // 全表分页扫
+  });
+
+  it('updateForBatch 的 tool-call 路径把多个 source ref 合并成单条批量 INSERT', async () => {
+    let toolSelectCalls = 0;
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (/FROM sdd_interaction_tool_calls/.test(sql)) {
+        toolSelectCalls += 1;
+        return Promise.resolve([
+          toolSelectCalls === 1
+            ? [
+                toolCallRow({ tool_call_id: 1, tool_use_id: 't1', source_event_id: 'e1' }),
+                toolCallRow({
+                  tool_call_id: 2,
+                  tool_use_id: 't2',
+                  source_event_id: 'e2',
+                  attributes_json: { tool_input: { file_path: '/repo/wiki/b.md' } },
+                }),
+              ]
+            : [],
+        ]);
+      }
+      if (/INSERT INTO source_references/.test(sql)) return Promise.resolve([{ affectedRows: 2 }]);
+      return Promise.resolve([[]]);
+    });
+    const writer = new SourceReferenceWriter();
+
+    // skillUsageKeys=[] 跳过 skill 路径,只剩 tool-call 的 INSERT
+    await writer.updateForBatch({ query } as never, 'batch-X', []);
+
+    const inserts = query.mock.calls.filter((c) => /INSERT INTO source_references/.test(c[0] as string));
+    expect(inserts).toHaveLength(1); // 两个 ref 合并成一条,而不是每个 ref 一条
+    const placeholders = ((inserts[0]![0] as string).match(/\?/g) ?? []).length;
+    expect(placeholders).toBe(25 * 2);
   });
 });
