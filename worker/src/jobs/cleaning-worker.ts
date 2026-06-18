@@ -36,6 +36,8 @@ export interface CleanBatchResult {
   skipped: boolean;
   /** 本批实际写出的 skill usage_key,供 source-reference 增量重建用（skipped 时为空）。 */
   skillUsageKeys: string[];
+  /** 本批实际写出的 tool_use_id,供 source-reference 增量重建用（skipped 时为空）。 */
+  toolUseIds: string[];
   eventCount: number;
   derivedCount: number;
 }
@@ -94,6 +96,7 @@ export async function cleanBatch(
         batchId: job.batchId,
         skipped: true,
         skillUsageKeys: [],
+        toolUseIds: [],
         eventCount: 0,
         derivedCount: 0,
       };
@@ -114,7 +117,7 @@ export async function cleanBatch(
       );
     }
 
-    const { derivedCount, skillUsageKeys } = await persistCleanedData(dependencies.pool, {
+    const { derivedCount, skillUsageKeys, toolUseIds } = await persistCleanedData(dependencies.pool, {
       batch: loadedBatch,
       events,
       eventRetentionDays,
@@ -133,6 +136,7 @@ export async function cleanBatch(
       batchId: loadedBatch.batchId,
       skipped: false,
       skillUsageKeys,
+      toolUseIds,
       eventCount: events.length,
       derivedCount,
     };
@@ -214,7 +218,7 @@ async function persistCleanedData(
     textRetentionDays: number;
     logger: Logger;
   },
-): Promise<{ derivedCount: number; skillUsageKeys: string[] }> {
+): Promise<{ derivedCount: number; skillUsageKeys: string[]; toolUseIds: string[] }> {
   return withTransaction(pool, async (connection) => {
     for (const event of input.events) {
       await upsertLogEvent(
@@ -270,7 +274,7 @@ async function persistCleanedData(
       assignments,
       input.textRetentionDays,
     );
-    const toolCalls = await upsertToolCalls(
+    const toolUseIds = await upsertToolCalls(
       connection,
       scopedEvents,
       interactions,
@@ -305,14 +309,14 @@ async function persistCleanedData(
 
     const derivedCount =
       interactions.size +
-      toolCalls +
+      toolUseIds.length +
       usages.length +
       errors +
       artifacts +
       toolCallAttachments +
       subagentAttachments +
       wikiRecallCount;
-    return { derivedCount, skillUsageKeys: usages };
+    return { derivedCount, skillUsageKeys: usages, toolUseIds };
   });
 }
 
@@ -544,7 +548,7 @@ async function upsertToolCalls(
   events: EventRow[],
   interactions: Map<string, InteractionRef>,
   eventToKey: Map<string, string>,
-): Promise<number> {
+): Promise<string[]> {
   const toolEvents = sortEventsBySequence(events).filter(
     (event) => isToolDecisionEvent(event) || isToolResultEvent(event),
   );
@@ -565,7 +569,7 @@ async function upsertToolCalls(
     groups.set(toolUseId, group);
   }
 
-  let count = 0;
+  const toolUseIds: string[] = [];
   for (const [toolUseId, groupEvents] of groups.entries()) {
     const orderedEvents = sortEventsBySequence(groupEvents);
     const decisionEvent = orderedEvents.find(isToolDecisionEvent) ?? null;
@@ -625,10 +629,10 @@ async function upsertToolCalls(
         toolResultEventId: resultEvent?.event_id ?? null,
       }),
     });
-    count += 1;
+    toolUseIds.push(toolUseId);
   }
 
-  return count;
+  return toolUseIds;
 }
 
 async function upsertSkillUsages(

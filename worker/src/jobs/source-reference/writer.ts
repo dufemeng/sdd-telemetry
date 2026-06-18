@@ -11,6 +11,8 @@ export const SOURCE_REFERENCE_PAGE_SIZE = 1000;
 const SOURCE_REFERENCE_INSERT_CHUNK = 200;
 // 增量按 usage_key IN (...) 取数时每条 SELECT 最多带多少个 key。
 const SKILL_USAGE_KEY_CHUNK = 500;
+// 增量按 tool_use_id IN (...) 取数时每条 SELECT 最多带多少个 id。
+const TOOL_USE_ID_CHUNK = 500;
 
 export interface ToolCallSourceRow extends RowDataPacket {
   source_batch_id: string | null;
@@ -139,37 +141,70 @@ export class SourceReferenceWriter {
   }
 
   /**
-   * @param skillUsageKeys 本批 clean 实际写出的 skill usage_key(增量);传 null 时回退全表重建
-   *   （reclean、以及 clean 已成功但维护失败的 skipped 重试——此时拿不到本批的 keys）。
+   * @param skillUsageKeys 本批 clean 实际写出的 skill usage_key(增量);传 null 时回退全表重建。
+   * @param toolUseIds 本批 clean 实际写出的 tool_use_id(增量,走唯一索引取数);传 null 时回退
+   *   按 e.batch_id 全量分页扫。两者传 null 的场景:reclean、以及 clean 成功但维护失败的 skipped
+   *   重试——此时拿不到本批写出的 key/id。
    */
   async updateForBatch(
     pool: Pool,
     batchId: string,
     skillUsageKeys: string[] | null,
+    toolUseIds: string[] | null = null,
   ): Promise<SourceReferenceWriteStats> {
     const stats = emptyStats();
-    let lastId = 0;
-    for (;;) {
-      const rows = await this.loadToolCallRows(pool, {
-        batchId,
-        lastId,
-        limit: SOURCE_REFERENCE_PAGE_SIZE,
-      });
-      if (rows.length === 0) break;
 
-      const items: SourceReferenceUpsertItem[] = [];
-      for (const row of rows) {
-        lastId = row.tool_call_id;
-        items.push(...this.collectToolCallRefs(row, stats));
+    if (toolUseIds == null) {
+      // 回退:按 e.batch_id 全量分页扫(扫整张 tool_calls 表,慢但完整)。
+      let lastId = 0;
+      for (;;) {
+        const rows = await this.loadToolCallRows(pool, { batchId, lastId, limit: SOURCE_REFERENCE_PAGE_SIZE });
+        if (rows.length === 0) break;
+        const items: SourceReferenceUpsertItem[] = [];
+        for (const row of rows) {
+          lastId = row.tool_call_id;
+          items.push(...this.collectToolCallRefs(row, stats));
+        }
+        stats.affectedRows += await this.batchUpsert(pool, items);
       }
-      stats.affectedRows += await this.batchUpsert(pool, items);
+    } else {
+      // 增量:按本批写出的 tool_use_id 走 uk_...tool_use_id 唯一索引取数,只命中本批那几行,
+      // 不再 LEFT JOIN 后按 e.batch_id 过滤整表(那会 O(全表 tool_calls)/批)。
+      for (let i = 0; i < toolUseIds.length; i += TOOL_USE_ID_CHUNK) {
+        const rows = await this.loadToolCallRowsByToolUseIds(pool, toolUseIds.slice(i, i + TOOL_USE_ID_CHUNK));
+        const items: SourceReferenceUpsertItem[] = [];
+        for (const row of rows) items.push(...this.collectToolCallRefs(row, stats));
+        stats.affectedRows += await this.batchUpsert(pool, items);
+      }
     }
+
     if (skillUsageKeys === null) {
       await this.rebuildSkillReferences(pool, stats);
     } else {
       await this.emitSkillReferencesForKeys(pool, skillUsageKeys, stats);
     }
     return stats;
+  }
+
+  private async loadToolCallRowsByToolUseIds(pool: Pool, toolUseIds: string[]): Promise<ToolCallSourceRow[]> {
+    if (toolUseIds.length === 0) return [];
+    const placeholders = toolUseIds.map(() => '?').join(', ');
+    const [rows] = await pool.query<ToolCallSourceRow[]>(
+      `SELECT e.batch_id AS source_batch_id, tc.id AS tool_call_id, tc.tool_use_id, tc.tool_name, tc.mcp_server_scope,
+              tc.interaction_id, i.user_id, i.session_id, i.prompt_id, i.started_at AS event_time,
+              e.event_id AS source_event_id, e.attributes_json
+       FROM sdd_interaction_tool_calls tc
+       JOIN sdd_interactions i ON i.id = tc.interaction_id
+       LEFT JOIN otel_log_events e
+         ON e.event_id = COALESCE(
+              JSON_UNQUOTE(JSON_EXTRACT(tc.evidence_json, '$.toolResultEventId')),
+              JSON_UNQUOTE(JSON_EXTRACT(tc.evidence_json, '$.toolDecisionEventId'))
+            )
+       WHERE tc.tool_use_id IN (${placeholders})
+       ORDER BY tc.id ASC`,
+      toolUseIds,
+    );
+    return rows;
   }
 
   private async loadToolCallRows(

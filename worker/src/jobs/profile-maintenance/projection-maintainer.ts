@@ -42,6 +42,8 @@ export interface CleanBatchMaintenanceInput {
   derivedCount: number;
   /** 本批 clean 写出的 skill usage_key,用于 source-reference 增量；null 时回退全表重建。 */
   skillUsageKeys: string[] | null;
+  /** 本批 clean 写出的 tool_use_id,用于 source-reference tool-call 增量；null 时回退全量扫。 */
+  toolUseIds: string[] | null;
 }
 
 const jobStore = new ProjectionJobStore();
@@ -58,6 +60,7 @@ export async function maintainProfilesAfterCleanBatch(
     options.pool,
     input.batchId,
     input.skillUsageKeys,
+    input.toolUseIds,
   );
   const dirtyProfiles = new Set<string>();
 

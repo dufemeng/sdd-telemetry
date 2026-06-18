@@ -161,4 +161,28 @@ describe('SourceReferenceWriter 增量 skill 引用（增量键 + 批量写）',
     const placeholders = ((inserts[0]![0] as string).match(/\?/g) ?? []).length;
     expect(placeholders).toBe(25 * 2);
   });
+
+  it('updateForBatch 传入 toolUseIds 时按 tc.tool_use_id IN 取数,不扫全表/不按 e.batch_id 过滤', async () => {
+    let toolSelectCalls = 0;
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (/FROM sdd_interaction_tool_calls/.test(sql)) {
+        toolSelectCalls += 1;
+        return Promise.resolve([toolSelectCalls === 1 ? [toolCallRow({ tool_use_id: 'tu1' })] : []]);
+      }
+      if (/INSERT INTO source_references/.test(sql)) return Promise.resolve([{ affectedRows: 1 }]);
+      return Promise.resolve([[]]);
+    });
+    const writer = new SourceReferenceWriter();
+
+    // skillUsageKeys=[] 跳过 skill;toolUseIds 提供 → tool-call 走增量(唯一索引取数)
+    await writer.updateForBatch({ query } as never, 'batch-X', [], ['tu1']);
+
+    const toolSelects = query.mock.calls.filter((c) => /FROM sdd_interaction_tool_calls/.test(c[0] as string));
+    expect(toolSelects.length).toBeGreaterThan(0);
+    const sql = toolSelects[0]![0] as string;
+    expect(sql).toMatch(/tool_use_id IN/);
+    expect(sql).not.toMatch(/tc\.id > \?/); // 不再全表分页扫
+    expect(sql).not.toMatch(/e\.batch_id = \?/); // 不再按 join 后的 batch_id 过滤
+    expect(toolSelects[0]![1]).toEqual(['tu1']);
+  });
 });
