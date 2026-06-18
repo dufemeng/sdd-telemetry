@@ -24,7 +24,6 @@ import { requestData } from '@/api/client';
 import { useShellContext } from '@/components/layout/useShellContext';
 
 type TimelineGranularity = 'day' | 'hour';
-type TimelineGroupBy = 'domain' | 'axis';
 
 function mapCoverageRepo(r: ProfileKnowledgeCoverageResponse): WikiCoverageResponse {
   return {
@@ -46,18 +45,14 @@ function mapCoverageRepo(r: ProfileKnowledgeCoverageResponse): WikiCoverageRespo
 export function useWikiRecallTimeline(
   range: WikiRecallRange,
   granularity: TimelineGranularity,
-  groupBy: TimelineGroupBy,
-  wikiDomain?: string | null,
 ) {
   const { profileId } = useShellContext();
   return useQuery({
-    queryKey: ['profile-knowledge-timeline', profileId, range, granularity, groupBy, wikiDomain ?? null],
+    queryKey: ['profile-knowledge-timeline', profileId, range, granularity],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (range) qs.set('range', range);
       if (granularity) qs.set('granularity', granularity);
-      if (groupBy) qs.set('groupBy', groupBy);
-      if (wikiDomain) qs.set('wikiDomain', wikiDomain);
       const r = await requestData<ProfileKnowledgeTimelineResponse>(
         `/api/profiles/${profileId}/knowledge/timeline?${qs}`,
       );

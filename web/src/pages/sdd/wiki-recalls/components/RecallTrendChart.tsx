@@ -8,16 +8,10 @@ import { QueryNotice, SegmentedControl } from './WikiRecallControls';
 import { CARD_STYLE } from '../styles';
 
 type TimelineGranularity = 'day' | 'hour';
-type TimelineGroupBy = 'domain' | 'axis';
 
 const GRANULARITY_OPTIONS: Array<{ value: TimelineGranularity; label: string }> = [
   { value: 'day', label: '按日' },
   { value: 'hour', label: '按小时' },
-];
-
-const GROUP_OPTIONS: Array<{ value: TimelineGroupBy; label: string }> = [
-  { value: 'domain', label: '业务域' },
-  { value: 'axis', label: '维度' },
 ];
 
 const SERIES_COLORS = [
@@ -33,8 +27,7 @@ const SERIES_COLORS = [
 
 export function RecallTrendChart() {
   const [granularity, setGranularity] = useState<TimelineGranularity>('day');
-  const [groupBy, setGroupBy] = useState<TimelineGroupBy>('domain');
-  const { data, isLoading, error } = useWikiRecallTimeline('30d', granularity, groupBy);
+  const { data, isLoading, error } = useWikiRecallTimeline('30d', granularity);
   const chart = useMemo(
     () => buildTimelineChart(data?.points ?? []),
     [data?.points],
@@ -45,11 +38,10 @@ export function RecallTrendChart() {
       <div className="mb-1 flex items-center justify-between">
         <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
           <Clock3 size={18} />
-          <span className="text-[14px] font-semibold text-[#f5f5f5]">召回趋势</span>
+          <span className="text-[14px] font-semibold text-[#f5f5f5]">路径维度趋势</span>
         </div>
         <div className="flex items-center gap-2">
           <SegmentedControl label="" value={granularity} options={GRANULARITY_OPTIONS} onChange={setGranularity} />
-          <SegmentedControl label="" value={groupBy} options={GROUP_OPTIONS} onChange={setGroupBy} />
         </div>
       </div>
       <div className="grid gap-3">

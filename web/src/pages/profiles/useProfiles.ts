@@ -343,16 +343,12 @@ export function useProfileKnowledgeTimeline(
   profileId: string,
   range: string,
   granularity?: string,
-  groupBy?: string,
-  wikiDomain?: string | null,
 ) {
   const qs = new URLSearchParams();
   if (range) qs.set('range', range);
   if (granularity) qs.set('granularity', granularity);
-  if (groupBy) qs.set('groupBy', groupBy);
-  if (wikiDomain) qs.set('wikiDomain', wikiDomain);
   return useQuery({
-    queryKey: ['profile-knowledge-timeline', profileId, range, granularity, groupBy, wikiDomain ?? null],
+    queryKey: ['profile-knowledge-timeline', profileId, range, granularity],
     queryFn: () =>
       requestData<ProfileKnowledgeTimelineResponse>(
         `/api/profiles/${profileId}/knowledge/timeline?${qs}`,

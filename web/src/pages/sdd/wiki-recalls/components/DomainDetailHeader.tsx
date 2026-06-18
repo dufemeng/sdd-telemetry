@@ -14,7 +14,7 @@ export function DomainDetailHeader({ repo, domain }: { repo: string; domain: str
   const navigate = useNavigate();
   const coverageQuery = useWikiRecallCoverage();
   const reqQuery = useWikiRecallWorkItemRanking('all', { wikiDomain: domain });
-  const timelineQuery = useWikiRecallTimeline('30d', 'day', 'domain', domain);
+  const timelineQuery = useWikiRecallTimeline('30d', 'day');
 
   const domainRow = useMemo<WikiCoverageDomain | undefined>(
     () => coverageQuery.data?.domains.find((d) => d.repo === repo && d.domain === domain),
@@ -79,7 +79,7 @@ export function DomainDetailHeader({ repo, domain }: { repo: string; domain: str
 
         <div>
           <div className="mb-2 text-[12px] font-semibold text-[#f5f5f5]">
-            域级召回趋势(近30天)
+            路径维度趋势(近30天)
           </div>
           <Sparkline points={timelineQuery.data?.points ?? []} />
         </div>

@@ -50,6 +50,7 @@ import {
   expandProfileUserActivityFetchLimit,
   type ProfileUserActivityFactItem,
 } from './profile-user-activity';
+import { buildPathSegmentKnowledgeTimeline } from './profile-knowledge-timeline';
 
 /**
  * profile_projection 读路径（MVP-1，Task 17）。
@@ -66,8 +67,6 @@ interface CountRow {
 interface KnowledgeTimelineOptions {
   rangeSinceDate: Date | null;
   granularity: 'day' | 'hour';
-  groupBy: 'domain' | 'axis';
-  wikiDomain?: string | null;
 }
 
 interface KnowledgeFilterOptions {
@@ -1843,36 +1842,33 @@ export class ProfileProjectionRepository {
     query: KnowledgeTimelineOptions,
   ): Promise<{ points: ProfileKnowledgeTimelinePoint[] }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const dateExpr = query.granularity === 'day'
-      ? "DATE_FORMAT(kr.event_time, '%Y-%m-%dT00:00:00.000Z')"
-      : "DATE_FORMAT(kr.event_time, '%Y-%m-%dT%H:00:00.000Z')";
-    const groupExpr = query.groupBy === 'axis' ? 'kr.knowledge_axis' : 'kr.knowledge_domain';
     const clauses = ['kr.profile_id = ?', 'kr.projection_run_id = ?', 'kr.event_time IS NOT NULL'];
     const params: unknown[] = [profileId, runId];
     if (query.rangeSinceDate) {
       clauses.push('kr.event_time >= ?');
       params.push(query.rangeSinceDate);
     }
-    addKnowledgeDomainWhere(clauses, params, query.wikiDomain ?? null);
 
     const rows = (await dataSource.query(
       `SELECT
-         ${dateExpr} AS bucket_ts,
-         ${groupExpr} AS \`group\`,
-         COUNT(*) AS count
+         kr.event_time,
+         JSON_UNQUOTE(JSON_EXTRACT(kr.evidence_json, '$.relative')) AS relative_path,
+         kr.knowledge_locator
        FROM profile_knowledge_recalls kr
        ${whereSql(clauses)}
-       GROUP BY bucket_ts, \`group\`
-       ORDER BY bucket_ts ASC`,
+       ORDER BY kr.event_time ASC, kr.id ASC`,
       params,
     )) as Array<Record<string, unknown>>;
 
     return {
-      points: rows.map((row) => ({
-        t: toIsoDate(row.bucket_ts) ?? '',
-        group: (row.group as string | null) ?? null,
-        count: toNumber(row.count),
-      })),
+      points: buildPathSegmentKnowledgeTimeline(
+        rows.map((row) => ({
+          eventTime: (row.event_time as Date | string | null) ?? null,
+          relativePath: (row.relative_path as string | null) ?? null,
+          locator: (row.knowledge_locator as string | null) ?? null,
+        })),
+        query.granularity,
+      ),
     };
   }
 

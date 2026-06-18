@@ -764,8 +764,6 @@ export type ProfileKnowledgeCoverageResponse = z.infer<
 export const ProfileKnowledgeTimelineQuerySchema = TimeRangeQuerySchema.extend({
   range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
   granularity: z.enum(['day', 'hour']).optional(),
-  groupBy: z.enum(['domain', 'axis']).optional(),
-  wikiDomain: z.string().optional(),
 });
 export type ProfileKnowledgeTimelineQuery = z.infer<typeof ProfileKnowledgeTimelineQuerySchema>;
 

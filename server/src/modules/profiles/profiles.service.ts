@@ -733,8 +733,6 @@ export class ProfilesService {
       return this.profileProjectionRepository.getKnowledgeTimeline(profileId, read.runId, {
         rangeSinceDate: rangeToSinceDate(query.range),
         granularity: query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
-        groupBy: query.groupBy ?? 'domain',
-        wikiDomain: query.wikiDomain ?? null,
       });
     }
     if (read.mode === 'empty') return { points: [] };
@@ -742,8 +740,8 @@ export class ProfilesService {
     const sdd = await this.sddQueryService.getWikiRecallTimeline(
       query.range,
       query.granularity ?? (query.range === '24h' ? 'hour' : 'day'),
-      query.groupBy ?? 'domain',
-      query.wikiDomain ?? null,
+      'domain',
+      null,
     );
     return {
       points: sdd.points.map((p) => ({
