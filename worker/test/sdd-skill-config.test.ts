@@ -36,7 +36,7 @@ describe('buildSddSkillConfig (§10 skill→config)', () => {
   it('produces rules that pass validateProfileConfig', () => {
     const config: WorkflowProfileConfig = {
       profileId: 'sdd-default', displayName: 'x', status: 'active', projectionMode: 'source_backed',
-      manifest: { capabilityUsage: true, deliveryUnits: true, artifacts: true, artifactTimeline: true, knowledgeRecalls: true, codeChanges: true, errors: false, evaluation: false, alerts: false },
+      manifest: { capabilityUsage: true, deliveryUnits: true, artifacts: true, artifactTimeline: true, knowledgeRecalls: true, codeChanges: false, errors: false, evaluation: false, alerts: false },
       sourceRules: cfg.sourceRules, deliveryUnitRules: [], artifactRules: [], capabilityRules: cfg.capabilityRules,
       errorRules: DEFAULT_PROFILE_ERROR_RULES,
       attributionPolicy: { anchorCategories: [], anchorActions: [], sameInteraction: { enabled: false, preferActions: [] }, sameSessionWindow: { enabled: false, minutes: 0, requireSameUser: true, preferActions: [] } },

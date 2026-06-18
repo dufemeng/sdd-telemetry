@@ -5,8 +5,8 @@ import type { ProjectionContext, ProjectionOperator } from './runner';
 /**
  * Code activity projection（MVP-1，Task 13）—— 轻量，不参与强一致对账。
  *
- * 从 source_references 投影 profile_code_activities：sdd-default 第一版口径 =
- * 本地 path 且不在 wiki_root_path / requirements_root_path 下的业务代码读写。
+ * Legacy code activity projection：按"非 wiki / requirements 路径"推断代码活动。
+ * 当前 sdd-default 不再启用这个兜底口径;明确代码源的 source-backed Profile 使用 sourceBackedCodeOperator。
  * 仅在能拿到 source_reference_key 时写表（Task 13 约束），不造缺 source_ref 的伪行。
  */
 

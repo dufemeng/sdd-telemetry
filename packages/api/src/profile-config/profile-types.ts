@@ -98,7 +98,7 @@ export interface LocalPathSourceRule extends SourceRuleBase {
   excludeGlobs?: string[];
   /** 按用户上报根解析：root 取自 sdd_users 的 wiki/requirements 列(每用户不同),投影时解析。 */
   userRootKey?: UserRootKey;
-  /** 排除落在这些 per-user 根内的路径(SDD code="非 doc":pathRegexes 全匹配 + 排除 wiki/requirements 根)。 */
+  /** 排除落在这些 per-user 根内的路径。仅用于兼容旧兜底规则,新代码源应优先声明明确路径边界。 */
   excludeUserRootKeys?: UserRootKey[];
 }
 
@@ -407,7 +407,8 @@ export const SDD_PRESENTATION: ProfilePresentationConfig = {
   maturityStages: ['proposal', 'design', 'task', 'codereview'],
   artifactStageOrder: ['proposal', 'design', 'task', 'review'],
   hiddenMetrics: [],
-  knowledgeCoverageMode: 'filesystem_scan',
+  // sdd-default 已是 source_backed,知识覆盖走召回事实(没有文件系统扫描)。
+  knowledgeCoverageMode: 'recall_facts',
 };
 
 /** source-backed 工作流默认隐藏 SDD 专属指标，避免页面展示一排没有语义的 0。 */

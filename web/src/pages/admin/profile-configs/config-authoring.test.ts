@@ -16,15 +16,15 @@ const sdd = getProfileConfig(SDD_DEFAULT_PROFILE_ID)!;
 const e2e = getProfileConfig(E2E_MONOREPO_PROFILE_ID)!;
 
 describe('content map decode', () => {
-  it('decodes sdd-default to user_root + code_catchall', () => {
+  it('decodes sdd-default to knowledge and process docs only', () => {
     const rows = decodeContentRows(sdd);
     const byKind = new Map(rows.map((r) => [r.kind, r]));
+    expect(rows.map((r) => r.kind)).toEqual(['knowledge', 'process_doc']);
     expect(byKind.get('knowledge')?.sourceType).toBe('user_root');
     expect(byKind.get('knowledge')?.userRootKey).toBe('wiki');
     expect(byKind.get('process_doc')?.sourceType).toBe('user_root');
     expect(byKind.get('process_doc')?.userRootKey).toBe('requirements');
-    expect(byKind.get('code')?.sourceType).toBe('code_catchall');
-    expect(byKind.get('code')?.excludeUserRootKeys).toEqual(['wiki', 'requirements']);
+    expect(byKind.has('code')).toBe(false);
   });
 
   it('decodes e2e-monorepo to path_contains', () => {

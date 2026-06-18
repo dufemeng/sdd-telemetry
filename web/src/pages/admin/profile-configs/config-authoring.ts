@@ -49,7 +49,7 @@ function buildSkillRules(
  */
 
 export type ContentKind = 'knowledge' | 'process_doc' | 'code';
-/** 来源类型:路径包含(模糊) / 按用户根 / 代码兜底(非 doc) / URL / MCP。 */
+/** 来源类型:路径包含(模糊) / 按用户根 / 旧代码兜底 / URL / MCP。 */
 export type ContentSourceType = 'path_contains' | 'user_root' | 'code_catchall' | 'url' | 'mcp';
 
 export interface ContentRow {
@@ -73,7 +73,9 @@ export interface SemanticRow {
   artifactPatterns: string[];
 }
 
-export const CONTENT_KINDS: ContentKind[] = ['knowledge', 'process_doc', 'code'];
+export const PRIMARY_CONTENT_KINDS: ContentKind[] = ['knowledge', 'process_doc'];
+export const OPTIONAL_CONTENT_KINDS: ContentKind[] = ['code'];
+export const CONTENT_KINDS: ContentKind[] = [...PRIMARY_CONTENT_KINDS, ...OPTIONAL_CONTENT_KINDS];
 
 export const CONTENT_KIND_META: Record<ContentKind, { label: string; hint: string; icon: string }> = {
   knowledge: { label: '知识库', hint: '工程师读的知识库文档', icon: '📚' },
@@ -85,7 +87,7 @@ export const CONTENT_KIND_META: Record<ContentKind, { label: string; hint: strin
 export const CONTENT_SOURCE_TYPE_LABEL: Record<ContentSourceType, string> = {
   path_contains: '在一个大家共用的仓库里',
   user_root: '每个人在自己电脑上',
-  code_catchall: '除知识 / 文档外的其余路径',
+  code_catchall: '旧兜底：除知识 / 文档外的其余路径',
   url: '是在线文档(网址)',
   mcp: '是在线文档(MCP)',
 };
@@ -94,14 +96,14 @@ export const CONTENT_SOURCE_TYPE_LABEL: Record<ContentSourceType, string> = {
 export const CONTENT_SOURCE_TYPE_DESC: Record<ContentSourceType, string> = {
   path_contains: '路径里包含你填的一段就算。适合所有人共用同一个仓库(路径结构一致)。',
   user_root: '每个用户的客户端上报自己电脑上的目录,你不用填路径。适合每个人的仓库散落在各自机器上。',
-  code_catchall: '凡是不在知识库 / 需求目录里的路径,都当作代码。',
+  code_catchall: '兼容旧配置。这个口径容易把无关仓库算进来,不建议新工作流使用。',
   url: '网址以你填的前缀开头就算。',
   mcp: '通过 MCP 工具读到的在线文档。',
 };
 
-/** 每类内容合理的「在哪」选项:代码不会在线,只有知识/文档有"每个人自己的目录"。 */
+/** 每类内容合理的「在哪」选项:代码必须有明确路径边界,不再提供兜底口径作为新选择。 */
 export function availableSourceTypes(kind: ContentKind): ContentSourceType[] {
-  if (kind === 'code') return ['path_contains', 'code_catchall'];
+  if (kind === 'code') return ['path_contains'];
   return ['path_contains', 'user_root', 'url'];
 }
 
@@ -158,7 +160,11 @@ function decodeContentRow(config: WorkflowProfileConfig, kind: ContentKind): Con
 }
 
 export function decodeContentRows(config: WorkflowProfileConfig): ContentRow[] {
-  return CONTENT_KINDS.map((kind) => decodeContentRow(config, kind));
+  const rows = PRIMARY_CONTENT_KINDS.map((kind) => decodeContentRow(config, kind));
+  for (const kind of OPTIONAL_CONTENT_KINDS) {
+    if (findCategoryRule(config, kind)) rows.push(decodeContentRow(config, kind));
+  }
+  return rows;
 }
 
 /** 内容地图能否被简单视图覆盖:每条已配置的内容类规则都是可识别的来源形态。 */

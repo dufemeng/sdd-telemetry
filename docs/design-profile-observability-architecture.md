@@ -957,7 +957,7 @@ GET /api/profiles/:profileId/code/by-repository
 - artifact patterns 由现有 `artifact_filename_patterns` 转换。
 - process_doc source 对应 `requirements_root_path`。
 - knowledge source 对应 `wiki_root_path`。
-- codeChanges 第一版是已知口径差异项：`sdd-default` 可先复用现有 code impact adapter 支撑展示，但不参与 `sdd-default` projection 强一致对账；后续拿到显式代码 root 后，再切到 profile code source rules。
+- codeChanges 是补充观测项：`sdd-default` 不启用代码兜底统计；后续只有拿到显式代码 root / pathContains 的 Profile 才切到 profile code source rules。
 
 保护策略：
 
@@ -1053,7 +1053,7 @@ profile 规则：
 - artifact timeline 的 write/discussion 节点。
 - wiki recall 和 interaction/tool call 的链路。
 
-`codeChanges` 不纳入强一致目标。它在第一期只作为轻量代码实施概况，且 `sdd-default` 可能先走现有 code impact 口径；切换时必须标注为已知口径差异项。
+`codeChanges` 不纳入强一致目标。它只作为有明确代码源 Profile 的轻量代码实施概况；`sdd-default` 不使用"非文档路径"兜底口径。
 
 允许解释差异：
 

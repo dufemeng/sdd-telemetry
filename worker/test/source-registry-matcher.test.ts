@@ -139,19 +139,19 @@ describe('matchSourceReference: userRootKey (per-user root)', () => {
   it('code rule excludes paths inside an excluded per-user root (excludeUserRootKeys)', () => {
     const codeRules: ResolvedSourceRule[] = [{
       rule: {
-        locatorType: 'path', ruleId: 'sdd-code', category: 'code', priority: 30,
+        locatorType: 'path', ruleId: 'legacy-code', category: 'code', priority: 30,
         confidence: 'high', enabled: true, pathRegexes: ['.+'], excludeUserRootKeys: ['wiki'], actions: ['edit'],
       } satisfies LocalPathSourceRule,
       resolvedRoot: null,
     }];
     const code = matchSourceReference(
       fact({ userId: 7, actionType: 'edit', normalizedLocator: '/home/u7/proj/src/App.tsx' }),
-      codeRules, 'sdd-default', userRoots,
+      codeRules, 'legacy-code-profile', userRoots,
     );
     expect(code?.category).toBe('code');
     const insideWiki = matchSourceReference(
       fact({ userId: 7, actionType: 'edit', normalizedLocator: '/home/u7/wiki/notes.md' }),
-      codeRules, 'sdd-default', userRoots,
+      codeRules, 'legacy-code-profile', userRoots,
     );
     expect(insideWiki).toBeNull();
   });

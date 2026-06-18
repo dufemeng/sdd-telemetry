@@ -21,6 +21,8 @@ describe('profile config projectionMode + shipped configs', () => {
   it('sdd-default is source_backed (flipped from sdd_bridge)', () => {
     expect(sdd.projectionMode).toBe('source_backed');
     expect(sdd.sourceRules.some((r) => r.locatorType === 'skill')).toBe(true);
+    expect(sdd.manifest.codeChanges).toBe(false);
+    expect(sdd.sourceRules.some((r) => r.category === 'code')).toBe(false);
     expect(validateProfileConfig(sdd).valid).toBe(true);
   });
 

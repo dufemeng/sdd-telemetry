@@ -22,7 +22,7 @@ Production-ready,**整页替换** `ProfileConfigAdminPage.tsx`。单 surface(左
 ## 5. Layout Strategy（核心:authoring / compiled 两层）
 - **左**:profile 列表(沿用,瘦身)。
 - **右编辑器**顶部一行 = 名称 + 状态 + 主操作(预览 / 保存草稿 / 发布)。下面**三块自然流**(非卡片网格):
-  1. **内容地图** — 三行:📚 知识库读取 / 📝 过程文档(需求·设计·任务) / 💻 代码读写。每行 = 一个「来源类型」小下拉(`路径包含` / `按用户根 wiki·requirements` / `URL` / `MCP`,按 profile 给默认)+ 极简输入(路径包含一个 textarea;代码多一行"排除")。
+  1. **内容地图** — 主来源只放两行:📚 知识库读取 / 📝 过程文档(需求·设计·任务)。💻 代码实施范围是补充观测,只有 Profile 已明确声明代码源时才显示;不把"除知识 / 文档外的其余路径"作为新配置入口。
   2. **技能映射** — 列表区块,每条 = `code · 显示名` 折叠头,展开后:显示名 / 描述 / 别名(多行) / 产物文件名(多行);底部 `[+ 新增语义]`。**字段与结构对齐旧 `/sdd/semantics`**。
   3. **高级(带注释)** — 默认折叠。展开 = 编译出的完整 `WorkflowProfileConfig`,但**每字段配一句中文说明 + 示例值**(非裸 JSON)。逃生口 + 透明度,不是日常入口。
 - **关键架构**:简单视图编辑的是 **authoring 层**(内容来源 + 技能语义);保存时**编译**成完整 config(复用 `buildSddSkillConfig` + 新增 `buildContentSources`)。authoring 随 config 存(`config.authoring`),重新打开回填简单视图;高级视图展示编译产物。
@@ -45,7 +45,7 @@ Production-ready,**整页替换** `ProfileConfigAdminPage.tsx`。单 surface(左
 
 ## 8. Content Requirements
 - 区块标题:内容地图 / 技能映射 / 高级(JSON·带注释)。
-- 内容行标签:知识库读取 / 过程文档(需求·设计·任务) / 代码读写;来源类型中文。
+- 内容行标签:知识库读取 / 过程文档(需求·设计·任务);代码实施范围仅在 Profile 已配置明确代码源时作为补充行显示。
 - 字段注释(高级):每字段"它是什么 + 一个例子",如 `priority: 命中冲突时谁优先,越大越先,例 100`、`locatorStrategy: 从路径里怎么切出"交付单元",parent_dir=取父目录名`。
 - 空状态:教学式 + 示例路径占位。
 - 警告:别名为空 / 路径无法解析 / 投影零命中。
@@ -71,6 +71,10 @@ decode/encode 投影。三个 phase 全部 commit:
 - **3 `e7f8e5c`** — 下线 `/profiles/inspector`(页 + 路由 + 侧边栏「配置」组 + 孤儿 hook)。
 
 口径不变:`projectionMode` 等机器概念沉到高级视图;skill 规则经 `buildSddSkillConfig` 重新生成。
+
+## 口径收敛（2026-06-18）
+
+`sdd-default` 不再使用"非知识库 / 非过程文档路径都算代码"的兜底来源,`codeChanges` 默认关闭。代码实施范围保留为补充观测能力,仅适用于像农小宝这类已明确声明代码源边界的 Profile。主配置项只要求知识库来源和过程文档来源,避免把用户本地 n 个无关仓库统计进核心看板。
 web typecheck + build + 25 测试全绿,dev HMR 无错。**Open Question 1(authoring 落库)按更精简方案撤销。**
 
 ## 四项风险自检（实现阶段,先记下)

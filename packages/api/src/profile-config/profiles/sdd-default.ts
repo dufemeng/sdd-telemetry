@@ -1,7 +1,6 @@
 import {
   ALL_CODE_ACTIONS,
   DEFAULT_PROFILE_ERROR_RULES,
-  IMPLEMENTATION_ACTIONS,
   READ_ACTIONS,
   SDD_DEFAULT_PROFILE_ID,
   SDD_PRESENTATION,
@@ -14,7 +13,8 @@ import { buildSddSkillConfig, type SddSemanticInput } from '../sdd-skill-config'
  * SDD 默认工作流（source_backed,从 sdd_bridge flip 而来）。
  *
  * skill / capability 由 SDD_SEMANTICS（原 sdd_skill_semantics + 别名,§10 映射）+ catch-all 生成;
- * knowledge/process_doc 走 per-user 根(wiki/requirements);code = 非 doc(pathRegexes 全匹配 + 排除 doc 根)。
+ * knowledge/process_doc 走 per-user 根(wiki/requirements)。
+ * sdd-default 不配置代码兜底来源:用户可能有多个无关本地仓库，"非 doc 路径"不是清晰的业务口径。
  * flip 后 /sdd/semantics 退役,语义以此 config 为准。
  */
 const SDD_SEMANTICS: SddSemanticInput[] = [
@@ -46,7 +46,7 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
     artifacts: true,
     artifactTimeline: true,
     knowledgeRecalls: true,
-    codeChanges: true,
+    codeChanges: false,
     errors: true,
     evaluation: false,
     alerts: false,
@@ -63,12 +63,6 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
       locatorType: 'path', ruleId: 'sdd-requirements-process-doc', category: 'process_doc', priority: 85,
       confidence: 'high', enabled: true, userRootKey: 'requirements', actions: ALL_CODE_ACTIONS,
       description: 'SDD requirements/process docs under per-user requirements_root_path',
-    },
-    // 代码:非 doc(全匹配 + 排除 wiki/requirements 根)。
-    {
-      locatorType: 'path', ruleId: 'sdd-code', category: 'code', priority: 20,
-      confidence: 'high', enabled: true, pathRegexes: ['.+'], excludeUserRootKeys: ['wiki', 'requirements'],
-      actions: IMPLEMENTATION_ACTIONS, description: 'SDD code = paths not under wiki/requirements roots',
     },
     // 技能(13 semantic）。
     ...skillCfg.sourceRules,

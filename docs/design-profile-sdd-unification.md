@@ -156,16 +156,15 @@
 sdd-default 变成普通 `source_backed` profile,`sourceRules` =
 - `knowledge`:path,`userRootKey=wiki`(替 `knowledge-v1` 硬编码)
 - `process_doc`:path,`userRootKey=requirements`(SDD 需求/work item 来源)
-- `code`:path,排除 doc 根(替 `code-v1`)
 - `skill`:`locatorType='skill'` + aliases(替 `sdd_skill_aliases`/语义表)
 
 \+ `capabilityRules`(skill→能力→**stage**)、`deliveryUnitRules`(process_doc→work item)、`artifactRules`(== `artifactFilenamePatterns`)、`presentation.maturityStages=['proposal','design','task','codereview']`。
 
 **契约增量(精确):** `locatorType` 加 `'skill'`;path locator 加 `userRootKey`;`capabilityRule` 加 `stage`;**砍 `repoKind`**;`projectionMode` 最终收敛为单值。
 
-### 7.A Phase A — 知识 + 代码 config 化(低风险)
-- 改 `knowledgeOperator`/`codeOperator`:不再硬编码,改读 config 的 knowledge/code sourceRule(含 `userRootKey` 解析);给 sdd-default 配上对应 path 规则。
-- **验证(可证伪):** reclean 后 sdd-default 的 `profile_knowledge_recalls`/`profile_code_activities` 行数与迁移前硬编码口径一致(对比计数,差异在阈内)。
+### 7.A Phase A — 知识 config 化(低风险)
+- 改 `knowledgeOperator`:不再硬编码,改读 config 的 knowledge sourceRule(含 `userRootKey` 解析);给 sdd-default 配上对应 path 规则。
+- **验证(可证伪):** reclean 后 sdd-default 的 `profile_knowledge_recalls` 行数与迁移前硬编码口径一致(对比计数,差异在阈内)。代码活动不再用"排除 doc 根"兜底复现,只给明确代码源的 Profile 统计。
 
 ### 7.B Phase B — skill 一等 locator + 生命周期 + 语义页并入(中风险,枢纽)
 1. 清洗 emit `locator_type='skill'` 的 source_reference(粒度 = `skill_usage` 级,避免按 tool_call 重复)。
@@ -259,7 +258,7 @@ vs `source-backed-operators.ts` 实证):
 | **delivery_units** | `sdd_work_items`:`unit_type='requirements_dir'`、slug/domain/title/relative_dir 由 SDD 清洗形成 | process_doc(requirements 根)path → `deliveryUnitRule`(parent_dir) | ⚠️ 待验证 | 确认路径解析能复现 work_item 的 slug/domain/**title**(title 可能来自文档内容,非路径);sdd-default 配 process_doc 规则(`userRootKey=requirements`) |
 | **artifacts/_writes/_turns** | `sdd_work_item_artifacts` 等 | process_doc → `artifactRule.typePatterns` | 🟡 较可能 | `artifactFilenamePatterns`==`typePatterns`,逐 artifactType 比对 |
 | **knowledge_recalls** | `knowledgeOperator`(源 source_references,per-user wiki 根) | `sourceBackedKnowledgeOperator`(同源,knowledge 规则) | ✅ 同源 | sdd-default 配 knowledge 规则(`userRootKey=wiki`,A.1 机制);口径天然一致 |
-| **code_activities** | `codeOperator`(排除 wiki/requirements 根) | `sourceBackedCodeOperator`(code 规则,正根/glob) | ⚠️ 排除式 | code 是"非 doc"语义,无正根 → flip 时改正根(`src/`?)或加 exclude-userRootKey;A.2 已记 |
+| **code_activities** | `codeOperator`(排除 wiki/requirements 根) | `sourceBackedCodeOperator`(code 规则,正根/glob) | 不对齐 | `sdd-default` 放弃排除式兜底;仅明确代码源 Profile 进入 codeChanges |
 
 ### capability 三件事(最大缺口,必须先解)
 1. **per-usage 字段丢失**。source_backed 把 `trigger_source/capability_source/status/raw_capability_name` 写死成静态值,而 SDD 这些是**每次调用**的(user vs auto-triggered 等)。`SOURCE_BACKED_PRESENTATION` 本来隐藏 `user/autoTriggeredCount`,但 sdd-default 用的是 `SDD_PRESENTATION`(**展示** trigger 指标)→ flip 后这些指标会全空/错。
@@ -326,7 +325,7 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 | 表 | bridge | source_backed(当前模型) | 差 | parity 需要 |
 |---|---|---|---|---|
 | **capability** | **81**(全部 skill_usage) | **34**(仅 13 semantic 的 bk-fe-* 技能) | 47 个非-SDD 技能(`superpowers:*`/`impeccable`…)不匹配 | catch-all skill 匹配(`skillNames` 通配)——现仅精确匹配 |
-| **code** | `codeOperator`(排除 wiki/req 根) | **0**(SDD code=非 doc,无正根可表达) | 全丢 | code 规则加 **exclude-userRootKey** 机制 |
+| **code** | `codeOperator`(排除 wiki/req 根) | **0**(SDD code=非 doc,无正根可表达) | 全丢 | 历史 parity 方案是加 **exclude-userRootKey** 机制;后续产品口径已放弃该兜底 |
 | **delivery** | `sdd_work_items`(标题含内容派生) | requirements 路径 `parent_dir` 解析 | 标题/口径可能不同 | `titleStrategy` 对齐 |
 | **knowledge** | `knowledgeOperator`(per-user wiki) | knowledge 规则(`userRootKey=wiki`,E 已通) | 应一致 | — |
 | **artifact** | `sdd_work_item_artifacts` | `artifactRule.typePatterns`(=`artifactFilenamePatterns`) | 应较接近 | 逐型比对 |
@@ -335,7 +334,7 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 
 ### 两条路(下一步)
 - **路 1(口径重定义,简单)**:source_backed sdd-default 只统计 SDD 工作流技能(34)、不要 code 板(本就未在 SDD 看板露出)、delivery 走路径解析。SDD 看板数字会变。
-- **路 2(parity,工作量大)**:补三件——① catch-all skill 匹配(`skillNames:['*']` 通配,低优先级,capability_code=raw_skill_name)让 capability 回 81;② code 规则 `excludeUserRootKeys` 复现"非 doc";③ delivery `titleStrategy`。再生成 sdd-default 全量 config(skill via `buildSddSkillConfig` + knowledge `userRootKey=wiki` + process_doc `userRootKey=requirements` + delivery + artifact + `SDD_PRESENTATION`)、切 `projectionMode`、reclean 按 user×trigger×stage 对账。
+- **路 2(parity,工作量大,已放弃 code 部分)**:补三件——① catch-all skill 匹配(`skillNames:['*']` 通配,低优先级,capability_code=raw_skill_name)让 capability 回 81;② code 规则 `excludeUserRootKeys` 复现"非 doc";③ delivery `titleStrategy`。其中 ② 已被后续产品口径否决:不清晰的代码兜底不进入 `sdd-default`。
 
 **推荐路 2 的 ①②(capability/code 是 SDD 看板核心),delivery title 逐步对齐**;switch 在三件就绪后一次做、reclean 对账。
 
@@ -343,7 +342,7 @@ bridge run vs source_backed run 的 `profile_capability_usages` 按 **user × tr
 
 ## 12. flip 已执行 + reclean 口径对账结果
 
-**flip 已 LIVE**:`sdd-default.ts` 切 `source_backed`(13 semantics→buildSddSkillConfig + catch-all + knowledge/process_doc/code path 规则);seed 修复支持 builtin 重新快照,`db:seed` 后 serving 版本切 source_backed;reclean 用统一 source_backed 投影。
+**flip 已 LIVE**:`sdd-default.ts` 切 `source_backed`(13 semantics→buildSddSkillConfig + catch-all + knowledge/process_doc 规则;不再含 code 兜底规则);seed 修复支持 builtin 重新快照,`db:seed` 后 serving 版本切 source_backed;reclean 用统一 source_backed 投影。
 
 ### capability 口径对账(核心,§9 头号风险)— ✅ 基本对上
 | | bridge | source_backed | |

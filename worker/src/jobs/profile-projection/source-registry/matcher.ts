@@ -121,7 +121,7 @@ function resolveUserRoot(
   return rule.userRootKey === 'wiki' ? roots.wiki : roots.requirements;
 }
 
-/** 该路径是否落在规则排除的某个 per-user 根内(SDD code="非 doc")。 */
+/** 该路径是否落在规则排除的某个 per-user 根内。 */
 function excludedByUserRoot(
   fact: SourceReferenceFact,
   rule: LocalPathSourceRule,

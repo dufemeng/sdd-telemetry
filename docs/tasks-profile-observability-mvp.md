@@ -1100,7 +1100,7 @@ MVP-1 完成必须同时满足：
 2. **桥接算子幂等 key 复用上游 sdd 稳定 key**（`usage_key` / `work_item_key` / `artifact_key` / `write_key` / `turn_key`，加 profile 前缀 sha256），不是 §10.3 的事实层 composite key。桥接从 sdd_* 映射，sdd 自身 key 更直接、稳定性等价；事实层 key 留待下沉到 raw facts 时使用。
 3. **source reference 抽取数据源**：`tool_input` 实际在 `tool_result` 事件的 `attributes_json` 上（非 tool_decision），且为 double-encoded JSON string。抽取从完整 `attributes_json` 读、受控解码，不依赖 4096 preview。
 4. **knowledge 对账 scope**：限「pipeline 数据」（`tool_call_id ∈ source_references` 的 wiki recall）。seed/demo 用户（无底层 tool calls / source_references，约 4106 条）不属 pipeline，可解释排除，不计入 `old_not_in_new`。
-5. **code 口径**（Task 13）：sdd-default 第一版 = 本地 path 且不在 `wiki_root_path` / `requirements_root_path` 下；只在有 `source_reference_key` 时写 `profile_code_activities`。
+5. **code 口径**（Task 13 后续收敛）：`sdd-default` 不再统计"非 wiki / requirements 路径"这类兜底代码活动；只有明确声明代码源边界的 Profile 才写 `profile_code_activities`。
 6. **读源默认值**：`PROFILE_DASHBOARD_READ_SOURCE` 默认 `legacy_sdd`（安全回退，非 §13.3 的 dev=projection）；切 `profile_projection` 后若无 current pointer 自动回退 legacy。
 7. **upsert 计数**：mysql2 连接带 `CLIENT_FOUND_ROWS`，`affectedRows` 对 no-op upsert 也返回 1；source-references rebuild 改用全表行数差算 inserted，幂等以 duplicates=0 + 行数稳定佐证。
 

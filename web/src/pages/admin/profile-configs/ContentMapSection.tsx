@@ -152,7 +152,7 @@ function ContentRowInput({ row, onChange }: { row: ContentRow; onChange: (patch:
     return (
       <div className="grid gap-2.5">
         <p className="rounded-[4px] border border-[var(--color-border)] bg-[var(--color-base)] px-2.5 py-2 text-[12px] text-[var(--color-secondary)]">
-          代码 = 不在知识库 / 需求目录里的所有路径
+          旧口径:不在知识库 / 需求目录里的路径都当作代码
         </p>
         <ExcludeGlobsField row={row} onChange={onChange} />
       </div>
@@ -200,5 +200,5 @@ function summarizeContentRow(row: ContentRow): string {
 function sourceTitle(kind: ContentRow['kind']): string {
   if (kind === 'knowledge') return '知识库来源';
   if (kind === 'process_doc') return '过程文档来源';
-  return '代码范围';
+  return '代码实施范围';
 }
