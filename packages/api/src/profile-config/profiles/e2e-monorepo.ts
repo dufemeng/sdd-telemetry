@@ -118,10 +118,34 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
   ],
   // 能力统计来自 source + action 的组合；代码实施只统计写/改/删，不把读代码当成实施。
   capabilityRules: [
-    { ruleId: 'cap-plan-update', sourceRuleIds: ['e2e-plan-process-doc'], actions: WRITE_ACTIONS, capabilityCode: 'plan-doc-update', displayName: '计划文档更新' },
-    { ruleId: 'cap-plan-read', sourceRuleIds: ['e2e-plan-process-doc'], actions: READ_ACTIONS, capabilityCode: 'plan-doc-read', displayName: '计划文档读取' },
-    { ruleId: 'cap-knowledge', sourceRuleIds: ['e2e-knowledge-docs'], actions: READ_ACTIONS, capabilityCode: 'knowledge-recall', displayName: '知识库读取' },
-    { ruleId: 'cap-code-implementation', sourceRuleIds: ['e2e-implementation-code'], actions: IMPLEMENTATION_ACTIONS, capabilityCode: 'code-implementation', displayName: '代码实施' },
+    {
+      ruleId: 'cap-plan-update',
+      sourceRuleIds: ['e2e-plan-process-doc'],
+      actions: WRITE_ACTIONS,
+      capabilityCode: 'plan-doc-update',
+      displayName: '计划文档更新',
+    },
+    {
+      ruleId: 'cap-plan-read',
+      sourceRuleIds: ['e2e-plan-process-doc'],
+      actions: READ_ACTIONS,
+      capabilityCode: 'plan-doc-read',
+      displayName: '计划文档读取',
+    },
+    {
+      ruleId: 'cap-knowledge',
+      sourceRuleIds: ['e2e-knowledge-docs'],
+      actions: READ_ACTIONS,
+      capabilityCode: 'knowledge-recall',
+      displayName: '知识库读取',
+    },
+    {
+      ruleId: 'cap-code-implementation',
+      sourceRuleIds: ['e2e-implementation-code'],
+      actions: IMPLEMENTATION_ACTIONS,
+      capabilityCode: 'code-implementation',
+      displayName: '代码实施',
+    },
   ],
   errorRules: DEFAULT_PROFILE_ERROR_RULES,
   // 代码实施和知识库读取只归因到写/改/更新过的过程文档；读过程文档不作为核心归因锚点。
@@ -129,7 +153,12 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
     anchorCategories: ['process_doc'],
     anchorActions: WRITE_ACTIONS,
     sameInteraction: { enabled: true, preferActions: WRITE_ACTIONS },
-    sameSessionWindow: { enabled: true, minutes: 120, requireSameUser: true, preferActions: WRITE_ACTIONS },
+    sameSessionWindow: {
+      enabled: true,
+      minutes: 120,
+      requireSameUser: true,
+      preferActions: WRITE_ACTIONS,
+    },
   },
   presentation: SOURCE_BACKED_PRESENTATION,
 };

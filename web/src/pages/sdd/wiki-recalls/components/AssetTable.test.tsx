@@ -1,75 +1,70 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WikiCoverageDomain, WikiCoverageRepo } from '@sdd-telemetry/api';
+import type {
+  ProfileKnowledgePathDimensionSummary,
+  ProfileKnowledgeSourceSummary,
+} from '@sdd-telemetry/api';
 import { AssetTable } from './AssetTable';
 
 afterEach(() => cleanup());
 
-const repos: WikiCoverageRepo[] = [
+const sources: ProfileKnowledgeSourceSummary[] = [
   {
-    repo: 'trade',
+    sourceNamespace: 'trade',
     label: '交易',
-    totalDocs: 10,
-    recalledDocs: 3,
-    coverageRate: 0.3,
-    recalls: 12,
-    deadDocs: 0,
-    newUnreadDocs: 1,
+    accessedDocs: 3,
+    accessCount: 12,
     distinctUsers: 2,
   },
 ];
 
-const domains: WikiCoverageDomain[] = [
+const pathDimensions: ProfileKnowledgePathDimensionSummary[] = [
   {
-    repo: 'trade',
-    domain: 'cashier',
-    totalDocs: 10,
-    recalledDocs: 3,
-    recalls: 12,
-    deadDocs: 0,
-    newUnreadDocs: 1,
+    sourceNamespace: 'trade',
+    pathSegment: 'innerFlow',
+    accessedDocs: 3,
+    accessCount: 12,
     distinctUsers: 2,
-    lastRecallAt: '2026-06-15T10:00:00.000Z',
+    lastAccessAt: '2026-06-15T10:00:00.000Z',
   },
 ];
 
 describe('AssetTable', () => {
-  it('keeps domain drilldown clickable in recall facts mode', () => {
-    const onSelectDomain = vi.fn();
+  it('keeps path-dimension drilldown clickable', () => {
+    const onSelectPathDimension = vi.fn();
 
     render(
       <AssetTable
-        domains={domains}
-        repos={repos}
-        degraded={false}
-        recallFactsMode
-        onSelectDomain={onSelectDomain}
+        pathDimensions={pathDimensions}
+        sources={sources}
+        onSelectPathDimension={onSelectPathDimension}
       />,
     );
 
-    expect(screen.getByText('召回文档')).toBeTruthy();
+    expect(screen.getByText('访问文档')).toBeTruthy();
     expect(screen.queryByText('覆盖（已读/库内）')).toBeNull();
 
-    fireEvent.click(screen.getByText('cashier'));
+    fireEvent.click(screen.getByText('innerFlow'));
 
-    expect(onSelectDomain).toHaveBeenCalledWith('trade', 'cashier');
+    expect(onSelectPathDimension).toHaveBeenCalledWith('trade', 'innerFlow');
   });
 
-  it('keeps domain drilldown clickable when knowledge scan is degraded', () => {
-    const onSelectDomain = vi.fn();
+  it('filters path dimensions without relying on a fixed axis field', () => {
+    const onSelectPathDimension = vi.fn();
 
     render(
       <AssetTable
-        domains={domains}
-        repos={repos}
-        degraded
-        onSelectDomain={onSelectDomain}
+        pathDimensions={pathDimensions}
+        sources={sources}
+        onSelectPathDimension={onSelectPathDimension}
       />,
     );
 
-    fireEvent.click(screen.getByText('cashier'));
+    fireEvent.change(screen.getByPlaceholderText('搜索路径维度'), {
+      target: { value: 'inner' },
+    });
 
-    expect(onSelectDomain).toHaveBeenCalledWith('trade', 'cashier');
+    expect(screen.getByText('innerFlow')).toBeTruthy();
   });
 });

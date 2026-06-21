@@ -85,10 +85,10 @@ export const DailyReportMetricsSchema = z.object({
   knowledge: z.object({
     wikiRecallCount: z.number(),
     distinctFileCount: z.number(),
-    distinctDomainCount: z.number(),
-    topDomains: z.array(
+    distinctPathDimensionCount: z.number(),
+    topPathDimensions: z.array(
       z.object({
-        domain: z.string(),
+        pathSegment: z.string(),
         count: z.number(),
       }),
     ),

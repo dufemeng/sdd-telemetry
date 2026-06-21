@@ -61,11 +61,17 @@ function useCountUp(target: number, duration = 800, delay = 280): number {
   const rafRef = useRef<number>(0);
   useEffect(() => {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) { setValue(target); return; }
+    if (prefersReduced) {
+      setValue(target);
+      return;
+    }
     const start = performance.now() + delay;
     function tick(now: number) {
       const elapsed = now - start;
-      if (elapsed < 0) { rafRef.current = requestAnimationFrame(tick); return; }
+      if (elapsed < 0) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setValue(Math.round(eased * target));
@@ -80,12 +86,15 @@ function useCountUp(target: number, duration = 800, delay = 280): number {
 export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
   const internalRef = useRef<HTMLDivElement>(null);
 
-  const setRef = useCallback((el: HTMLDivElement | null) => {
-    internalRef.current = el;
-    if (externalRef) {
-      (externalRef as { current: HTMLDivElement | null }).current = el;
-    }
-  }, [externalRef]);
+  const setRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      internalRef.current = el;
+      if (externalRef) {
+        (externalRef as { current: HTMLDivElement | null }).current = el;
+      }
+    },
+    [externalRef],
+  );
 
   useEffect(() => {
     const el = internalRef.current;
@@ -98,7 +107,12 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
   }, []);
 
   const m = metrics;
-  const codeImpact = (m as DailyReportMetrics & { codeImpact?: DailyReportMetrics['codeImpact'] }).codeImpact ?? EMPTY_CODE_IMPACT;
+  const codeImpact =
+    (
+      m as DailyReportMetrics & {
+        codeImpact?: DailyReportMetrics['codeImpact'];
+      }
+    ).codeImpact ?? EMPTY_CODE_IMPACT;
 
   return (
     <article className="daily-report-document" ref={setRef}>
@@ -118,30 +132,77 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       <section className="dr-overview">
         <h2>总览 &middot; Overview</h2>
         <div className="dr-kpi-grid">
-          <KpiCard index={0} label="活跃用户" value={m.kpis.activeUsers.current} sub={deltaText(m.kpis.activeUsers)} subCls={deltaClass(m.kpis.activeUsers)} progress={kpiProgress(m.kpis.activeUsers.current)} />
-          <KpiCard index={1} label="Skill 调用" value={m.kpis.skillUsages.current} sub={deltaText(m.kpis.skillUsages)} subCls={deltaClass(m.kpis.skillUsages)} progress={kpiProgress(m.kpis.skillUsages.current)} />
-          <KpiCard index={2} label="覆盖需求" value={m.kpis.coveredWorkItems.current} sub={deltaText(m.kpis.coveredWorkItems)} subCls={deltaClass(m.kpis.coveredWorkItems)} progress={kpiProgress(m.kpis.coveredWorkItems.current)} />
-          <KpiCard index={3} label="文档产出" value={m.kpis.documentOutputs.current} sub={deltaText(m.kpis.documentOutputs)} subCls={deltaClass(m.kpis.documentOutputs)} progress={kpiProgress(m.kpis.documentOutputs.current)} />
+          <KpiCard
+            index={0}
+            label="活跃用户"
+            value={m.kpis.activeUsers.current}
+            sub={deltaText(m.kpis.activeUsers)}
+            subCls={deltaClass(m.kpis.activeUsers)}
+            progress={kpiProgress(m.kpis.activeUsers.current)}
+          />
+          <KpiCard
+            index={1}
+            label="Skill 调用"
+            value={m.kpis.skillUsages.current}
+            sub={deltaText(m.kpis.skillUsages)}
+            subCls={deltaClass(m.kpis.skillUsages)}
+            progress={kpiProgress(m.kpis.skillUsages.current)}
+          />
+          <KpiCard
+            index={2}
+            label="覆盖需求"
+            value={m.kpis.coveredWorkItems.current}
+            sub={deltaText(m.kpis.coveredWorkItems)}
+            subCls={deltaClass(m.kpis.coveredWorkItems)}
+            progress={kpiProgress(m.kpis.coveredWorkItems.current)}
+          />
+          <KpiCard
+            index={3}
+            label="文档产出"
+            value={m.kpis.documentOutputs.current}
+            sub={deltaText(m.kpis.documentOutputs)}
+            subCls={deltaClass(m.kpis.documentOutputs)}
+            progress={kpiProgress(m.kpis.documentOutputs.current)}
+          />
         </div>
       </section>
 
       <div className="dr-rule" />
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">1.</span><span className="dr-text">采用规模</span></div>
+        <div className="dr-section-title">
+          <span className="dr-num">1.</span>
+          <span className="dr-text">采用规模</span>
+        </div>
         <div className="dr-compare">
           <PanelA title="昨日规模">
             <ul>
-              <li><strong>{m.adoption.activeUsers} 位活跃用户</strong> 触发过 SDD skill</li>
-              <li><strong>{m.adoption.skillUsages} 次 skill 调用</strong>，覆盖 proposal / design / task / review</li>
-              <li><strong>{m.adoption.coveredWorkItems} 个需求</strong> 在昨日出现 SDD 活动</li>
+              <li>
+                <strong>{m.adoption.activeUsers} 位活跃用户</strong> 触发过 SDD skill
+              </li>
+              <li>
+                <strong>{m.adoption.skillUsages} 次 skill 调用</strong>，覆盖 proposal / design /
+                task / review
+              </li>
+              <li>
+                <strong>{m.adoption.coveredWorkItems} 个需求</strong> 在昨日出现 SDD 活动
+              </li>
             </ul>
           </PanelA>
           <PanelB title="较前日变化">
             <ul>
-              <li>活跃用户 <strong>{formatDeltaValue(m.kpis.activeUsers.delta)}</strong></li>
-              <li>Skill 调用 <strong>{formatDeltaPercent(m.kpis.skillUsages)}</strong></li>
-              <li>覆盖需求 <strong>{formatDeltaValue(m.kpis.coveredWorkItems.delta)}</strong>{m.kpis.coveredWorkItems.current === 0 ? '，已有调用但尚未关联需求；需检查 requirements root 配置' : '，说明推广不是停留在存量需求'}</li>
+              <li>
+                活跃用户 <strong>{formatDeltaValue(m.kpis.activeUsers.delta)}</strong>
+              </li>
+              <li>
+                Skill 调用 <strong>{formatDeltaPercent(m.kpis.skillUsages)}</strong>
+              </li>
+              <li>
+                覆盖需求 <strong>{formatDeltaValue(m.kpis.coveredWorkItems.delta)}</strong>
+                {m.kpis.coveredWorkItems.current === 0
+                  ? '，已有调用但尚未关联需求；需检查 requirements root 配置'
+                  : '，说明推广不是停留在存量需求'}
+              </li>
             </ul>
           </PanelB>
         </div>
@@ -149,25 +210,34 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       </section>
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">2.</span><span className="dr-text">代码落地</span></div>
+        <div className="dr-section-title">
+          <span className="dr-num">2.</span>
+          <span className="dr-text">代码落地</span>
+        </div>
         <div className="dr-compare">
           <PanelA title="编码参与">
             <ul>
-              <li><strong>{codeImpact.codeWriteCount} 次代码改动</strong> 来自 SDD 相关会话</li>
-              <li><strong>{codeImpact.codeReadCount} 次代码读取</strong> 支撑定位、理解与修改</li>
-              <li>涉及 <strong>{codeImpact.touchedFileCount} 个代码文件</strong>、<strong>{codeImpact.contributorCount} 位用户</strong></li>
+              <li>
+                <strong>{codeImpact.codeWriteCount} 次代码改动</strong> 来自 SDD 相关会话
+              </li>
+              <li>
+                <strong>{codeImpact.codeReadCount} 次代码读取</strong> 支撑定位、理解与修改
+              </li>
+              <li>
+                涉及 <strong>{codeImpact.touchedFileCount} 个代码文件</strong>、
+                <strong>{codeImpact.contributorCount} 位用户</strong>
+              </li>
             </ul>
           </PanelA>
           <PanelB title="Top 代码仓库">
             <ul>
               {codeImpact.topRepositories.map((repo) => (
                 <li key={repo.repository}>
-                  <strong>{repo.repository}</strong> 改动 {repo.writeCount} 次，读取 {repo.readCount} 次
+                  <strong>{repo.repository}</strong> 改动 {repo.writeCount} 次，读取{' '}
+                  {repo.readCount} 次
                 </li>
               ))}
-              {codeImpact.topRepositories.length === 0 && (
-                <li>昨日无业务代码仓库读写</li>
-              )}
+              {codeImpact.topRepositories.length === 0 && <li>昨日无业务代码仓库读写</li>}
             </ul>
           </PanelB>
         </div>
@@ -175,21 +245,36 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       </section>
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">3.</span><span className="dr-text">SDD 链路</span></div>
+        <div className="dr-section-title">
+          <span className="dr-num">3.</span>
+          <span className="dr-text">SDD 链路</span>
+        </div>
         <div className="dr-compare">
           <PanelA title="阶段覆盖">
             <ul>
               {m.chain.stages.map((s) => (
-                <li key={s.code}>{s.label}覆盖 <strong>{s.workItemCount}</strong> 个需求</li>
+                <li key={s.code}>
+                  {s.label}覆盖 <strong>{s.workItemCount}</strong> 个需求
+                </li>
               ))}
             </ul>
           </PanelA>
           <PanelB title="全链路状态">
             <ul>
-              <li><strong>{m.chain.fullChainWorkItemCount} 个需求</strong> 覆盖 3 个及以上 SDD 阶段</li>
-              <li>多阶段需求共 <strong>{m.chain.multiStageWorkItemCount} 个</strong>，均覆盖 2+ 阶段</li>
-              {m.chain.stages.filter(s => s.workItemCount > 0).length < m.chain.stages.length && (
-                <li>{m.chain.stages.filter(s => s.workItemCount === 0).map(s => s.label).join('、')} 暂无覆盖</li>
+              <li>
+                <strong>{m.chain.fullChainWorkItemCount} 个需求</strong> 覆盖 3 个及以上 SDD 阶段
+              </li>
+              <li>
+                多阶段需求共 <strong>{m.chain.multiStageWorkItemCount} 个</strong>，均覆盖 2+ 阶段
+              </li>
+              {m.chain.stages.filter((s) => s.workItemCount > 0).length < m.chain.stages.length && (
+                <li>
+                  {m.chain.stages
+                    .filter((s) => s.workItemCount === 0)
+                    .map((s) => s.label)
+                    .join('、')}{' '}
+                  暂无覆盖
+                </li>
               )}
             </ul>
           </PanelB>
@@ -210,9 +295,15 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
                 <tr key={s.code}>
                   <td>{s.label}</td>
                   <td className="dr-num-cell">{s.workItemCount}</td>
-                  <td className="dr-num-cell">{s.previousDelta > 0 ? `+${s.previousDelta}` : String(s.previousDelta)}</td>
+                  <td className="dr-num-cell">
+                    {s.previousDelta > 0 ? `+${s.previousDelta}` : String(s.previousDelta)}
+                  </td>
                   <td>{s.code} artifact 覆盖</td>
-                  <td><span className={`dr-tag ${stageTagStatus(s.status)}`}>{stageTagLabel(s.status)}</span></td>
+                  <td>
+                    <span className={`dr-tag ${stageTagStatus(s.status)}`}>
+                      {stageTagLabel(s.status)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -223,21 +314,31 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
 
       {m.benchmarks.length > 0 && (
         <section className="dr-section">
-          <div className="dr-section-title"><span className="dr-num">4.</span><span className="dr-text">今日标杆</span></div>
+          <div className="dr-section-title">
+            <span className="dr-num">4.</span>
+            <span className="dr-text">今日标杆</span>
+          </div>
           <div className="dr-compare">
             <PanelA title="完整链路样本">
               <ul>
                 {m.benchmarks.slice(0, 2).map((b) => (
-                  <li key={b.workItemId}><strong>{b.title}</strong> 覆盖 {b.stageCodes.length} 阶段</li>
+                  <li key={b.workItemId}>
+                    <strong>{b.title}</strong> 覆盖 {b.stageCodes.length} 阶段
+                  </li>
                 ))}
               </ul>
             </PanelA>
             <PanelB title="知识召回样本">
               <ul>
-                {m.benchmarks.filter(b => b.wikiRecallCount > 0).slice(0, 2).map((b) => (
-                  <li key={b.workItemId}><strong>{b.title}</strong> 召回 Wiki <strong>{b.wikiRecallCount}</strong> 次</li>
-                ))}
-                {m.benchmarks.filter(b => b.wikiRecallCount > 0).length === 0 && (
+                {m.benchmarks
+                  .filter((b) => b.wikiRecallCount > 0)
+                  .slice(0, 2)
+                  .map((b) => (
+                    <li key={b.workItemId}>
+                      <strong>{b.title}</strong> 召回 Wiki <strong>{b.wikiRecallCount}</strong> 次
+                    </li>
+                  ))}
+                {m.benchmarks.filter((b) => b.wikiRecallCount > 0).length === 0 && (
                   <li>昨日无知识召回标杆</li>
                 )}
               </ul>
@@ -273,7 +374,9 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
                       <td className="dr-num-cell">{b.documentCount}</td>
                       <td className="dr-num-cell">{b.contributorCount}</td>
                       <td className="dr-num-cell">{b.wikiRecallCount}</td>
-                      <td><span className={`dr-tag ${tag.cls}`}>{tag.text}</span></td>
+                      <td>
+                        <span className={`dr-tag ${tag.cls}`}>{tag.text}</span>
+                      </td>
                     </tr>
                   );
                 })}
@@ -284,21 +387,32 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
       )}
 
       <section className="dr-section">
-        <div className="dr-section-title"><span className="dr-num">{m.benchmarks.length > 0 ? '5' : '4'}.</span><span className="dr-text">知识库使用</span></div>
+        <div className="dr-section-title">
+          <span className="dr-num">{m.benchmarks.length > 0 ? '5' : '4'}.</span>
+          <span className="dr-text">知识库使用</span>
+        </div>
         <div className="dr-compare">
-          <PanelA title="召回规模">
+          <PanelA title="访问规模">
             <ul>
-              <li>昨日 Wiki 召回 <strong>{m.knowledge.wikiRecallCount}</strong> 次</li>
-              <li>覆盖 <strong>{m.knowledge.distinctFileCount}</strong> 个知识文档</li>
-              <li>涉及 <strong>{m.knowledge.distinctDomainCount}</strong> 个业务域</li>
+              <li>
+                昨日 Wiki 访问 <strong>{m.knowledge.wikiRecallCount}</strong> 次
+              </li>
+              <li>
+                覆盖 <strong>{m.knowledge.distinctFileCount}</strong> 个知识文档
+              </li>
+              <li>
+                涉及 <strong>{m.knowledge.distinctPathDimensionCount}</strong> 个路径维度
+              </li>
             </ul>
           </PanelA>
-          <PanelB title="Top 领域">
+          <PanelB title="Top 路径维度">
             <ul>
-              {m.knowledge.topDomains.map((d) => (
-                <li key={d.domain}>{d.domain}：{d.count} 次</li>
+              {m.knowledge.topPathDimensions.map((dimension) => (
+                <li key={dimension.pathSegment}>
+                  {dimension.pathSegment}：{dimension.count} 次
+                </li>
               ))}
-              {m.knowledge.topDomains.length === 0 && <li>昨日无知识召回</li>}
+              {m.knowledge.topPathDimensions.length === 0 && <li>昨日无知识访问</li>}
             </ul>
           </PanelB>
         </div>
@@ -309,7 +423,9 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
         <div className="dr-judge" style={{ marginTop: 24 }}>
           <strong>数据提示</strong>
           {m.dataHealth.warnings.map((w, i) => (
-            <p key={i} style={{ margin: '4px 0' }}>{w}</p>
+            <p key={i} style={{ margin: '4px 0' }}>
+              {w}
+            </p>
           ))}
         </div>
       )}
@@ -324,7 +440,14 @@ export function DailyReportDocument({ metrics, docRef: externalRef }: Props) {
   );
 }
 
-function KpiCard({ label, value, sub, subCls, progress, index }: {
+function KpiCard({
+  label,
+  value,
+  sub,
+  subCls,
+  progress,
+  index,
+}: {
   label: string;
   value: number;
   sub: string;
@@ -345,7 +468,10 @@ function KpiCard({ label, value, sub, subCls, progress, index }: {
 function PanelA({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <article className="dr-panel dr-a">
-      <div className="dr-panel-head"><span className="dr-stamp">A</span><span>{title}</span></div>
+      <div className="dr-panel-head">
+        <span className="dr-stamp">A</span>
+        <span>{title}</span>
+      </div>
       {children}
     </article>
   );
@@ -354,7 +480,10 @@ function PanelA({ title, children }: { title: string; children: React.ReactNode 
 function PanelB({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <article className="dr-panel dr-b">
-      <div className="dr-panel-head"><span className="dr-stamp">B</span><span>{title}</span></div>
+      <div className="dr-panel-head">
+        <span className="dr-stamp">B</span>
+        <span>{title}</span>
+      </div>
       {children}
     </article>
   );

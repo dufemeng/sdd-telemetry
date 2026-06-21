@@ -23,6 +23,9 @@ import { CreateProfileProjectionJobs1780000012000 } from './migrations/178000001
 import { CreateProfileConfigs1780000013000 } from './migrations/1780000013000-create-profile-configs';
 import { ProfileConfigServingVersion1780000014000 } from './migrations/1780000014000-profile-config-serving-version';
 import { CreateProfileErrorEvents1780000015000 } from './migrations/1780000015000-create-profile-error-events';
+import { DropProfileKnowledgeDimensions1780000016000 } from './migrations/1780000016000-drop-profile-knowledge-dimensions';
+import { DropSddWikiDimensions1780000017000 } from './migrations/1780000017000-drop-sdd-wiki-dimensions';
+import { AddProfileKnowledgeLocation1780000018000 } from './migrations/1780000018000-add-profile-knowledge-location';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -62,6 +65,9 @@ export function createAppDataSource(): DataSource {
       CreateProfileConfigs1780000013000,
       ProfileConfigServingVersion1780000014000,
       CreateProfileErrorEvents1780000015000,
+      DropProfileKnowledgeDimensions1780000016000,
+      DropSddWikiDimensions1780000017000,
+      AddProfileKnowledgeLocation1780000018000,
     ],
   });
 }

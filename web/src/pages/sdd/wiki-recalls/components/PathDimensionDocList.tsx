@@ -1,27 +1,19 @@
-import type { WikiDomainDoc } from '@sdd-telemetry/api';
+import type { ProfileKnowledgePathDimensionDoc } from '@sdd-telemetry/api';
 import { SoftBadge } from './WikiRecallControls';
 import { formatInteger } from '@/lib/format';
 
-const STATUS_BADGE: Record<string, { label: string; tone: 'good' | 'neutral' | 'bad' | 'info' }> = {
-  hot: { label: '热', tone: 'good' },
-  cold: { label: '冷', tone: 'neutral' },
-  dead: { label: '沉睡', tone: 'bad' },
-  new: { label: '新增未读', tone: 'info' },
-};
-
-export function DomainDocList({
+export function PathDimensionDocList({
   docs,
   selectedPath,
   onSelect,
 }: {
-  docs: WikiDomainDoc[];
+  docs: ProfileKnowledgePathDimensionDoc[];
   selectedPath: string | null;
   onSelect: (relativePath: string) => void;
 }) {
   return (
     <div className="grid gap-[2px]">
       {docs.map((doc) => {
-        const badge = STATUS_BADGE[doc.status]!;
         const active = doc.relativePath === selectedPath;
         return (
           <button
@@ -44,9 +36,14 @@ export function DomainDocList({
             >
               {doc.relativePath}
             </span>
-            <SoftBadge tone={badge.tone}>{badge.label}</SoftBadge>
-            <span className="text-right text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
-              {formatInteger(doc.recallCount)} 次
+            <SoftBadge tone={doc.accessCount >= 10 ? 'good' : 'neutral'}>
+              {doc.accessCount >= 10 ? '高频' : '活跃'}
+            </SoftBadge>
+            <span
+              className="text-right text-[11px] text-[var(--color-muted)]"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              {formatInteger(doc.accessCount)} 次
             </span>
           </button>
         );

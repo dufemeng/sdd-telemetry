@@ -56,7 +56,6 @@ export function normalizeProfilePresentation(
     maturityStages: ['proposal', 'design', 'task', 'codereview'],
     artifactStageOrder: ['proposal', 'design', 'task', 'review'],
     hiddenMetrics: [],
-    knowledgeCoverageMode: 'filesystem_scan' as const,
   };
 
   return {
@@ -70,11 +69,7 @@ export function normalizeProfilePresentation(
       artifactStages: deriveStageDescriptors(base.artifactStageOrder),
       maturityStages: deriveStageDescriptors(base.maturityStages),
     },
-    widgets: base.widgets ?? deriveWidgetsFromHiddenMetrics(
-      base.hiddenMetrics,
-      base.knowledgeCoverageMode,
-      base.workflowKind,
-    ),
+    widgets: base.widgets ?? deriveWidgetsFromHiddenMetrics(base.hiddenMetrics, base.workflowKind),
     legacyOnlySurfaces: base.legacyOnlySurfaces ?? defaultLegacyOnlySurfaces(base.workflowKind),
   };
 }
@@ -89,16 +84,16 @@ export function deriveStageDescriptors(stageCodes: string[]): ProfileStageDescri
 
 export function deriveWidgetsFromHiddenMetrics(
   hiddenMetrics: string[],
-  knowledgeCoverageMode: ProfilePresentation['knowledgeCoverageMode'],
   workflowKind: ProfilePresentation['workflowKind'],
 ): ProfilePresentationWidgets {
   const hidden = new Set(hiddenMetrics);
   return {
     artifactCoverageFunnel: hidden.has('sddStageDots')
-      ? (workflowKind === 'sdd' ? 'none' : 'artifact_type')
+      ? workflowKind === 'sdd'
+        ? 'none'
+        : 'artifact_type'
       : 'sdd_stage',
     userMaturity: hidden.has('maturity') ? 'none' : 'sdd_maturity',
-    knowledgeCoverage: knowledgeCoverageMode,
     callQuality: !hidden.has('callQuality'),
     matchHealth: !hidden.has('matchHealth'),
     triggerSourceBreakdown: !hidden.has('userTriggeredCount') && !hidden.has('autoTriggeredCount'),
@@ -106,7 +101,9 @@ export function deriveWidgetsFromHiddenMetrics(
   };
 }
 
-function defaultLabels(workflowKind: ProfilePresentation['workflowKind']): ProfilePresentationLabels {
+function defaultLabels(
+  workflowKind: ProfilePresentation['workflowKind'],
+): ProfilePresentationLabels {
   return workflowKind === 'sdd' ? SDD_LABELS : SOURCE_BACKED_LABELS;
 }
 

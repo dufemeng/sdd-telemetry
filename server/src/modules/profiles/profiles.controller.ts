@@ -19,15 +19,14 @@ import {
   ProfileErrorListResponseSchema,
   ProfileErrorOverviewQuerySchema,
   ProfileErrorOverviewResponseSchema,
-  ProfileKnowledgeCoverageQuerySchema,
   ProfileKnowledgeContentSchema,
-  ProfileKnowledgeCoverageResponseSchema,
+  ProfileKnowledgeOverviewResponseSchema,
   ProfileKnowledgeDeliveryUnitRankingQuerySchema,
   ProfileKnowledgeDeliveryUnitRankingResponseSchema,
   ProfileKnowledgeDocDetailResponseSchema,
-  ProfileKnowledgeDomainDocsResponseSchema,
+  ProfileKnowledgePathDimensionDocsResponseSchema,
   ProfileKnowledgeListQuerySchema,
-  ProfileKnowledgeRecallListResponseSchema,
+  ProfileKnowledgeAccessListResponseSchema,
   ProfileKnowledgeTimelineQuerySchema,
   ProfileKnowledgeTimelineResponseSchema,
   ProfileOverviewQuerySchema,
@@ -49,7 +48,7 @@ import {
   type ProfileErrorOverviewResponse,
   type ProfileKnowledgeContent,
   type ProfileKnowledgeDocDetailResponse,
-  type ProfileKnowledgeDomainDocsResponse,
+  type ProfileKnowledgePathDimensionDocsResponse,
   type ProfileInspectorResponse,
   type ProfileOverview,
   type ProfileSummary,
@@ -108,7 +107,10 @@ export class ProfilesController {
   async errorOverview() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileErrorOverviewQuerySchema, this.ctx.query);
-    const data: ProfileErrorOverviewResponse = await this.profilesService.getErrorOverview(profileId, query);
+    const data: ProfileErrorOverviewResponse = await this.profilesService.getErrorOverview(
+      profileId,
+      query,
+    );
     return ok(parseWithSchema(ProfileErrorOverviewResponseSchema, data));
   }
 
@@ -116,15 +118,28 @@ export class ProfilesController {
   async errors() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileErrorListQuerySchema, this.ctx.query);
-    const { items, total, page, pageSize } = await this.profilesService.listErrors(profileId, query);
-    return ok(parseWithSchema(ProfileErrorListResponseSchema, { items, total, page, pageSize }));
+    const { items, total, page, pageSize } = await this.profilesService.listErrors(
+      profileId,
+      query,
+    );
+    return ok(
+      parseWithSchema(ProfileErrorListResponseSchema, {
+        items,
+        total,
+        page,
+        pageSize,
+      }),
+    );
   }
 
   @Get('/:profileId/errors/:errorEventId')
   async errorDetail() {
     const profileId = this.ctx.params.profileId as string;
     const errorEventId = this.ctx.params.errorEventId as string;
-    const data: ProfileErrorDetail = await this.profilesService.getErrorDetail(profileId, errorEventId);
+    const data: ProfileErrorDetail = await this.profilesService.getErrorDetail(
+      profileId,
+      errorEventId,
+    );
     return ok(parseWithSchema(ProfileErrorDetailSchema, data));
   }
 
@@ -132,7 +147,10 @@ export class ProfilesController {
   async demandDetail() {
     const profileId = this.ctx.params.profileId as string;
     const demandId = this.ctx.params.demandId as string;
-    const data: ProfileDemandDetail = await this.profilesService.getDemandDetail(profileId, demandId);
+    const data: ProfileDemandDetail = await this.profilesService.getDemandDetail(
+      profileId,
+      demandId,
+    );
     return ok(parseWithSchema(ProfileDemandDetailSchema, data));
   }
 
@@ -142,7 +160,9 @@ export class ProfilesController {
     const demandId = this.ctx.params.demandId as string;
     const artifactId = this.ctx.params.artifactId as string;
     const items: ProfileArtifactTimelineItem[] = await this.profilesService.getArtifactTimeline(
-      profileId, demandId, artifactId,
+      profileId,
+      demandId,
+      artifactId,
     );
     return ok(parseWithSchema(ProfileArtifactTimelineResponseSchema, { items }));
   }
@@ -151,7 +171,10 @@ export class ProfilesController {
   async capabilityAnalytics() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileCapabilityAnalyticsQuerySchema, this.ctx.query);
-    const data: ProfileCapabilityAnalytics = await this.profilesService.getCapabilityAnalytics(profileId, query);
+    const data: ProfileCapabilityAnalytics = await this.profilesService.getCapabilityAnalytics(
+      profileId,
+      query,
+    );
     return ok(parseWithSchema(ProfileCapabilityAnalyticsSchema, data));
   }
 
@@ -159,7 +182,10 @@ export class ProfilesController {
   async capabilityTimeseries() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileCapabilityTimeseriesQuerySchema, this.ctx.query);
-    const data: ProfileCapabilityTimeseries = await this.profilesService.getCapabilityTimeseries(profileId, query);
+    const data: ProfileCapabilityTimeseries = await this.profilesService.getCapabilityTimeseries(
+      profileId,
+      query,
+    );
     return ok(parseWithSchema(ProfileCapabilityTimeseriesSchema, data));
   }
 
@@ -184,7 +210,14 @@ export class ProfilesController {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileUsersQuerySchema, this.ctx.query);
     const { items, total, page, pageSize } = await this.profilesService.listUsers(profileId, query);
-    return ok(parseWithSchema(ProfileUsersResponseSchema, { items, total, page, pageSize }));
+    return ok(
+      parseWithSchema(ProfileUsersResponseSchema, {
+        items,
+        total,
+        page,
+        pageSize,
+      }),
+    );
   }
 
   @Get('/:profileId/users/:userId')
@@ -200,15 +233,19 @@ export class ProfilesController {
     const profileId = this.ctx.params.profileId as string;
     const userId = this.ctx.params.userId as string;
     const query = parseWithSchema(ProfileUserActivityQuerySchema, this.ctx.query);
-    const data: { items: ProfileUserActivityItem[] } = await this.profilesService.listUserActivity(profileId, userId, query);
+    const data: { items: ProfileUserActivityItem[] } = await this.profilesService.listUserActivity(
+      profileId,
+      userId,
+      query,
+    );
     return ok(parseWithSchema(ProfileUserActivityResponseSchema, data));
   }
 
-  @Get('/:profileId/knowledge/coverage')
-  async knowledgeCoverage() {
+  @Get('/:profileId/knowledge/overview')
+  async knowledgeOverview() {
     const profileId = this.ctx.params.profileId as string;
-    const data = await this.profilesService.getKnowledgeCoverage(profileId);
-    return ok(parseWithSchema(ProfileKnowledgeCoverageResponseSchema, data));
+    const data = await this.profilesService.getKnowledgeOverview(profileId);
+    return ok(parseWithSchema(ProfileKnowledgeOverviewResponseSchema, data));
   }
 
   @Get('/:profileId/knowledge/timeline')
@@ -219,11 +256,11 @@ export class ProfilesController {
     return ok(parseWithSchema(ProfileKnowledgeTimelineResponseSchema, data));
   }
 
-  @Get('/:profileId/knowledge/recalls')
-  async knowledgeRecalls() {
+  @Get('/:profileId/knowledge/accesses')
+  async knowledgeAccesses() {
     const profileId = this.ctx.params.profileId as string;
     const query = parseWithSchema(ProfileKnowledgeListQuerySchema, this.ctx.query);
-    const data = await this.profilesService.listKnowledgeRecalls(profileId, {
+    const data = await this.profilesService.listKnowledgeAccesses(profileId, {
       range: query.range,
       page: query.page,
       pageSize: query.pageSize,
@@ -231,7 +268,7 @@ export class ProfilesController {
       ...(query.userId ? { userId: query.userId } : {}),
       ...(query.capabilityUsageId ? { capabilityUsageId: query.capabilityUsageId } : {}),
     });
-    return ok(parseWithSchema(ProfileKnowledgeRecallListResponseSchema, data));
+    return ok(parseWithSchema(ProfileKnowledgeAccessListResponseSchema, data));
   }
 
   @Get('/:profileId/knowledge/delivery-units')
@@ -243,14 +280,18 @@ export class ProfilesController {
   }
 
   @Get('/:profileId/knowledge/docs')
-  async knowledgeDomainDocs() {
+  async knowledgePathDimensionDocs() {
     const profileId = this.ctx.params.profileId as string;
     const sourceNamespace =
       firstQueryValue(this.ctx.query.sourceNamespace) ?? firstQueryValue(this.ctx.query.repo) ?? '';
-    const domain = firstQueryValue(this.ctx.query.domain) ?? '';
-    const data: ProfileKnowledgeDomainDocsResponse =
-      await this.profilesService.getKnowledgeDomainDocs(profileId, sourceNamespace, domain);
-    return ok(parseWithSchema(ProfileKnowledgeDomainDocsResponseSchema, data));
+    const pathSegment = firstQueryValue(this.ctx.query.pathSegment) ?? '';
+    const data: ProfileKnowledgePathDimensionDocsResponse =
+      await this.profilesService.getKnowledgePathDimensionDocs(
+        profileId,
+        sourceNamespace,
+        pathSegment,
+      );
+    return ok(parseWithSchema(ProfileKnowledgePathDimensionDocsResponseSchema, data));
   }
 
   @Get('/:profileId/knowledge/doc-detail')
@@ -270,8 +311,11 @@ export class ProfilesController {
     const sourceNamespace =
       firstQueryValue(this.ctx.query.sourceNamespace) ?? firstQueryValue(this.ctx.query.repo) ?? '';
     const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
-    const data: ProfileKnowledgeContent =
-      await this.profilesService.getKnowledgeContentByPath(profileId, sourceNamespace, relativePath);
+    const data: ProfileKnowledgeContent = await this.profilesService.getKnowledgeContentByPath(
+      profileId,
+      sourceNamespace,
+      relativePath,
+    );
     return ok(parseWithSchema(ProfileKnowledgeContentSchema, data));
   }
 
@@ -279,8 +323,10 @@ export class ProfilesController {
   async knowledgeContent() {
     const profileId = this.ctx.params.profileId as string;
     const toolCallId = this.ctx.params.toolCallId as string;
-    const data: ProfileKnowledgeContent =
-      await this.profilesService.getKnowledgeContent(profileId, toolCallId);
+    const data: ProfileKnowledgeContent = await this.profilesService.getKnowledgeContent(
+      profileId,
+      toolCallId,
+    );
     return ok(parseWithSchema(ProfileKnowledgeContentSchema, data));
   }
 }

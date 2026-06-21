@@ -33,15 +33,6 @@ import type {
   SddWorkItem,
   SddWorkItemDetail,
   SddWikiRecallContent,
-  WikiCoverageResponse,
-  WikiDocDetailResponse,
-  WikiDomainDocsResponse,
-  WikiRecallHeatmapResponse,
-  WikiRecallListResponse,
-  WikiRecallRange,
-  WikiRecallTimelineResponse,
-  WikiRecallUserRankingResponse,
-  WikiRecallWorkItemRankingResponse,
 } from '@sdd-telemetry/api';
 import { TypeOrmUnitOfWork } from '../../common/transaction/unit-of-work';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
@@ -63,8 +54,6 @@ import {
 } from './sdd-query.repository';
 import { SddWriteRepository } from './sdd-write.repository';
 import { deriveRepoName, resolveWikiContentPath } from './wiki-content';
-import { buildCoverage, classifyDoc, ROOT_DOMAIN_LABEL, type RecallAgg } from './wiki-coverage';
-import { scanKnowledgeBase, type ScanResult } from './wiki-scan';
 
 const SDD_OVERVIEW_DOCUMENT_TYPES = ['proposal', 'design', 'task', 'codereview'] as const;
 
@@ -86,23 +75,16 @@ export class SddQueryService {
   dailyReportRepository!: DailyReportRepository;
 
   @Config('knowledgeBase')
-  knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number; scanCacheTtlMs: number; deadKnowledgeGraceDays: number };
+  knowledgeBaseConfig!: { rootPath: string; contentMaxBytes: number };
 
   @Config('userAnalysis')
   userAnalysisConfig!: { coldDays: number; churnDays: number; newDays: number };
 
-  private codeImpactCache: { at: number; byUser: Map<string, { codeWriteCount: number; codeReadCount: number }> } | null = null;
+  private codeImpactCache: {
+    at: number;
+    byUser: Map<string, { codeWriteCount: number; codeReadCount: number }>;
+  } | null = null;
   private static CODE_IMPACT_TTL_MS = 60_000;
-
-  private scanCache: { at: number; result: ScanResult } | null = null;
-
-  private async getScan(): Promise<ScanResult> {
-    const ttl = this.knowledgeBaseConfig.scanCacheTtlMs;
-    if (this.scanCache && Date.now() - this.scanCache.at < ttl) return this.scanCache.result;
-    const result = await scanKnowledgeBase(this.knowledgeBaseConfig.rootPath);
-    this.scanCache = { at: Date.now(), result };
-    return result;
-  }
 
   private async readWikiContent(
     repoName: string | null,
@@ -111,11 +93,13 @@ export class SddQueryService {
   ): Promise<SddWikiRecallContent> {
     const root = this.knowledgeBaseConfig.rootPath;
     if (!root) return emptyWikiContent('not_configured', repoName, relativePath, rawPath);
-    if (!repoName || !relativePath) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
+    if (!repoName || !relativePath)
+      return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
     const target = resolveWikiContentPath(root, repoName, relativePath);
     if (!target) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
     const repoStat = await statOrNull(path.resolve(root, repoName));
-    if (!repoStat || !repoStat.isDirectory()) return emptyWikiContent('repo_missing', repoName, relativePath, rawPath);
+    if (!repoStat || !repoStat.isDirectory())
+      return emptyWikiContent('repo_missing', repoName, relativePath, rawPath);
     const fileStat = await statOrNull(target);
     if (!fileStat) return emptyWikiContent('file_missing', repoName, relativePath, rawPath);
     if (!fileStat.isFile()) return emptyWikiContent('not_a_file', repoName, relativePath, rawPath);
@@ -149,63 +133,12 @@ export class SddQueryService {
     return this.readWikiContent(repoName, relativePath, rawPath);
   }
 
-  async getWikiRecallContentByPath(repo: string, relativePath: string): Promise<SddWikiRecallContent> {
+  async getWikiRecallContentByPath(
+    repo: string,
+    relativePath: string,
+  ): Promise<SddWikiRecallContent> {
     const repoName = repo.startsWith('bk-fe-knowledge-') ? repo : `bk-fe-knowledge-${repo}`;
     return this.readWikiContent(repoName, relativePath, null);
-  }
-
-  async getWikiRecallCoverage(): Promise<WikiCoverageResponse> {
-    const scan = await this.getScan();
-    const rows = await this.sddQueryRepository.aggregateRecallPaths();
-    const domainUsersRows = await this.sddQueryRepository.aggregateRecallDistinctUsers();
-    const repoUsersRows = await this.sddQueryRepository.aggregateRecallRepoDistinctUsers();
-    const recalls: RecallAgg[] = rows.map((r) => ({
-      repo: deriveRepoShortKey(r.raw_path, r.wiki_relative_path),
-      relativePath: r.wiki_relative_path,
-      recallCount: Number(r.recalls),
-      distinctUsers: Number(r.users),
-      lastRecallAt: r.last_at ? new Date(r.last_at).toISOString() : null,
-      lastToolCallId: null,
-    }));
-    const domainUsers = domainUsersRows.map((r) => ({
-      domain: r.wiki_domain,
-      repo: r.repo,
-      distinctUsers: Number(r.distinct_users),
-    }));
-    const repoUsers = repoUsersRows.map((r) => ({
-      repo: r.repo,
-      distinctUsers: Number(r.distinct_users),
-    }));
-    const c = buildCoverage(scan.docs, recalls, domainUsers, repoUsers, Date.now(), this.knowledgeBaseConfig.deadKnowledgeGraceDays);
-    return {
-      scan: { configured: scan.configured, repos: scan.repos },
-      totals: c.totals,
-      repos: c.repos,
-      domains: c.domains,
-    };
-  }
-
-  async getWikiRecallDomainDocs(repo: string, domain: string): Promise<WikiDomainDocsResponse> {
-    const scan = await this.getScan();
-    const now = Date.now();
-    const grace = this.knowledgeBaseConfig.deadKnowledgeGraceDays;
-    const rows = await this.sddQueryRepository.listDomainDocRecalls(domain);
-    const recallByRel = new Map(rows.map((r) => [r.wiki_relative_path, r]));
-    const docs = scan.docs.filter((d) => d.repo === repo && (d.domain ?? ROOT_DOMAIN_LABEL) === domain);
-    const items = docs.map((d) => {
-      const r = recallByRel.get(d.relativePath);
-      const count = r ? Number(r.recalls) : 0;
-      return {
-        relativePath: d.relativePath,
-        recallCount: count,
-        distinctUsers: r ? Number(r.users) : 0,
-        lastRecallAt: r?.last_at ? new Date(r.last_at).toISOString() : null,
-        lastToolCallId: r?.last_tool_call_id ? String(r.last_tool_call_id) : null,
-        status: classifyDoc(count, d.mtimeMs, now, grace),
-        addedAt: new Date(d.mtimeMs).toISOString(),
-      };
-    }).sort((a, b) => b.recallCount - a.recallCount);
-    return { repo, domain, items };
   }
 
   async listSemantics(): Promise<SddSemantic[]> {
@@ -463,8 +396,7 @@ export class SddQueryService {
           usageCount,
           userCount: toNumber(row.user_count),
           workItemCount: toNumber(row.work_item_count),
-          conversionRate:
-            currentSkillUsageCount > 0 ? usageCount / currentSkillUsageCount : null,
+          conversionRate: currentSkillUsageCount > 0 ? usageCount / currentSkillUsageCount : null,
         };
       }),
       matchHealth: {
@@ -509,15 +441,15 @@ export class SddQueryService {
     const pageSize = query.limit ?? query.pageSize;
     const offset = (page - 1) * pageSize;
     const countRows = await this.sddQueryRepository.countUsageSummary(clauses, params);
-    const rows = await this.sddQueryRepository.listUsageSummary(
-      clauses,
-      params,
-      pageSize,
-      offset,
-    );
+    const rows = await this.sddQueryRepository.listUsageSummary(clauses, params, pageSize, offset);
 
     if (rows.length === 0) {
-      return { items: [], total: toNumber(countRows[0]?.count_value), page, pageSize };
+      return {
+        items: [],
+        total: toNumber(countRows[0]?.count_value),
+        page,
+        pageSize,
+      };
     }
 
     const rawSkillNames = rows.map((row) => row.raw_skill_name);
@@ -744,8 +676,13 @@ export class SddQueryService {
     };
   }
 
-  private async getCodeImpactByUser(): Promise<Map<string, { codeWriteCount: number; codeReadCount: number }>> {
-    if (this.codeImpactCache && Date.now() - this.codeImpactCache.at < SddQueryService.CODE_IMPACT_TTL_MS) {
+  private async getCodeImpactByUser(): Promise<
+    Map<string, { codeWriteCount: number; codeReadCount: number }>
+  > {
+    if (
+      this.codeImpactCache &&
+      Date.now() - this.codeImpactCache.at < SddQueryService.CODE_IMPACT_TTL_MS
+    ) {
       return this.codeImpactCache.byUser;
     }
     const rows = await this.dailyReportRepository.listCodeImpactRowsAllAggregatedByUser();
@@ -754,9 +691,7 @@ export class SddQueryService {
     return byUser;
   }
 
-  private buildUserMaturityMap(
-    rows: UserMaturityRow[],
-  ): Map<string, Map<string, string>> {
+  private buildUserMaturityMap(rows: UserMaturityRow[]): Map<string, Map<string, string>> {
     const byUser = new Map<string, Map<string, string>>();
     for (const row of rows) {
       const uid = toStringId(row.user_id);
@@ -776,7 +711,11 @@ export class SddQueryService {
   private computeUserMaturity(
     firstByStage: Map<string, string>,
     firstSeenAt: Date | string | null,
-  ): { stages: SddUserMaturityStage[]; completionRate: number; rampDays: number | null } {
+  ): {
+    stages: SddUserMaturityStage[];
+    completionRate: number;
+    rampDays: number | null;
+  } {
     const stages: SddUserMaturityStage[] = SDD_MATURITY_STAGES.map((stage) => ({
       stage,
       firstReachedAt: firstByStage.get(stage) ?? null,
@@ -797,7 +736,10 @@ export class SddQueryService {
     return { stages, completionRate, rampDays };
   }
 
-  private computeUserStatus(lastSeenAt: Date | string | null, now: number): 'live' | 'cold' | 'churn' {
+  private computeUserStatus(
+    lastSeenAt: Date | string | null,
+    now: number,
+  ): 'live' | 'cold' | 'churn' {
     if (!lastSeenAt) return 'churn';
     const diffDays = (now - new Date(lastSeenAt).getTime()) / DAY_MS;
     if (diffDays <= this.userAnalysisConfig.coldDays) return 'live';
@@ -811,13 +753,14 @@ export class SddQueryService {
   }
 
   async getUserDetail(userId: string): Promise<SddUserDetail | null> {
-    const [userRow, artifactRows, maturityRowsForUser, summaryRows, workItemRows] = await Promise.all([
-      this.sddQueryRepository.getUserById(userId),
-      this.sddQueryRepository.listUserArtifactCounts(),
-      this.sddQueryRepository.getUserMaturity(userId),
-      this.sddQueryRepository.getUserSummary(userId),
-      this.sddQueryRepository.listUserWorkItems(userId),
-    ]);
+    const [userRow, artifactRows, maturityRowsForUser, summaryRows, workItemRows] =
+      await Promise.all([
+        this.sddQueryRepository.getUserById(userId),
+        this.sddQueryRepository.listUserArtifactCounts(),
+        this.sddQueryRepository.getUserMaturity(userId),
+        this.sddQueryRepository.getUserSummary(userId),
+        this.sddQueryRepository.listUserWorkItems(userId),
+      ]);
     if (!userRow) return null;
 
     const codeImpactByUser = await this.getCodeImpactByUser();
@@ -828,7 +771,10 @@ export class SddQueryService {
     const maturityInner = new Map<string, string>();
     for (const row of maturityRowsForUser) {
       const iso = toIsoDate(row.first_event_time);
-      if (iso && (!maturityInner.has(row.semantic_code) || maturityInner.get(row.semantic_code)! > iso)) {
+      if (
+        iso &&
+        (!maturityInner.has(row.semantic_code) || maturityInner.get(row.semantic_code)! > iso)
+      ) {
         maturityInner.set(row.semantic_code, iso);
       }
     }
@@ -954,172 +900,6 @@ export class SddQueryService {
     return user;
   }
 
-  async getWikiRecallUserRanking(
-    range: WikiRecallRange,
-    sortBy: 'total' | 'distinct_files' | 'recent',
-    page = 1,
-    pageSize = 50,
-  ): Promise<WikiRecallUserRankingResponse> {
-    const since = rangeToSinceDate(range);
-    const { items, total } = await this.sddQueryRepository.listWikiRecallUserRanking(
-      since,
-      sortBy,
-      pageSize,
-      (page - 1) * pageSize,
-    );
-
-    return {
-      items: items.map((row) => ({
-        userId: toStringId(row.userId),
-        userName: row.userName,
-        hasWikiRootPath: toNullableBoolean(row.hasWikiRootPath) ?? false,
-        totalRecalls: toNumber(row.totalRecalls),
-        distinctFiles: toNumber(row.distinctFiles),
-        distinctDomains: toNumber(row.distinctDomains),
-        distinctSystems: toNumber(row.distinctSystems),
-        lastRecallAt: toIsoDate(row.lastRecallAt),
-      })),
-      total: toNumber(total),
-    };
-  }
-
-  async getWikiRecallWorkItemRanking(
-    range: WikiRecallRange,
-    wikiDomain: string | null,
-    userId: string | null,
-    page = 1,
-    pageSize = 50,
-  ): Promise<WikiRecallWorkItemRankingResponse> {
-    const since = rangeToSinceDate(range);
-    const { items, total } = await this.sddQueryRepository.listWikiRecallWorkItemRanking(
-      since,
-      wikiDomain,
-      userId,
-      pageSize,
-      (page - 1) * pageSize,
-    );
-
-    return {
-      items: items.map((row) => ({
-        workItemId: toStringId(row.workItemId),
-        workItemSlug: row.workItemSlug,
-        businessDomain: row.businessDomain,
-        totalRecalls: toNumber(row.totalRecalls),
-        distinctDomains: toNumber(row.distinctDomains),
-        distinctSystems: toNumber(row.distinctSystems),
-        userCount: toNumber(row.userCount),
-      })),
-      total: toNumber(total),
-    };
-  }
-
-  async getWikiRecallHeatmap(
-    range: WikiRecallRange,
-    groupBy: 'domain' | 'axis' | 'system',
-  ): Promise<WikiRecallHeatmapResponse> {
-    const buckets = await this.sddQueryRepository.wikiRecallHeatmap(
-      rangeToSinceDate(range),
-      groupBy,
-    );
-
-    return {
-      buckets: buckets.map((bucket) => ({
-        key: bucket.key,
-        totalRecalls: toNumber(bucket.totalRecalls),
-        distinctUsers: toNumber(bucket.distinctUsers),
-      })),
-    };
-  }
-
-  async getWikiRecallTimeline(
-    range: WikiRecallRange,
-    granularity: 'day' | 'hour',
-    groupBy: 'domain' | 'axis',
-    wikiDomain?: string | null,
-  ): Promise<WikiRecallTimelineResponse> {
-    const points = await this.sddQueryRepository.wikiRecallTimeline(
-      rangeToSinceDate(range),
-      granularity,
-      groupBy,
-      wikiDomain,
-    );
-
-    return {
-      points: points.map((point) => ({
-        t: point.t,
-        group: point.group,
-        count: toNumber(point.count),
-      })),
-    };
-  }
-
-  async getWikiRecallDocDetail(
-    repo: string,
-    relativePath: string,
-  ): Promise<WikiDocDetailResponse> {
-    const [trendRows, readerRows, sourceRows] = await Promise.all([
-      this.sddQueryRepository.listWikiRecallDocDetailTrend(relativePath, rangeToSinceDate('30d')),
-      this.sddQueryRepository.listWikiRecallDocDetailReaders(relativePath),
-      this.sddQueryRepository.listWikiRecallDocDetailSourceWorkItems(relativePath),
-    ]);
-
-    return {
-      repo,
-      relativePath,
-      trend: trendRows.map((r) => ({
-        t: r.t,
-        count: toNumber(r.count),
-      })),
-      readers: readerRows.map((r) => ({
-        userId: toStringId(r.userId),
-        userName: r.userName,
-        recallCount: toNumber(r.recallCount),
-        lastRecallAt: toIsoDate(r.lastRecallAt),
-      })),
-      sourceWorkItems: sourceRows.map((r) => ({
-        workItemId: toStringId(r.workItemId),
-        workItemSlug: r.workItemSlug,
-        businessDomain: r.businessDomain,
-        recallCount: toNumber(r.recallCount),
-      })),
-    };
-  }
-
-  async listWikiRecalls(
-    range: WikiRecallRange,
-    filters: { workItemId?: string; userId?: string; skillUsageId?: string },
-    page = 1,
-    pageSize = 50,
-  ): Promise<WikiRecallListResponse> {
-    const { items, total } = await this.sddQueryRepository.listWikiRecalls(
-      filters,
-      rangeToSinceDate(range),
-      pageSize,
-      (page - 1) * pageSize,
-    );
-
-    return {
-      items: items.map((row) => ({
-        id: toStringId(row.id),
-        toolCallId: toStringId(row.toolCallId),
-        interactionId: toStringId(row.interactionId),
-        skillUsageId: row.skillUsageId === null ? null : toStringId(row.skillUsageId),
-        workItemId: row.workItemId === null ? null : toStringId(row.workItemId),
-        userId: row.userId === null ? null : toStringId(row.userId),
-        userName: row.userName,
-        actionType: row.actionType,
-        rawPath: row.rawPath,
-        wikiRelativePath: row.wikiRelativePath,
-        wikiDomain: row.wikiDomain,
-        wikiAxis: row.wikiAxis,
-        wikiSystem: row.wikiSystem,
-        eventSequence: toNullableNumber(row.eventSequence),
-        eventTime: toIsoDate(row.eventTime),
-      })),
-      total: toNumber(total),
-    };
-  }
-
   private buildUsageWhere(
     query: SddListQuery,
     alias: string,
@@ -1215,7 +995,10 @@ export class SddQueryService {
   private toWorkItem(row: WorkItemRow): SddWorkItem {
     const raw = row.coverage_stages_json ?? '';
     const coverageStages: string[] = raw
-      ? raw.split(',').map((s) => s.trim()).filter(Boolean)
+      ? raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
     return {
       id: toStringId(row.id),
@@ -1237,9 +1020,7 @@ export class SddQueryService {
 
 function resolveSkillAnalyticsWindow(query: SddSkillAnalyticsQuery): ResolvedTimeWindow {
   const toDate = query.to ? new Date(query.to) : new Date();
-  const fromDate = query.from
-    ? new Date(query.from)
-    : new Date(toDate.getTime() - 24 * 3_600_000);
+  const fromDate = query.from ? new Date(query.from) : new Date(toDate.getTime() - 24 * 3_600_000);
 
   return {
     from: fromDate.toISOString(),
@@ -1347,15 +1128,6 @@ function toNullableBoolean(value: unknown): boolean | null {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
-function rangeToSinceDate(range: WikiRecallRange): Date | null {
-  const now = Date.now();
-  if (range === '24h') return new Date(now - 24 * 60 * 60 * 1000);
-  if (range === '7d') return new Date(now - 7 * 24 * 60 * 60 * 1000);
-  if (range === '30d') return new Date(now - 30 * 24 * 60 * 60 * 1000);
-  if (range === '90d') return new Date(now - 90 * 24 * 60 * 60 * 1000);
-  return null;
-}
-
 // TODO: reportUserSettings 接口 (POST /api/sdd/user-settings) 前端无任何调用方，
 // 仅 integration test 引用。计划整体删除接口、controller、service 方法、repository
 // 方法和这个本地 createUserKey。删除时一并移除 sdd.contract.ts 里的
@@ -1430,9 +1202,4 @@ async function readUpTo(file: string, cap: number): Promise<string> {
   } finally {
     await handle.close();
   }
-}
-
-function deriveRepoShortKey(rawPath: string, relativePath: string | null): string {
-  const name = deriveRepoName(rawPath, relativePath) ?? '';
-  return name.replace(/^bk-fe-knowledge-/, '') || 'unknown';
 }

@@ -12,7 +12,10 @@ import {
   isWriteAction,
   sourceBackedStableKey,
 } from './profile-projection/source-registry/projection';
-import type { MatchedSource, SourceReferenceFact } from './profile-projection/source-registry/types';
+import type {
+  MatchedSource,
+  SourceReferenceFact,
+} from './profile-projection/source-registry/types';
 import { loadSourceReferenceFacts } from './profile-projection/source-backed-operators';
 
 /**
@@ -47,10 +50,13 @@ async function main(): Promise<void> {
       [profileId],
     );
     if (!runId) {
-      throw new Error(`no current projection run for profile ${profileId}; run profile:rebuild first`);
+      throw new Error(
+        `no current projection run for profile ${profileId}; run profile:rebuild first`,
+      );
     }
 
-    const report = config.projectionMode === 'source_backed'
+    const report =
+      config.projectionMode === 'source_backed'
       ? await runSourceBackedDiff(pool, config, runId)
       : await runSddBridgeDiff(pool, profileId, runId);
 
@@ -63,7 +69,11 @@ async function main(): Promise<void> {
 
 void main();
 
-async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): Promise<Record<string, unknown>> {
+async function runSddBridgeDiff(
+  pool: Pool,
+  profileId: string,
+  runId: number,
+): Promise<Record<string, unknown>> {
   const bridges: Array<{
     name: string;
     oldTable: string;
@@ -72,19 +82,62 @@ async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): P
     newTable: string;
     newKey: string;
   }> = [
-    { name: 'capability', oldTable: 'sdd_skill_usages', oldKey: 'usage_key', prefix: 'capability', newTable: 'profile_capability_usages', newKey: 'usage_key' },
-    { name: 'deliveryUnit', oldTable: 'sdd_work_items', oldKey: 'work_item_key', prefix: 'du', newTable: 'profile_delivery_units', newKey: 'delivery_unit_key' },
-    { name: 'artifact', oldTable: 'sdd_work_item_artifacts', oldKey: 'artifact_key', prefix: 'artifact', newTable: 'profile_artifacts', newKey: 'artifact_key' },
-    { name: 'artifactWrite', oldTable: 'sdd_work_item_artifact_writes', oldKey: 'write_key', prefix: 'artifact_write', newTable: 'profile_artifact_writes', newKey: 'write_key' },
-    { name: 'artifactTurn', oldTable: 'sdd_work_item_artifact_turns', oldKey: 'turn_key', prefix: 'artifact_turn', newTable: 'profile_artifact_turns', newKey: 'turn_key' },
+    {
+      name: 'capability',
+      oldTable: 'sdd_skill_usages',
+      oldKey: 'usage_key',
+      prefix: 'capability',
+      newTable: 'profile_capability_usages',
+      newKey: 'usage_key',
+    },
+    {
+      name: 'deliveryUnit',
+      oldTable: 'sdd_work_items',
+      oldKey: 'work_item_key',
+      prefix: 'du',
+      newTable: 'profile_delivery_units',
+      newKey: 'delivery_unit_key',
+    },
+    {
+      name: 'artifact',
+      oldTable: 'sdd_work_item_artifacts',
+      oldKey: 'artifact_key',
+      prefix: 'artifact',
+      newTable: 'profile_artifacts',
+      newKey: 'artifact_key',
+    },
+    {
+      name: 'artifactWrite',
+      oldTable: 'sdd_work_item_artifact_writes',
+      oldKey: 'write_key',
+      prefix: 'artifact_write',
+      newTable: 'profile_artifact_writes',
+      newKey: 'write_key',
+    },
+    {
+      name: 'artifactTurn',
+      oldTable: 'sdd_work_item_artifact_turns',
+      oldKey: 'turn_key',
+      prefix: 'artifact_turn',
+      newTable: 'profile_artifact_turns',
+      newKey: 'turn_key',
+    },
   ];
 
-  const report: Record<string, unknown> = { profileId, runId, mode: 'sdd_bridge' };
+  const report: Record<string, unknown> = {
+    profileId,
+    runId,
+    mode: 'sdd_bridge',
+  };
   const gateFailures: string[] = [];
 
   for (const b of bridges) {
     const oldCount = await scalar(pool, `SELECT COUNT(*) AS v FROM \`${b.oldTable}\``);
-    const newCount = await scalar(pool, `SELECT COUNT(*) AS v FROM \`${b.newTable}\` WHERE projection_run_id=?`, [runId]);
+    const newCount = await scalar(
+      pool,
+      `SELECT COUNT(*) AS v FROM \`${b.newTable}\` WHERE projection_run_id=?`,
+      [runId],
+    );
     const expectedKey = `SHA2(CONCAT(?, ':', ?, ':', o.\`${b.oldKey}\`), 256)`;
     const oldNotInNew = await scalar(
       pool,
@@ -101,11 +154,17 @@ async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): P
     );
     report[b.name] = { old: oldCount, new: newCount, oldNotInNew, newNotInOld };
     if (oldNotInNew !== 0 || newNotInOld !== 0) {
-      gateFailures.push(`${b.name} key-set 不一致 (oldNotInNew=${oldNotInNew}, newNotInOld=${newNotInOld})`);
+      gateFailures.push(
+        `${b.name} key-set 不一致 (oldNotInNew=${oldNotInNew}, newNotInOld=${newNotInOld})`,
+      );
     }
   }
 
-  const newKnowledge = await scalar(pool, 'SELECT COUNT(*) AS v FROM profile_knowledge_recalls WHERE projection_run_id=?', [runId]);
+  const newKnowledge = await scalar(
+    pool,
+    'SELECT COUNT(*) AS v FROM profile_knowledge_recalls WHERE projection_run_id=?',
+    [runId],
+  );
   const orphanSourceRef = await scalar(
     pool,
     `SELECT COUNT(*) AS v FROM profile_knowledge_recalls k
@@ -153,8 +212,10 @@ async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): P
     level: '(tool_call_id, locator) 级',
     note: 'oldSeedExcluded = 无 source_references 的 seed/demo 数据，不属 pipeline，可解释排除',
   };
-  if (orphanSourceRef !== 0) gateFailures.push(`knowledge orphan_source_ref=${orphanSourceRef} (必须 0)`);
-  if (oldNotInNew !== 0) gateFailures.push(`knowledge old_not_in_new=${oldNotInNew} (必须 0：真实 recall 被漏掉)`);
+  if (orphanSourceRef !== 0)
+    gateFailures.push(`knowledge orphan_source_ref=${orphanSourceRef} (必须 0)`);
+  if (oldNotInNew !== 0)
+    gateFailures.push(`knowledge old_not_in_new=${oldNotInNew} (必须 0：真实 recall 被漏掉)`);
 
   const capDeliveryMissing = await scalar(
     pool,
@@ -168,7 +229,10 @@ async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): P
     [profileId],
   );
   report.capabilityDeliveryMissing = capDeliveryMissing;
-  if (capDeliveryMissing !== 0) gateFailures.push(`capability delivery_unit_id missing=${capDeliveryMissing} (有旧 work_item_id 但新 delivery_unit_id 为空)`);
+  if (capDeliveryMissing !== 0)
+    gateFailures.push(
+      `capability delivery_unit_id missing=${capDeliveryMissing} (有旧 work_item_id 但新 delivery_unit_id 为空)`,
+    );
 
   const knowDeliveryMissing = await scalar(
     pool,
@@ -182,7 +246,10 @@ async function runSddBridgeDiff(pool: Pool, profileId: string, runId: number): P
     [runId],
   );
   report.knowledgeDeliveryMissing = knowDeliveryMissing;
-  if (knowDeliveryMissing !== 0) gateFailures.push(`knowledge delivery_unit_id missing=${knowDeliveryMissing} (pipeline scope 有旧 work_item_id 但新 delivery_unit_id 为空)`);
+  if (knowDeliveryMissing !== 0)
+    gateFailures.push(
+      `knowledge delivery_unit_id missing=${knowDeliveryMissing} (pipeline scope 有旧 work_item_id 但新 delivery_unit_id 为空)`,
+    );
 
   const codeDeliveryMissing = await scalar(
     pool,
@@ -220,7 +287,7 @@ interface SourceBackedDiffReport {
     artifacts: number;
     artifactWrites: number;
     capabilityUsages: number;
-    knowledgeRecalls: number;
+    knowledgeAccesses: number;
     codeActivities: number;
   };
   linkage: {
@@ -243,7 +310,9 @@ async function runSourceBackedDiff(
 ): Promise<SourceBackedDiffReport> {
   const resolved = resolveRuntimeProfileConfig(config, process.env);
   if (resolved.unresolved.length > 0) {
-    throw new Error(`unresolved source rules for ${config.profileId}: ${resolved.unresolved.map((r) => r.ruleId).join(', ')}`);
+    throw new Error(
+      `unresolved source rules for ${config.profileId}: ${resolved.unresolved.map((r) => r.ruleId).join(', ')}`,
+    );
   }
 
   const facts = await loadSourceReferenceFacts(pool);
@@ -268,31 +337,42 @@ async function runSourceBackedDiff(
   for (const item of matched) {
     if (item.match.category === 'process_doc' && isWriteAction(item.match.actionType)) {
       processDocWrites += 1;
-      if (hasProjectionRule(config.deliveryUnitRules, item.match.ruleId) && hasProjectionRule(config.artifactRules, item.match.ruleId)) {
-        expectedArtifactWriteKeys.add(sourceBackedStableKey(config.profileId, 'artifact_write', item.fact.sourceReferenceKey));
+      if (
+        hasProjectionRule(config.deliveryUnitRules, item.match.ruleId) &&
+        hasProjectionRule(config.artifactRules, item.match.ruleId)
+      ) {
+        expectedArtifactWriteKeys.add(
+          sourceBackedStableKey(config.profileId, 'artifact_write', item.fact.sourceReferenceKey),
+        );
       }
     }
-    if (item.match.category === 'knowledge' && isReadAction(item.match.actionType)) knowledgeReads += 1;
+    if (item.match.category === 'knowledge' && isReadAction(item.match.actionType))
+      knowledgeReads += 1;
     if (item.match.category === 'code') codeActivities += 1;
     if (findCapabilityRule(item.match, config)) capabilityUsages += 1;
   }
 
   const actualWriteKeys = await loadKeySet(pool, 'profile_artifact_writes', 'write_key', runId);
-  const processDocWriteMissingArtifactWrite = Array.from(expectedArtifactWriteKeys)
-    .filter((key) => !actualWriteKeys.has(key)).length;
+  const processDocWriteMissingArtifactWrite = Array.from(expectedArtifactWriteKeys).filter(
+    (key) => !actualWriteKeys.has(key),
+  ).length;
 
   const projection = {
     deliveryUnits: await countRun(pool, 'profile_delivery_units', runId),
     artifacts: await countRun(pool, 'profile_artifacts', runId),
     artifactWrites: await countRun(pool, 'profile_artifact_writes', runId),
     capabilityUsages: await countRun(pool, 'profile_capability_usages', runId),
-    knowledgeRecalls: await countRun(pool, 'profile_knowledge_recalls', runId),
+    knowledgeAccesses: await countRun(pool, 'profile_knowledge_recalls', runId),
     codeActivities: await countRun(pool, 'profile_code_activities', runId),
   };
 
   const linkage = {
     processDocWriteMissingArtifactWrite,
-    artifactWithoutDeliveryUnit: await scalar(pool, 'SELECT COUNT(*) AS v FROM profile_artifacts WHERE projection_run_id=? AND delivery_unit_id IS NULL', [runId]),
+    artifactWithoutDeliveryUnit: await scalar(
+      pool,
+      'SELECT COUNT(*) AS v FROM profile_artifacts WHERE projection_run_id=? AND delivery_unit_id IS NULL',
+      [runId],
+    ),
     knowledgeOrphanSourceRef: await scalar(
       pool,
       `SELECT COUNT(*) AS v
@@ -330,11 +410,18 @@ async function runSourceBackedDiff(
   };
 
   const gateFailures: string[] = [];
-  if (linkage.processDocWriteMissingArtifactWrite !== 0) gateFailures.push(`process_doc write missing artifact write=${linkage.processDocWriteMissingArtifactWrite}`);
-  if (linkage.artifactWithoutDeliveryUnit !== 0) gateFailures.push(`artifact without delivery_unit_id=${linkage.artifactWithoutDeliveryUnit}`);
-  if (linkage.knowledgeOrphanSourceRef !== 0) gateFailures.push(`knowledge orphan source ref=${linkage.knowledgeOrphanSourceRef}`);
-  if (linkage.codeOrphanSourceRef !== 0) gateFailures.push(`code orphan source ref=${linkage.codeOrphanSourceRef}`);
-  if (linkage.codeMissingRequiredMetadata !== 0) gateFailures.push(`code missing required metadata=${linkage.codeMissingRequiredMetadata}`);
+  if (linkage.processDocWriteMissingArtifactWrite !== 0)
+    gateFailures.push(
+      `process_doc write missing artifact write=${linkage.processDocWriteMissingArtifactWrite}`,
+    );
+  if (linkage.artifactWithoutDeliveryUnit !== 0)
+    gateFailures.push(`artifact without delivery_unit_id=${linkage.artifactWithoutDeliveryUnit}`);
+  if (linkage.knowledgeOrphanSourceRef !== 0)
+    gateFailures.push(`knowledge orphan source ref=${linkage.knowledgeOrphanSourceRef}`);
+  if (linkage.codeOrphanSourceRef !== 0)
+    gateFailures.push(`code orphan source ref=${linkage.codeOrphanSourceRef}`);
+  if (linkage.codeMissingRequiredMetadata !== 0)
+    gateFailures.push(`code missing required metadata=${linkage.codeMissingRequiredMetadata}`);
 
   return {
     profileId: config.profileId,
@@ -356,20 +443,31 @@ async function runSourceBackedDiff(
   };
 }
 
-function findCapabilityRule(match: MatchedSource, config: WorkflowProfileConfig): CapabilityRule | null {
-  return config.capabilityRules.find((rule) => {
+function findCapabilityRule(
+  match: MatchedSource,
+  config: WorkflowProfileConfig,
+): CapabilityRule | null {
+  return (
+    config.capabilityRules.find((rule) => {
     if (!rule.actions.includes(match.actionType)) return false;
     if (rule.sourceRuleIds?.includes(match.ruleId)) return true;
     if (rule.sourceCategories?.includes(match.category)) return true;
     return false;
-  }) ?? null;
+    }) ?? null
+  );
 }
 
-function hasProjectionRule<T extends { sourceRuleIds: string[] }>(rules: T[], sourceRuleId: string): boolean {
+function hasProjectionRule<T extends { sourceRuleIds: string[] }>(
+  rules: T[],
+  sourceRuleId: string,
+): boolean {
   return rules.some((rule) => rule.sourceRuleIds.includes(sourceRuleId));
 }
 
-function isUnderConfiguredLocalRoot(fact: SourceReferenceFact, rules: Array<{ resolvedRoot: string | null }>): boolean {
+function isUnderConfiguredLocalRoot(
+  fact: SourceReferenceFact,
+  rules: Array<{ resolvedRoot: string | null }>,
+): boolean {
   if (fact.locatorType !== 'path' || !fact.normalizedLocator) return false;
   const locator = fact.normalizedLocator.replace(/\\/g, '/');
   return rules.some((rule) => {
@@ -383,7 +481,12 @@ async function countRun(pool: Pool, table: string, runId: number): Promise<numbe
   return scalar(pool, `SELECT COUNT(*) AS v FROM \`${table}\` WHERE projection_run_id=?`, [runId]);
 }
 
-async function loadKeySet(pool: Pool, table: string, keyColumn: string, runId: number): Promise<Set<string>> {
+async function loadKeySet(
+  pool: Pool,
+  table: string,
+  keyColumn: string,
+  runId: number,
+): Promise<Set<string>> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT \`${keyColumn}\` AS k FROM \`${table}\` WHERE projection_run_id=?`,
     [runId],

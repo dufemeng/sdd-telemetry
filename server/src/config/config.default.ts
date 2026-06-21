@@ -52,17 +52,9 @@ export default {
     host: process.env.REDIS_HOST ?? '127.0.0.1',
     port: Number(process.env.REDIS_PORT ?? 46379),
   },
-  profileDashboard: {
-    // legacy_sdd（默认，安全回退）| profile_projection
-    // 切 profile_projection 前需先 pnpm profile:rebuild + profile:diff 通过；
-    // 无 current pointer 时读路径会自动回退 legacy。
-    readSource: process.env.PROFILE_DASHBOARD_READ_SOURCE ?? 'legacy_sdd',
-  },
   knowledgeBase: {
     rootPath: process.env.KNOWLEDGE_BASE_ROOT ?? '',
     contentMaxBytes: Number(process.env.WIKI_CONTENT_MAX_BYTES ?? 512 * 1024),
-    scanCacheTtlMs: Number(process.env.WIKI_SCAN_CACHE_TTL_MS ?? 600_000),
-    deadKnowledgeGraceDays: Number(process.env.WIKI_DEAD_GRACE_DAYS ?? 30),
   },
   userAnalysis: {
     coldDays: Number(process.env.USER_COLD_DAYS ?? 7),

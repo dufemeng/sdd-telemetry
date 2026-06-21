@@ -47,7 +47,9 @@ describe('profile config projectionMode + shipped configs', () => {
 
 describe('resolveRuntimeProfileConfig root resolution', () => {
   it('derives e2e roots from a single E2E_MONOREPO_ROOT via fallback', () => {
-    const res = resolveRuntimeProfileConfig(e2eMonorepo, { E2E_MONOREPO_ROOT: '/repo' });
+    const res = resolveRuntimeProfileConfig(e2eMonorepo, {
+      E2E_MONOREPO_ROOT: '/repo',
+    });
     const byRule = new Map(res.rules.map((r) => [r.rule.ruleId, r.resolvedRoot]));
     expect(byRule.get('e2e-plan-process-doc')).toBe('/repo/docs/plan');
     expect(byRule.get('e2e-knowledge-docs')).toBe('/repo/wiki');
@@ -82,7 +84,9 @@ describe('resolveRuntimeProfileConfig root resolution', () => {
   });
 
   it('strips trailing slashes on the base root', () => {
-    const res = resolveRuntimeProfileConfig(e2eMonorepo, { E2E_MONOREPO_ROOT: '/repo/' });
+    const res = resolveRuntimeProfileConfig(e2eMonorepo, {
+      E2E_MONOREPO_ROOT: '/repo/',
+    });
     const plan = res.rules.find((r) => r.rule.ruleId === 'e2e-plan-process-doc');
     expect(plan?.resolvedRoot).toBe('/repo/docs/plan');
   });
@@ -95,7 +99,9 @@ describe('resolveRuntimeProfileConfig root resolution', () => {
   });
 
   it('sorts rules by confidence then priority', () => {
-    const res = resolveRuntimeProfileConfig(e2eMonorepo, { E2E_MONOREPO_ROOT: '/repo' });
+    const res = resolveRuntimeProfileConfig(e2eMonorepo, {
+      E2E_MONOREPO_ROOT: '/repo',
+    });
     expect(res.rules[0]!.rule.priority).toBe(100);
     const priorities = res.rules.map((r) => r.rule.priority);
     expect([...priorities]).toEqual([...priorities].sort((a, b) => b - a));
@@ -135,8 +141,15 @@ function baseConfig(over: Partial<WorkflowProfileConfig>): WorkflowProfileConfig
     status: 'active',
     projectionMode: 'source_backed',
     manifest: {
-      capabilityUsage: true, deliveryUnits: true, artifacts: true, artifactTimeline: true,
-      knowledgeRecalls: true, codeChanges: true, errors: false, evaluation: false, alerts: false,
+      capabilityUsage: true,
+      deliveryUnits: true,
+      artifacts: true,
+      artifactTimeline: true,
+      knowledgeRecalls: true,
+      codeChanges: true,
+      errors: false,
+      evaluation: false,
+      alerts: false,
     },
     sourceRules: [],
     deliveryUnitRules: [],
@@ -144,13 +157,21 @@ function baseConfig(over: Partial<WorkflowProfileConfig>): WorkflowProfileConfig
     capabilityRules: [],
     errorRules: DEFAULT_PROFILE_ERROR_RULES,
     attributionPolicy: {
-      anchorCategories: [], anchorActions: [],
+      anchorCategories: [],
+      anchorActions: [],
       sameInteraction: { enabled: false, preferActions: [] },
-      sameSessionWindow: { enabled: false, minutes: 0, requireSameUser: true, preferActions: [] },
+      sameSessionWindow: {
+        enabled: false,
+        minutes: 0,
+        requireSameUser: true,
+        preferActions: [],
+      },
     },
     presentation: {
-      workflowKind: 'local_path_monorepo', maturityStages: [], artifactStageOrder: [],
-      hiddenMetrics: [], knowledgeCoverageMode: 'recall_facts',
+      workflowKind: 'local_path_monorepo',
+      maturityStages: [],
+      artifactStageOrder: [],
+      hiddenMetrics: [],
     },
     ...over,
   };
@@ -160,8 +181,26 @@ describe('validateProfileConfig rejects malformed configs', () => {
   it('rejects duplicate source rule ids', () => {
     const cfg = baseConfig({
       sourceRules: [
-        { locatorType: 'path', ruleId: 'dup', category: 'code', priority: 1, confidence: 'high', enabled: true, rootPath: '/a', actions: ['read'] },
-        { locatorType: 'path', ruleId: 'dup', category: 'code', priority: 1, confidence: 'high', enabled: true, rootPath: '/b', actions: ['read'] },
+        {
+          locatorType: 'path',
+          ruleId: 'dup',
+          category: 'code',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          rootPath: '/a',
+          actions: ['read'],
+        },
+        {
+          locatorType: 'path',
+          ruleId: 'dup',
+          category: 'code',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          rootPath: '/b',
+          actions: ['read'],
+        },
       ],
     });
     const r = validateProfileConfig(cfg);
@@ -171,7 +210,17 @@ describe('validateProfileConfig rejects malformed configs', () => {
 
   it('rejects local_path rule with no resolvable root', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'path', ruleId: 'noroot', category: 'code', priority: 1, confidence: 'high', enabled: true, actions: ['read'] }],
+      sourceRules: [
+        {
+          locatorType: 'path',
+          ruleId: 'noroot',
+          category: 'code',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          actions: ['read'],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
   });
@@ -185,7 +234,18 @@ describe('validateProfileConfig rejects malformed configs', () => {
 
   it('accepts path rule with fuzzy pathContains instead of root', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'path', ruleId: 'fuzzy', category: 'code', priority: 1, confidence: 'high', enabled: true, pathContains: ['/web/'], actions: ['edit'] }],
+      sourceRules: [
+        {
+          locatorType: 'path',
+          ruleId: 'fuzzy',
+          category: 'code',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          pathContains: ['/web/'],
+          actions: ['edit'],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(true);
     const res = resolveRuntimeProfileConfig(cfg, {});
@@ -195,7 +255,18 @@ describe('validateProfileConfig rejects malformed configs', () => {
 
   it('accepts path rule with userRootKey as a per-user root source', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'path', ruleId: 'wiki', category: 'knowledge', priority: 1, confidence: 'high', enabled: true, userRootKey: 'wiki', actions: ['read'] }],
+      sourceRules: [
+        {
+          locatorType: 'path',
+          ruleId: 'wiki',
+          category: 'knowledge',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          userRootKey: 'wiki',
+          actions: ['read'],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(true);
     const res = resolveRuntimeProfileConfig(cfg, {});
@@ -206,8 +277,27 @@ describe('validateProfileConfig rejects malformed configs', () => {
 
   it('accepts skill rule (+ stage) and keeps it resolvable', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'skill', ruleId: 'skill-design', category: 'skill', priority: 1, confidence: 'high', enabled: true, skillNames: ['bk-fe-design'], actions: ['invoke'] }],
-      capabilityRules: [{ ruleId: 'cap-design', sourceRuleIds: ['skill-design'], actions: ['invoke'], capabilityCode: 'design', displayName: 'Design' }],
+      sourceRules: [
+        {
+          locatorType: 'skill',
+          ruleId: 'skill-design',
+          category: 'skill',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          skillNames: ['bk-fe-design'],
+          actions: ['invoke'],
+        },
+      ],
+      capabilityRules: [
+        {
+          ruleId: 'cap-design',
+          sourceRuleIds: ['skill-design'],
+          actions: ['invoke'],
+          capabilityCode: 'design',
+          displayName: 'Design',
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(true);
     const res = resolveRuntimeProfileConfig(cfg, {});
@@ -218,39 +308,82 @@ describe('validateProfileConfig rejects malformed configs', () => {
 
   it('rejects skill rule with empty skillNames', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'skill', ruleId: 'skill-x', category: 'skill', priority: 1, confidence: 'high', enabled: true, skillNames: [], actions: ['invoke'] }],
+      sourceRules: [
+        {
+          locatorType: 'skill',
+          ruleId: 'skill-x',
+          category: 'skill',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          skillNames: [],
+          actions: ['invoke'],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
   });
 
   it('rejects mcp_doc rule that only declares mcpServers', () => {
     const cfg = baseConfig({
-      sourceRules: [{ locatorType: 'mcp_doc', ruleId: 'mcp', category: 'knowledge', priority: 1, confidence: 'high', enabled: true, mcpServers: ['x'], actions: ['read'] }],
+      sourceRules: [
+        {
+          locatorType: 'mcp_doc',
+          ruleId: 'mcp',
+          category: 'knowledge',
+          priority: 1,
+          confidence: 'high',
+          enabled: true,
+          mcpServers: ['x'],
+          actions: ['read'],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
   });
 
   it('rejects capabilityRule with neither sourceRuleIds nor sourceCategories', () => {
     const cfg = baseConfig({
-      capabilityRules: [{ ruleId: 'cap', actions: ['read'], capabilityCode: 'x', displayName: 'X' }],
+      capabilityRules: [
+        {
+          ruleId: 'cap',
+          actions: ['read'],
+          capabilityCode: 'x',
+          displayName: 'X',
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
   });
 
   it('rejects deliveryUnitRule / artifactRule referencing unknown sourceRuleId', () => {
     const du = baseConfig({
-      deliveryUnitRules: [{ ruleId: 'du', sourceRuleIds: ['missing'], locatorStrategy: { kind: 'parent_dir', stripExtensions: true } }],
+      deliveryUnitRules: [
+        {
+          ruleId: 'du',
+          sourceRuleIds: ['missing'],
+          locatorStrategy: { kind: 'parent_dir', stripExtensions: true },
+        },
+      ],
     });
     expect(validateProfileConfig(du).valid).toBe(false);
     const art = baseConfig({
-      artifactRules: [{ ruleId: 'art', sourceRuleIds: ['missing'], typePatterns: [], defaultArtifactType: 'process_doc' }],
+      artifactRules: [
+        {
+          ruleId: 'art',
+          sourceRuleIds: ['missing'],
+          typePatterns: [],
+          defaultArtifactType: 'process_doc',
+        },
+      ],
     });
     expect(validateProfileConfig(art).valid).toBe(false);
   });
 
   it('rejects matched errorRule without sourceCategories', () => {
     const cfg = baseConfig({
-      errorRules: [{
+      errorRules: [
+        {
         ruleId: 'bad-error',
         category: 'knowledge_read_failed',
         displayName: 'Bad',
@@ -258,7 +391,8 @@ describe('validateProfileConfig rejects malformed configs', () => {
         severity: 'error',
         failureSources: ['tool_call'],
         sourceScope: 'matched',
-      }],
+        },
+      ],
     });
     expect(validateProfileConfig(cfg).valid).toBe(false);
   });

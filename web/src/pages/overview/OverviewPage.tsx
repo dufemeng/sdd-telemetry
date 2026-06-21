@@ -28,7 +28,10 @@ import type { ProfileStageDescriptor } from '@sdd-telemetry/api';
 const SEVEN_DAYS_MS  = 7  * 86_400_000;
 const FOURTEEN_DAYS_MS = 14 * 86_400_000;
 
-const CARD = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
+const CARD = {
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-surface)',
+};
 const ICON_BOX = { background: '#141409', color: 'var(--color-primary)' };
 const AVATAR_COLORS = ['#1a2a1a', '#1a1a2a', '#2a1a1a', '#1a2a2a', '#2a2a1a', '#251a25'];
 
@@ -57,10 +60,18 @@ function UserAvatar({ name, size = 28 }: { name: string | null | undefined; size
   return (
     <div
       style={{
-        width: size, height: size, fontSize: Math.round(size * 0.42),
-        background: AVATAR_COLORS[idx], color: '#f5f5f5', fontWeight: 600,
-        border: '1px solid rgba(255,255,255,0.08)', borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.42),
+        background: AVATAR_COLORS[idx],
+        color: '#f5f5f5',
+        fontWeight: 600,
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
       }}
     >
       {name ? name.slice(0, 1) : '?'}
@@ -96,7 +107,10 @@ function ArtifactStageChips({
         <span
           key={stage.code}
           className="text-[10px] px-[6px] py-[1px] rounded-[3px] text-[var(--color-secondary)]"
-          style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
+          style={{
+            border: '1px solid var(--color-border)',
+            background: 'rgba(255,255,255,0.04)',
+          }}
         >
           {stage.label}
         </span>
@@ -115,9 +129,11 @@ export default function OverviewPage() {
   const presentation = useProfilePresentationModel(profileId);
   const artifactStages = presentation.stages.artifactStages;
   const maturityStages = presentation.stages.maturityStages;
-  const showCoverageFunnel = presentation.widgets.artifactCoverageFunnel !== 'none' && artifactStages.length > 0;
+  const showCoverageFunnel =
+    presentation.widgets.artifactCoverageFunnel !== 'none' && artifactStages.length > 0;
   const isSddStageFunnel = presentation.widgets.artifactCoverageFunnel === 'sdd_stage';
-  const showUserMaturity = presentation.widgets.userMaturity !== 'none' && maturityStages.length > 0;
+  const showUserMaturity =
+    presentation.widgets.userMaturity !== 'none' && maturityStages.length > 0;
   const showMultiStage = presentation.widgets.multiStageDeliveryUnit;
   const fromIso = useMemo(() => timeRangeToFromIso(timeRange), [timeRange]);
   const analyticsQuery  = useProfileCapabilityAnalytics(profileId, fromIso);
@@ -136,14 +152,13 @@ export default function OverviewPage() {
 
   const recentUsers = useMemo(
     () =>
-      [...users]
-        .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))
-        .slice(0, 8),
+      [...users].sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')).slice(0, 8),
     [users],
   );
 
   const funnel = useMemo(
-    () => artifactStages.map((stage) => ({
+    () =>
+      artifactStages.map((stage) => ({
       stage: stage.code,
       label: stage.label,
       count: demands.filter((i) => i.coverageStages.includes(stage.code)).length,
@@ -179,13 +194,14 @@ export default function OverviewPage() {
       `}</style>
 
       <div className="grid gap-3">
-
         {/* ── Section 1: KPI 卡 ── */}
         <div className={`grid ${showMultiStage ? 'grid-cols-4' : 'grid-cols-3'} gap-3`}>
           <KpiCard
             icon={<Zap size={18} />}
             label={`${presentation.labels.capabilitySingular}调用量`}
-            value={profileOverview?.capabilityUsageCount ?? kpis?.capabilityUsageCount.current ?? null}
+            value={
+              profileOverview?.capabilityUsageCount ?? kpis?.capabilityUsageCount.current ?? null
+            }
             metric={kpis?.capabilityUsageCount}
             loading={analyticsQuery.isLoading}
           />
@@ -199,14 +215,20 @@ export default function OverviewPage() {
           <KpiCard
             icon={<GitBranch size={18} />}
             label={`覆盖${presentation.labels.deliveryUnitSingular}`}
-            value={profileOverview?.deliveryUnitCount ?? kpis?.coveredDeliveryUnitCount.current ?? null}
+            value={
+              profileOverview?.deliveryUnitCount ?? kpis?.coveredDeliveryUnitCount.current ?? null
+            }
             metric={kpis?.coveredDeliveryUnitCount}
             loading={analyticsQuery.isLoading}
           />
           {showMultiStage ? (
             <KpiCard
               icon={<FileText size={18} />}
-              label={isSddStageFunnel ? `全链路${presentation.labels.deliveryUnitSingular}` : `多类型${presentation.labels.deliveryUnitSingular}`}
+              label={
+                isSddStageFunnel
+                  ? `全链路${presentation.labels.deliveryUnitSingular}`
+                  : `多类型${presentation.labels.deliveryUnitSingular}`
+              }
               value={kpis?.multiStageDeliveryUnitCount.current ?? null}
               metric={kpis?.multiStageDeliveryUnitCount}
               hint={`覆盖 ≥ 3 个${isSddStageFunnel ? 'SDD 阶段' : '产物类型'}`}
@@ -251,9 +273,11 @@ export default function OverviewPage() {
 
         {/* ── Section 2: 成员概况 + 覆盖漏斗 ── */}
         <div className="grid grid-cols-12 gap-3">
-
           {/* 成员概况 */}
-          <section className={`${showCoverageFunnel ? 'col-span-7' : 'col-span-12'} rounded-[6px] overflow-hidden`} style={CARD}>
+          <section
+            className={`${showCoverageFunnel ? 'col-span-7' : 'col-span-12'} rounded-[6px] overflow-hidden`}
+            style={CARD}
+          >
             <SectionHeader icon={<UserRound size={16} />} title="成员概况">
               <span
                 className="text-[11px] px-[7px] py-[2px] rounded-full"
@@ -271,11 +295,17 @@ export default function OverviewPage() {
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {(showUserMaturity ? ['成员', '工作项', '成熟度', '最近活跃'] : ['成员', '工作项', '最近活跃']).map((h) => (
+                  {(showUserMaturity
+                    ? ['成员', '工作项', '成熟度', '最近活跃']
+                    : ['成员', '工作项', '最近活跃']
+                  ).map((h) => (
                     <th
                       key={h}
                       className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
-                      style={{ background: '#111', borderBottom: '1px solid var(--color-border)' }}
+                      style={{
+                        background: '#111',
+                        borderBottom: '1px solid var(--color-border)',
+                      }}
                     >
                       {h}
                     </th>
@@ -285,15 +315,24 @@ export default function OverviewPage() {
               <tbody>
                 {recentUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={showUserMaturity ? 4 : 3} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                    <td
+                      colSpan={showUserMaturity ? 4 : 3}
+                      className="py-8 text-center text-[12px] text-[var(--color-muted)]"
+                    >
                       {usersQuery.isLoading ? '加载中…' : '暂无数据'}
                     </td>
                   </tr>
                 ) : (
                   recentUsers.map((u, idx) => {
-                    const active = u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS;
-                    const isNew  = u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS;
-                    const borderColor = isNew ? '#60a5fa' : active ? 'var(--color-good-text)' : 'rgba(255,255,255,0.08)';
+                    const active =
+                      u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS;
+                    const isNew =
+                      u.firstSeenAt && now - new Date(u.firstSeenAt).getTime() < FOURTEEN_DAYS_MS;
+                    const borderColor = isNew
+                      ? '#60a5fa'
+                      : active
+                        ? 'var(--color-good-text)'
+                        : 'rgba(255,255,255,0.08)';
                     const depth = getCoverageDepth(u.capabilityStages, maturityStages);
                     return (
                       <tr
@@ -307,11 +346,21 @@ export default function OverviewPage() {
                         {/* 成员 */}
                         <td
                           className="group-hover:bg-[var(--color-hover)] transition-colors"
-                          style={{ paddingLeft: 20, paddingRight: 12, paddingTop: 9, paddingBottom: 9, position: 'relative' }}
+                          style={{
+                            paddingLeft: 20,
+                            paddingRight: 12,
+                            paddingTop: 9,
+                            paddingBottom: 9,
+                            position: 'relative',
+                          }}
                         >
                           <div
                             style={{
-                              position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 3,
                               background: borderColor,
                             }}
                           />
@@ -324,7 +373,11 @@ export default function OverviewPage() {
                               {isNew && (
                                 <span
                                   className="text-[9px] px-[5px] py-[1px] rounded-full w-fit"
-                                  style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.18)' }}
+                                  style={{
+                                    color: '#60a5fa',
+                                    background: 'rgba(96,165,250,0.10)',
+                                    border: '1px solid rgba(96,165,250,0.18)',
+                                  }}
                                 >
                                   新成员
                                 </span>
@@ -339,12 +392,18 @@ export default function OverviewPage() {
                         >
                           {u.deliveryUnitCount > 0 ? (
                             <div className="flex flex-col gap-[2px]">
-                              <span className="text-[13px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
+                              <span
+                                className="text-[13px] font-semibold text-[#f5f5f5]"
+                                style={{ fontFamily: 'var(--font-mono)' }}
+                              >
                                 {u.deliveryUnitCount}
                               </span>
                               <div
                                 className="h-[2px] rounded-full overflow-hidden"
-                                style={{ background: 'rgba(255,255,255,0.07)', width: 36 }}
+                                style={{
+                                  background: 'rgba(255,255,255,0.07)',
+                                  width: 36,
+                                }}
                               >
                                 <div
                                   style={{
@@ -363,7 +422,11 @@ export default function OverviewPage() {
                         {showUserMaturity ? (
                           <td
                             className="px-[12px] group-hover:bg-[var(--color-hover)] transition-colors"
-                            style={{ paddingTop: 9, paddingBottom: 9, width: 100 }}
+                            style={{
+                              paddingTop: 9,
+                              paddingBottom: 9,
+                              width: 100,
+                            }}
                           >
                             <div className="flex items-center gap-[5px]">
                               {maturityStages.map((stage, i) => (
@@ -372,8 +435,10 @@ export default function OverviewPage() {
                                   className="rounded-full"
                                   title={stage.label}
                                   style={{
-                                    width: 7, height: 7,
-                                    background: i < depth ? 'var(--color-primary)' : 'rgba(255,255,255,0.10)',
+                                    width: 7,
+                                    height: 7,
+                                    background:
+                                      i < depth ? 'var(--color-primary)' : 'rgba(255,255,255,0.10)',
                                   }}
                                 />
                               ))}
@@ -416,7 +481,12 @@ export default function OverviewPage() {
               <span className="text-[11px] text-[var(--color-muted)]">
                 近7天活跃&ensp;
                 <strong className="text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {usersQuery.isLoading ? '—' : users.filter((u) => u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS).length}
+                  {usersQuery.isLoading
+                    ? '—'
+                    : users.filter(
+                        (u) =>
+                          u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() <= SEVEN_DAYS_MS,
+                      ).length}
                 </strong>
                 &ensp;人
               </span>
@@ -426,15 +496,20 @@ export default function OverviewPage() {
           {/* 链路 / 类型覆盖 */}
           {showCoverageFunnel ? (
           <section className="col-span-5 p-[14px] rounded-[6px]" style={CARD}>
-            <SectionHeader icon={<TrendingDown size={16} />} title={isSddStageFunnel ? 'SDD 链路覆盖' : '产物类型覆盖'}>
+              <SectionHeader
+                icon={<TrendingDown size={16} />}
+                title={isSddStageFunnel ? 'SDD 链路覆盖' : '产物类型覆盖'}
+              >
               <span className="text-[11px] text-[var(--color-muted)]">
-                包含该{isSddStageFunnel ? '阶段' : '类型'}的{presentation.labels.deliveryUnitSingular}数
+                  包含该{isSddStageFunnel ? '阶段' : '类型'}的
+                  {presentation.labels.deliveryUnitSingular}数
               </span>
             </SectionHeader>
 
             <div className="flex items-end gap-[10px] mt-4" style={{ height: 100 }}>
               {funnel.map((item, i) => {
-                const barH = demandsQuery.isLoading || item.count === 0
+                  const barH =
+                    demandsQuery.isLoading || item.count === 0
                   ? 3
                   : Math.max((item.count / funnelMax) * 76, 4);
                 return (
@@ -473,14 +548,34 @@ export default function OverviewPage() {
               style={{ borderTop: '1px solid var(--color-border)' }}
             >
               {[
-                { label: `总${presentation.labels.deliveryUnitSingular}数`, value: demands.length },
-                { label: `活跃${presentation.labels.deliveryUnitSingular}`, value: demands.filter((i) => i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS).length },
-                { label: isSddStageFunnel ? '全阶段覆盖' : '全类型覆盖', value: demands.filter((i) => artifactStages.every((stage) => i.coverageStages.includes(stage.code))).length },
-                { label: '有错误', value: demands.filter((i) => i.errorCount > 0).length },
+                  {
+                    label: `总${presentation.labels.deliveryUnitSingular}数`,
+                    value: demands.length,
+                  },
+                  {
+                    label: `活跃${presentation.labels.deliveryUnitSingular}`,
+                    value: demands.filter(
+                      (i) =>
+                        i.lastSeenAt && now - new Date(i.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS,
+                    ).length,
+                  },
+                  {
+                    label: isSddStageFunnel ? '全阶段覆盖' : '全类型覆盖',
+                    value: demands.filter((i) =>
+                      artifactStages.every((stage) => i.coverageStages.includes(stage.code)),
+                    ).length,
+                  },
+                  {
+                    label: '有错误',
+                    value: demands.filter((i) => i.errorCount > 0).length,
+                  },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-[11px] text-[var(--color-muted)]">{label}</span>
-                  <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                    <span
+                      className="text-[12px] text-[var(--color-secondary)]"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    >
                     {demandsQuery.isLoading ? '—' : value}
                   </span>
                 </div>
@@ -492,18 +587,24 @@ export default function OverviewPage() {
 
         {/* ── Section 3: 热门能力 + 最近活跃交付单元 ── */}
         <div className="grid grid-cols-2 gap-3">
-
           {/* 热门能力 */}
           <section className="rounded-[6px] overflow-hidden" style={CARD}>
-            <SectionHeader icon={<Layers3 size={16} />} title={`热门${presentation.labels.capabilityPlural}`}>
+            <SectionHeader
+              icon={<Layers3 size={16} />}
+              title={`热门${presentation.labels.capabilityPlural}`}
+            >
               <span className="text-[11px] text-[var(--color-muted)]">近 {timeRange}</span>
             </SectionHeader>
 
             <div className="px-[14px] pt-[10px] pb-[12px] grid gap-[7px]">
               {analyticsQuery.isLoading ? (
-                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">加载中…</div>
+                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                  加载中…
+                </div>
               ) : topSkills.length === 0 ? (
-                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">暂无数据</div>
+                <div className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                  暂无数据
+                </div>
               ) : (
                 topSkills.map((skill, idx) => {
                   const barPct = (skill.usageCount / skillsMax) * 100;
@@ -511,11 +612,16 @@ export default function OverviewPage() {
                     <div
                       key={skill.capabilityCode}
                       className="flex items-center gap-[10px]"
-                      style={{ animation: `ov-fade-up 0.2s ease-out ${idx * 0.045}s both` }}
+                      style={{
+                        animation: `ov-fade-up 0.2s ease-out ${idx * 0.045}s both`,
+                      }}
                     >
                       <span
                         className="text-[10px] font-bold w-[16px] text-right shrink-0"
-                        style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-muted)' }}
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-muted)',
+                        }}
                       >
                         {idx + 1}
                       </span>
@@ -547,7 +653,8 @@ export default function OverviewPage() {
                             style={{
                               height: '100%',
                               width: `${barPct}%`,
-                              background: idx === 0
+                              background:
+                                idx === 0
                                 ? 'var(--color-primary)'
                                 : idx <= 2
                                   ? 'rgba(250,255,105,0.55)'
@@ -569,7 +676,10 @@ export default function OverviewPage() {
 
           {/* 最近活跃交付单元 */}
           <section className="rounded-[6px] overflow-hidden" style={CARD}>
-            <SectionHeader icon={<GitBranch size={16} />} title={`最近活跃${presentation.labels.deliveryUnitSingular}`} />
+            <SectionHeader
+              icon={<GitBranch size={16} />}
+              title={`最近活跃${presentation.labels.deliveryUnitSingular}`}
+            />
 
             <table className="w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
@@ -583,7 +693,10 @@ export default function OverviewPage() {
                     <th
                       key={h}
                       className="px-[12px] py-[7px] text-left text-[10px] font-bold uppercase tracking-wide text-[var(--color-muted)] whitespace-nowrap"
-                      style={{ background: '#111', borderBottom: '1px solid var(--color-border)' }}
+                      style={{
+                        background: '#111',
+                        borderBottom: '1px solid var(--color-border)',
+                      }}
                     >
                       {h}
                     </th>
@@ -593,13 +706,18 @@ export default function OverviewPage() {
               <tbody>
                 {recentWorkItems.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-[12px] text-[var(--color-muted)]">
+                    <td
+                      colSpan={4}
+                      className="py-8 text-center text-[12px] text-[var(--color-muted)]"
+                    >
                       {demandsQuery.isLoading ? '加载中…' : '暂无数据'}
                     </td>
                   </tr>
                 ) : (
                   recentWorkItems.map((item, idx) => {
-                    const isActive = item.lastSeenAt && now - new Date(item.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS;
+                    const isActive =
+                      item.lastSeenAt &&
+                      now - new Date(item.lastSeenAt).getTime() <= FOURTEEN_DAYS_MS;
                     const hasError = item.errorCount > 0;
                     const leftColor = hasError
                       ? 'var(--color-bad-text)'
@@ -619,11 +737,22 @@ export default function OverviewPage() {
                         {/* 交付单元 */}
                         <td
                           className="group-hover:bg-[var(--color-hover)] transition-colors"
-                          style={{ paddingLeft: 20, paddingRight: 12, paddingTop: 8, paddingBottom: 8, position: 'relative', maxWidth: 0 }}
+                          style={{
+                            paddingLeft: 20,
+                            paddingRight: 12,
+                            paddingTop: 8,
+                            paddingBottom: 8,
+                            position: 'relative',
+                            maxWidth: 0,
+                          }}
                         >
                           <div
                             style={{
-                              position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: 3,
                               background: leftColor,
                             }}
                           />
@@ -662,7 +791,9 @@ export default function OverviewPage() {
                                   key={stage.code}
                                   title={stage.label}
                                   style={{
-                                    width: 6, height: 6, borderRadius: '50%',
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: '50%',
                                     background: item.coverageStages.includes(stage.code)
                                       ? 'var(--color-primary)'
                                       : 'rgba(255,255,255,0.10)',
@@ -677,7 +808,10 @@ export default function OverviewPage() {
                               </span>
                             </div>
                           ) : (
-                            <ArtifactStageChips coverageStages={item.coverageStages} stages={artifactStages} />
+                            <ArtifactStageChips
+                              coverageStages={item.coverageStages}
+                              stages={artifactStages}
+                            />
                           )}
                         </td>
                         {/* 产物数 */}
@@ -713,7 +847,6 @@ export default function OverviewPage() {
             </table>
           </section>
         </div>
-
       </div>
     </>
   );
@@ -738,8 +871,10 @@ function KpiCard({
 }) {
   const color  = deltaColor(metric);
   const dl     = hint ?? deltaLabel(metric);
-  const isUp   = metric && metric.current != null && metric.previous != null && metric.current > metric.previous;
-  const isDown = metric && metric.current != null && metric.previous != null && metric.current < metric.previous;
+  const isUp =
+    metric && metric.current != null && metric.previous != null && metric.current > metric.previous;
+  const isDown =
+    metric && metric.current != null && metric.previous != null && metric.current < metric.previous;
 
   return (
     <section
@@ -753,7 +888,10 @@ function KpiCard({
         background: 'var(--color-surface)',
       }}
     >
-      <div className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]" style={ICON_BOX}>
+      <div
+        className="grid w-[34px] h-[34px] flex-none place-items-center rounded-[4px]"
+        style={ICON_BOX}
+      >
         {icon}
       </div>
       <div className="flex flex-col justify-between flex-1 min-w-0">

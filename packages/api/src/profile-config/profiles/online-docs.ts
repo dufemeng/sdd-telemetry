@@ -66,15 +66,32 @@ export const onlineDocsProfile: WorkflowProfileConfig = {
     },
   ],
   capabilityRules: [
-    { ruleId: 'cap-online-knowledge', sourceRuleIds: ['online-creditdoc-knowledge'], actions: ['read'], capabilityCode: 'knowledge-recall', displayName: '在线知识库读取' },
-    { ruleId: 'cap-online-process-doc', sourceRuleIds: ['online-requirements-process-doc'], actions: ['write', 'update'], capabilityCode: 'process-doc-update', displayName: '在线过程文档更新' },
+    {
+      ruleId: 'cap-online-knowledge',
+      sourceRuleIds: ['online-creditdoc-knowledge'],
+      actions: ['read'],
+      capabilityCode: 'knowledge-recall',
+      displayName: '在线知识库读取',
+    },
+    {
+      ruleId: 'cap-online-process-doc',
+      sourceRuleIds: ['online-requirements-process-doc'],
+      actions: ['write', 'update'],
+      capabilityCode: 'process-doc-update',
+      displayName: '在线过程文档更新',
+    },
   ],
   errorRules: DEFAULT_PROFILE_ERROR_RULES,
   attributionPolicy: {
     anchorCategories: ['process_doc'],
     anchorActions: ['write', 'update'],
     sameInteraction: { enabled: true, preferActions: ['write', 'update'] },
-    sameSessionWindow: { enabled: true, minutes: 120, requireSameUser: true, preferActions: ['write', 'update'] },
+    sameSessionWindow: {
+      enabled: true,
+      minutes: 120,
+      requireSameUser: true,
+      preferActions: ['write', 'update'],
+    },
   },
   presentation: { ...SOURCE_BACKED_PRESENTATION, workflowKind: 'online_docs' },
 };

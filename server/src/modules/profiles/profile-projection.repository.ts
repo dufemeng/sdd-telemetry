@@ -19,13 +19,13 @@ import type {
   ProfileErrorOverviewResponse,
   ProfileErrorReasonGroup,
   ProfileErrorRule,
-  ProfileKnowledgeCoverageDomain,
-  ProfileKnowledgeCoverageRepo,
-  ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgePathDimensionSummary,
+  ProfileKnowledgeSourceSummary,
+  ProfileKnowledgeOverviewResponse,
   ProfileKnowledgeDocDetailResponse,
-  ProfileKnowledgeDomainDocsResponse,
-  ProfileKnowledgeRecallItem,
-  ProfileKnowledgeTimelinePoint,
+  ProfileKnowledgePathDimensionDocsResponse,
+  ProfileKnowledgeAccessItem,
+  ProfileKnowledgeTimelineResponse,
   ProfileOverview,
   ProfileOverviewQuery,
   ProfilePresentation,
@@ -44,13 +44,23 @@ import type {
   WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import { addTimeRangeWhere, toIsoDate, toNumber, toStringId, truncateText, whereSql } from '../query-utils';
+import {
+  addTimeRangeWhere,
+  toIsoDate,
+  toNumber,
+  toStringId,
+  truncateText,
+  whereSql,
+} from '../query-utils';
 import {
   collapseProfileUserActivityItems,
   expandProfileUserActivityFetchLimit,
   type ProfileUserActivityFactItem,
 } from './profile-user-activity';
-import { buildPathSegmentKnowledgeTimeline } from './profile-knowledge-timeline';
+import {
+  buildPathDimensionSummaries,
+  buildPathSegmentKnowledgeTimeline,
+} from './profile-knowledge-timeline';
 
 /**
  * profile_projection 读路径（MVP-1，Task 17）。
@@ -58,7 +68,6 @@ import { buildPathSegmentKnowledgeTimeline } from './profile-knowledge-timeline'
  */
 
 const DAY_MS = 86_400_000;
-const ROOT_DOMAIN_LABEL = '（根目录）';
 
 interface CountRow {
   v: number | string | null;
@@ -67,11 +76,14 @@ interface CountRow {
 interface KnowledgeTimelineOptions {
   rangeSinceDate: Date | null;
   granularity: 'day' | 'hour';
+  sourceNamespace?: string | null;
+  pathSegment?: string | null;
 }
 
 interface KnowledgeFilterOptions {
   rangeSinceDate?: Date | null;
-  wikiDomain?: string | null;
+  sourceNamespace?: string | null;
+  pathSegment?: string | null;
   userId?: string | null;
 }
 
@@ -82,9 +94,11 @@ interface UserActivityOptions {
 }
 
 function getFallbackCapabilityRuleIds(config: WorkflowProfileConfig | undefined): string[] {
-  return config?.capabilityRules
-    .filter((rule) => rule.surfaceRole === 'fallback')
-    .map((rule) => rule.ruleId) ?? [];
+  return (
+    config?.capabilityRules
+      .filter((rule) => rule.surfaceRole === 'fallback')
+      .map((rule) => rule.ruleId) ?? []
+  );
 }
 
 function fallbackRuleSql(alias: string, fallbackRuleIds: string[]): string {
@@ -123,7 +137,7 @@ export class ProfileProjectionRepository {
   userAnalysis!: { coldDays: number; churnDays: number; newDays: number };
 
   /**
-   * 当前可读 run id；无指针、或指针指向的 run 非 completed 时返回 null（调用方回退 legacy）。
+   * 当前可读 run id；无指针、或指针指向的 run 非 completed 时返回 null。
    * runner 只在 completed 同事务里切 pointer，正常不会指向非 completed；这里 join runs 表
    * 多一道读侧硬防线，防手工改表 / 未来新写入路径。
    */
@@ -190,7 +204,8 @@ export class ProfileProjectionRepository {
     const row = rows[0];
     if (!row) return null;
     return {
-      targetConfigVersionId: row.target_config_version_id == null ? null : toStringId(row.target_config_version_id),
+      targetConfigVersionId:
+        row.target_config_version_id == null ? null : toStringId(row.target_config_version_id),
       status: String(row.status ?? ''),
       dirtySeq: toNumber(row.dirty_seq),
       dirtyReason: (row.dirty_reason as string | null) ?? null,
@@ -200,8 +215,12 @@ export class ProfileProjectionRepository {
       lockedUntil: toIsoDate(row.locked_until),
       lastStartedAt: toIsoDate(row.last_started_at),
       lastCompletedAt: toIsoDate(row.last_completed_at),
-      lastProjectionRunId: row.last_projection_run_id == null ? null : toStringId(row.last_projection_run_id),
-      lastProfileConfigVersionId: row.last_profile_config_version_id == null ? null : toStringId(row.last_profile_config_version_id),
+      lastProjectionRunId:
+        row.last_projection_run_id == null ? null : toStringId(row.last_projection_run_id),
+      lastProfileConfigVersionId:
+        row.last_profile_config_version_id == null
+          ? null
+          : toStringId(row.last_profile_config_version_id),
       lastResolvedConfigHash: (row.last_resolved_config_hash as string | null) ?? null,
       lastError: (row.last_error as string | null) ?? null,
     };
@@ -223,7 +242,10 @@ export class ProfileProjectionRepository {
     return { sourceMatches: toNumber(rows[0]?.v) };
   }
 
-  private async getFactCounts(profileId: string, runId: number): Promise<ProfileInspectorFactCounts> {
+  private async getFactCounts(
+    profileId: string,
+    runId: number,
+  ): Promise<ProfileInspectorFactCounts> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const count = async (table: string): Promise<number> => {
       const rows = (await dataSource.query(
@@ -241,7 +263,7 @@ export class ProfileProjectionRepository {
       artifactWrites,
       artifactTurns,
       capabilityUsages,
-      knowledgeRecalls,
+      knowledgeAccesses,
       codeActivities,
       errorEvents,
     ] = await Promise.all([
@@ -261,7 +283,7 @@ export class ProfileProjectionRepository {
       artifactWrites,
       artifactTurns,
       capabilityUsages,
-      knowledgeRecalls,
+      knowledgeAccesses,
       codeActivities,
       errorEvents,
     };
@@ -273,7 +295,13 @@ export class ProfileProjectionRepository {
     query: ProfileOverviewQuery,
   ): Promise<ProfileOverview> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const count = async (table: string, column: string, extraClauses: string[] = [], extraParams: unknown[] = [], select = 'COUNT(*) AS v'): Promise<CountRow[]> => {
+    const count = async (
+      table: string,
+      column: string,
+      extraClauses: string[] = [],
+      extraParams: unknown[] = [],
+      select = 'COUNT(*) AS v',
+    ): Promise<CountRow[]> => {
       const clauses = ['profile_id = ?', 'projection_run_id = ?', ...extraClauses];
       const params: unknown[] = [profileId, runId, ...extraParams];
       addTimeRangeWhere(clauses, params, column, query);
@@ -285,12 +313,20 @@ export class ProfileProjectionRepository {
 
     const [usageRows, deliveryRows, artifactRows, knowledgeRows, codeReadRows, codeWriteRows] =
       await Promise.all([
-        count('profile_capability_usages', 'event_time', [], [], 'COUNT(DISTINCT user_id) AS active, COUNT(*) AS v'),
+        count(
+          'profile_capability_usages',
+          'event_time',
+          [],
+          [],
+          'COUNT(DISTINCT user_id) AS active, COUNT(*) AS v',
+        ),
         count('profile_delivery_units', 'last_seen_at'),
         count('profile_artifacts', 'COALESCE(first_seen_at, last_seen_at)'),
         count('profile_knowledge_recalls', 'event_time'),
         count('profile_code_activities', 'event_time', ["action_type IN ('read','grep','glob')"]),
-        count('profile_code_activities', 'event_time', ["action_type IN ('write','edit','update')"]),
+        count('profile_code_activities', 'event_time', [
+          "action_type IN ('write','edit','update')",
+        ]),
       ]);
 
     const usageRow = usageRows[0] as (CountRow & { active?: number | string | null }) | undefined;
@@ -342,7 +378,13 @@ export class ProfileProjectionRepository {
       params,
     ) as Promise<Array<Record<string, unknown>>>;
 
-    const knowledgeDiagnosticsQuery = loadKnowledgeDiagnostics(dataSource, profileId, runId, query, errorRules);
+    const knowledgeDiagnosticsQuery = loadKnowledgeDiagnostics(
+      dataSource,
+      profileId,
+      runId,
+      query,
+      errorRules,
+    );
 
     const [kpiRows, categoryRows, knowledgeDiagnostics] = await Promise.all([
       kpiQuery,
@@ -351,7 +393,11 @@ export class ProfileProjectionRepository {
     ]);
 
     const k = kpiRows[0] ?? {};
-    const categories = mergeErrorCategorySummaries(errorRules, categoryRows, query.category ?? null);
+    const categories = mergeErrorCategorySummaries(
+      errorRules,
+      categoryRows,
+      query.category ?? null,
+    );
 
     return {
       kpis: {
@@ -592,7 +638,7 @@ export class ProfileProjectionRepository {
 
     return rows.map((row) => ({
       id: String(row.id),
-      nodeKind: row.node_kind === 'discussion' ? 'discussion' as const : 'write' as const,
+      nodeKind: row.node_kind === 'discussion' ? ('discussion' as const) : ('write' as const),
       writeKind: (row.write_kind as string | null) ?? null,
       eventTime: toIsoDate(row.event_time),
       eventSequence: row.event_sequence == null ? null : toNumber(row.event_sequence),
@@ -772,20 +818,38 @@ export class ProfileProjectionRepository {
     return {
       kpis: {
         capabilityUsageCount: { current: usageCountTotal, previous: null },
-        activeUserCount: { current: toNumber(k.active_user_count), previous: null },
-        coveredDeliveryUnitCount: { current: toNumber(k.covered_delivery_unit_count), previous: null },
-        userTriggeredCount: { current: toNumber(k.user_triggered_count), previous: null },
-        autoTriggeredCount: { current: toNumber(k.auto_triggered_count), previous: null },
-        multiStageDeliveryUnitCount: { current: toNumber(multiStageRows[0]?.v), previous: null },
+        activeUserCount: {
+          current: toNumber(k.active_user_count),
+          previous: null,
+        },
+        coveredDeliveryUnitCount: {
+          current: toNumber(k.covered_delivery_unit_count),
+          previous: null,
+        },
+        userTriggeredCount: {
+          current: toNumber(k.user_triggered_count),
+          previous: null,
+        },
+        autoTriggeredCount: {
+          current: toNumber(k.auto_triggered_count),
+          previous: null,
+        },
+        multiStageDeliveryUnitCount: {
+          current: toNumber(multiStageRows[0]?.v),
+          previous: null,
+        },
       },
       callQuality: {
         triggeredCount,
         withPromptCount: toNumber(q.with_prompt_count),
         withResponseCount: toNumber(q.with_response_count),
         pairedCount: toNumber(q.paired_count),
-        promptCoverageRate: triggeredCount > 0 ? toNumber(q.with_prompt_count) / triggeredCount : null,
-        responseCoverageRate: triggeredCount > 0 ? toNumber(q.with_response_count) / triggeredCount : null,
-        pairingSuccessRate: triggeredCount > 0 ? 1 - toNumber(q.failed_count) / triggeredCount : null,
+        promptCoverageRate:
+          triggeredCount > 0 ? toNumber(q.with_prompt_count) / triggeredCount : null,
+        responseCoverageRate:
+          triggeredCount > 0 ? toNumber(q.with_response_count) / triggeredCount : null,
+        pairingSuccessRate:
+          triggeredCount > 0 ? 1 - toNumber(q.failed_count) / triggeredCount : null,
       },
       topCapabilities: topRows.map((row) => {
         const usageCount = toNumber(row.usage_count);
@@ -878,18 +942,22 @@ export class ProfileProjectionRepository {
       params.push(...fallbackRuleIds);
     }
     if (query.keyword) {
-      clauses.push('(cu.raw_capability_name LIKE ? OR cu.display_name LIKE ? OR cu.capability_code LIKE ?)');
+      clauses.push(
+        '(cu.raw_capability_name LIKE ? OR cu.display_name LIKE ? OR cu.capability_code LIKE ?)',
+      );
       const kw = `%${query.keyword}%`;
       params.push(kw, kw, kw);
     }
 
     const offset = (query.page - 1) * query.pageSize;
-    const groupExpr = query.groupBy === 'capability'
-      ? 'COALESCE(cu.capability_code, cu.raw_capability_name)'
-      : 'cu.raw_capability_name';
-    const surfaceRoleSelect = fallbackRuleIds.length > 0
-      ? `CASE WHEN SUM(CASE WHEN ${fallbackSql} THEN 1 ELSE 0 END) > 0 THEN 'fallback' ELSE 'core' END AS surface_role`
-      : `'core' AS surface_role`;
+    const groupExpr =
+      query.groupBy === 'capability'
+        ? 'COALESCE(cu.capability_code, cu.raw_capability_name)'
+        : 'cu.raw_capability_name';
+    const surfaceRoleSelect =
+      fallbackRuleIds.length > 0
+        ? `CASE WHEN SUM(CASE WHEN ${fallbackSql} THEN 1 ELSE 0 END) > 0 THEN 'fallback' ELSE 'core' END AS surface_role`
+        : `'core' AS surface_role`;
 
     const countRows = (await dataSource.query(
       `SELECT COUNT(DISTINCT ${groupExpr}) AS v
@@ -1051,7 +1119,9 @@ export class ProfileProjectionRepository {
     addTimeRangeWhere(userClauses, userParams, 'uu.last_seen_at', query);
     if (query.keyword) {
       const kw = `%${query.keyword}%`;
-      userClauses.push('(su.user_name LIKE ? OR su.user_key LIKE ? OR su.install_id LIKE ? OR su.machine_name LIKE ?)');
+      userClauses.push(
+        '(su.user_name LIKE ? OR su.user_key LIKE ? OR su.install_id LIKE ? OR su.machine_name LIKE ?)',
+      );
       userParams.push(kw, kw, kw, kw);
     }
     if (query.status) {
@@ -1061,7 +1131,9 @@ export class ProfileProjectionRepository {
         userClauses.push('uu.last_seen_at IS NOT NULL AND uu.last_seen_at >= ?');
         userParams.push(liveCutoff);
       } else if (query.status === 'cold') {
-        userClauses.push('uu.last_seen_at IS NOT NULL AND uu.last_seen_at < ? AND uu.last_seen_at >= ?');
+        userClauses.push(
+          'uu.last_seen_at IS NOT NULL AND uu.last_seen_at < ? AND uu.last_seen_at >= ?',
+        );
         userParams.push(liveCutoff, churnCutoff);
       } else {
         userClauses.push('(uu.last_seen_at IS NULL OR uu.last_seen_at < ?)');
@@ -1106,7 +1178,14 @@ export class ProfileProjectionRepository {
        ORDER BY uu.last_seen_at DESC, uu.user_id DESC
        LIMIT ? OFFSET ?`,
       [
-        runId, runId, runId, runId, runId, runId, runId, runId,
+        runId,
+        runId,
+        runId,
+        runId,
+        runId,
+        runId,
+        runId,
+        runId,
         ...activityParams,
         ...userParams,
         query.pageSize,
@@ -1115,11 +1194,18 @@ export class ProfileProjectionRepository {
     )) as Array<Record<string, unknown>>;
 
     const maturityStageCodes = this.getMaturityStageCodes(presentationConfig);
-    const maturityByUser = await this.loadMaturityMap(runId, itemRows.map((r) => toStringId(r.user_id)));
+    const maturityByUser = await this.loadMaturityMap(
+      runId,
+      itemRows.map((r) => toStringId(r.user_id)),
+    );
 
     const items: ProfileUserItem[] = itemRows.map((row) => {
       const id = toStringId(row.user_id);
-      const { rampDays } = this.computeMaturity(maturityByUser.get(id) ?? new Map(), row.profile_first_seen_at, maturityStageCodes);
+      const { rampDays } = this.computeMaturity(
+        maturityByUser.get(id) ?? new Map(),
+        row.profile_first_seen_at,
+        maturityStageCodes,
+      );
       return {
         id,
         userKey: String(row.user_key ?? ''),
@@ -1132,7 +1218,9 @@ export class ProfileProjectionRepository {
         capabilityUsageCount: toNumber(row.capability_usage_count),
         interactionCount: toNumber(row.interaction_count),
         deliveryUnitCount: toNumber(row.delivery_unit_count),
-        capabilityStages: row.capability_stages ? String(row.capability_stages).split(',').filter(Boolean) : [],
+        capabilityStages: row.capability_stages
+          ? String(row.capability_stages).split(',').filter(Boolean)
+          : [],
         status: this.computeStatus(row.profile_last_seen_at, now),
         isNew: this.computeIsNew(row.profile_first_seen_at, now),
         artifactCount: toNumber(row.artifact_count),
@@ -1230,16 +1318,25 @@ export class ProfileProjectionRepository {
     firstByStage: Map<string, string>,
     firstSeenAt: unknown,
     maturityStageCodes: string[],
-  ): { stages: ProfileUserMaturityStage[]; completionRate: number; rampDays: number | null } {
+  ): {
+    stages: ProfileUserMaturityStage[];
+    completionRate: number;
+    rampDays: number | null;
+  } {
     const stages: ProfileUserMaturityStage[] = maturityStageCodes.map((stage) => ({
       stage,
       firstReachedAt: firstByStage.get(stage) ?? null,
     }));
     const reachedCount = stages.filter((s) => s.firstReachedAt !== null).length;
-    const completionRate = maturityStageCodes.length > 0 ? reachedCount / maturityStageCodes.length : 0;
+    const completionRate =
+      maturityStageCodes.length > 0 ? reachedCount / maturityStageCodes.length : 0;
 
     let rampDays: number | null = null;
-    if (maturityStageCodes.length > 0 && reachedCount === maturityStageCodes.length && firstSeenAt) {
+    if (
+      maturityStageCodes.length > 0 &&
+      reachedCount === maturityStageCodes.length &&
+      firstSeenAt
+    ) {
       const firstSeenMs = new Date(String(firstSeenAt)).getTime();
       const reachedTimes = stages
         .map((s) => (s.firstReachedAt ? new Date(s.firstReachedAt).getTime() : null))
@@ -1252,7 +1349,9 @@ export class ProfileProjectionRepository {
   }
 
   private getMaturityStageCodes(presentationConfig: ProfilePresentation | undefined): string[] {
-    return normalizeProfilePresentation(presentationConfig).stages.maturityStages.map((stage) => stage.code);
+    return normalizeProfilePresentation(presentationConfig).stages.maturityStages.map(
+      (stage) => stage.code,
+    );
   }
 
   async getUserDetail(
@@ -1265,11 +1364,11 @@ export class ProfileProjectionRepository {
 
     const [userRows, profileActivity] = await Promise.all([
       dataSource.query(
-      `SELECT su.id, su.user_key, su.install_id, su.user_name AS display_name, su.machine_id, su.machine_name
+        `SELECT su.id, su.user_key, su.install_id, su.user_name AS display_name, su.machine_id, su.machine_name
        FROM sdd_users su
        WHERE su.id = ?
        LIMIT 1`,
-      [userId],
+        [userId],
       ) as Promise<Array<Record<string, unknown>>>,
       this.getProfileUserActivity(profileId, runId, userId),
     ]);
@@ -1315,7 +1414,9 @@ export class ProfileProjectionRepository {
       capabilityUsageCount: toNumber(s.capability_usage_count),
       interactionCount: toNumber(s.interaction_count),
       deliveryUnitCount: toNumber(s.delivery_unit_count),
-      capabilityStages: capabilityStages[0]?.v ? String(capabilityStages[0].v).split(',').filter(Boolean) : [],
+      capabilityStages: capabilityStages[0]?.v
+        ? String(capabilityStages[0].v).split(',').filter(Boolean)
+        : [],
       status,
       isNew,
       artifactCount: toNumber(s.artifact_count),
@@ -1473,22 +1574,25 @@ export class ProfileProjectionRepository {
       ],
     )) as Array<Record<string, unknown>>;
 
-    const items = rows.map((row): ProfileUserActivityFactItem => ({
-      id: String(row.id),
-      kind: String(row.kind) as ProfileUserActivityItem['kind'],
-      eventTime: toIsoDate(row.event_time),
-      interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
-      deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
-      artifactId: row.artifact_id == null ? null : toStringId(row.artifact_id),
-      capabilityUsageId: row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
-      capabilityCode: (row.capability_code as string | null) ?? null,
-      capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
-      rawCapabilityName: (row.raw_capability_name as string | null) ?? null,
-      title: String(row.title ?? '活动'),
-      detail: (row.detail as string | null) ?? null,
-      locator: (row.locator as string | null) ?? null,
-      promptText: (row.prompt_text as string | null) ?? null,
-    }));
+    const items = rows.map(
+      (row): ProfileUserActivityFactItem => ({
+        id: String(row.id),
+        kind: String(row.kind) as ProfileUserActivityItem['kind'],
+        eventTime: toIsoDate(row.event_time),
+        interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
+        deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
+        artifactId: row.artifact_id == null ? null : toStringId(row.artifact_id),
+        capabilityUsageId:
+          row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
+        capabilityCode: (row.capability_code as string | null) ?? null,
+        capabilityDisplayName: (row.capability_display_name as string | null) ?? null,
+        rawCapabilityName: (row.raw_capability_name as string | null) ?? null,
+        title: String(row.title ?? '活动'),
+        detail: (row.detail as string | null) ?? null,
+        locator: (row.locator as string | null) ?? null,
+        promptText: (row.prompt_text as string | null) ?? null,
+      }),
+    );
     return collapseProfileUserActivityItems(items, options.limit);
   }
 
@@ -1518,8 +1622,26 @@ export class ProfileProjectionRepository {
           WHERE ca.projection_run_id = ? AND ca.user_id = ? AND ca.action_type IN ('write','edit','update')) AS code_write_count,
         (SELECT COUNT(*) FROM profile_code_activities ca
           WHERE ca.projection_run_id = ? AND ca.user_id = ? AND ca.action_type IN ('read','grep','glob')) AS code_read_count`,
-      [runId, userId, runId, userId, runId, userId, runId, userId,
-       runId, userId, runId, userId, runId, userId, runId, userId, runId, userId],
+      [
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+        runId,
+        userId,
+      ],
     )) as Array<Record<string, unknown>>;
   }
 
@@ -1547,160 +1669,121 @@ export class ProfileProjectionRepository {
 
   // ── Knowledge ───────────────────────────────────────────────────────────────
 
-  async getKnowledgeCoverage(
+  async getKnowledgeOverview(
     profileId: string,
     runId: number,
-  ): Promise<ProfileKnowledgeCoverageResponse> {
+  ): Promise<ProfileKnowledgeOverviewResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const namespaceSql = knowledgeSourceNamespaceSql('kr');
+    const relativePathSql = knowledgeRelativePathSql('kr');
 
     const totalsRows = (await dataSource.query(
       `SELECT
-         COUNT(*) AS total_docs,
-          COUNT(DISTINCT CASE WHEN kr.id IS NOT NULL THEN kr.knowledge_locator END) AS recalled_docs,
-          COUNT(*) AS recalls,
-          COUNT(DISTINCT CASE WHEN kr.knowledge_locator IS NOT NULL THEN kr.knowledge_locator END) AS distinct_recalled,
-         0 AS cold_docs,
-         0 AS dead_docs,
-         0 AS new_unread_docs,
-         0 AS orphan_paths
+         COUNT(*) AS access_count,
+         COUNT(DISTINCT CONCAT(${namespaceSql}, CHAR(0), ${relativePathSql})) AS accessed_docs,
+         COUNT(DISTINCT kr.user_id) AS distinct_users
        FROM profile_knowledge_recalls kr
        WHERE kr.profile_id = ? AND kr.projection_run_id = ?`,
       [profileId, runId],
     )) as Array<Record<string, unknown>>;
 
     const t = totalsRows[0] ?? {};
-    const totalDocs = toNumber(t.total_docs);
-    const recalledDocs = toNumber(t.distinct_recalled);
-    const coverageRate = totalDocs > 0 ? recalledDocs / totalDocs : 0;
-    const namespaceSql = knowledgeSourceNamespaceSql('kr');
 
-    const repoRows = (await dataSource.query(
+    const sourceRows = (await dataSource.query(
       `SELECT
           ${namespaceSql} AS source_namespace,
-          COUNT(*) AS total_docs,
-          COUNT(DISTINCT kr.knowledge_locator) AS recalled_docs,
-          COUNT(*) AS recalls,
+          COUNT(DISTINCT ${relativePathSql}) AS accessed_docs,
+          COUNT(*) AS access_count,
           COUNT(DISTINCT kr.user_id) AS distinct_users,
-          MAX(kr.event_time) AS last_recall_at
+          MAX(kr.event_time) AS last_access_at
        FROM profile_knowledge_recalls kr
        WHERE kr.profile_id = ? AND kr.projection_run_id = ?
        GROUP BY ${namespaceSql}
-       ORDER BY recalls DESC`,
+       ORDER BY access_count DESC`,
       [profileId, runId],
     )) as Array<Record<string, unknown>>;
 
-    const domainRows = (await dataSource.query(
+    const pathDimensionFactRows = (await dataSource.query(
       `SELECT
           ${namespaceSql} AS source_namespace,
-          COALESCE(kr.knowledge_domain, 'unknown') AS domain,
-          COUNT(*) AS total_docs,
-          COUNT(DISTINCT kr.knowledge_locator) AS recalled_docs,
-         COUNT(*) AS recalls,
-         0 AS dead_docs,
-         0 AS new_unread_docs,
-         COUNT(DISTINCT kr.user_id) AS distinct_users,
-         MAX(kr.event_time) AS last_recall_at
+          ${relativePathSql} AS relative_path,
+          kr.user_id,
+          COUNT(*) AS access_count,
+          MAX(kr.event_time) AS last_access_at
        FROM profile_knowledge_recalls kr
        WHERE kr.profile_id = ? AND kr.projection_run_id = ?
-       GROUP BY ${namespaceSql}, COALESCE(kr.knowledge_domain, 'unknown')
-       ORDER BY recalls DESC`,
+       GROUP BY source_namespace, relative_path, kr.user_id`,
       [profileId, runId],
     )) as Array<Record<string, unknown>>;
 
-    const repos: ProfileKnowledgeCoverageRepo[] = repoRows.map((row) => {
-      const recalls = toNumber(row.recalls);
-      const repoTotalDocs = toNumber(row.total_docs);
-      const repoRecalledDocs = toNumber(row.recalled_docs);
-      return {
-        sourceNamespace: String(row.source_namespace ?? 'local'),
-        label: String(row.source_namespace ?? 'local'),
-        totalDocs: repoTotalDocs,
-        recalledDocs: repoRecalledDocs,
-        coverageRate: repoTotalDocs > 0 ? repoRecalledDocs / repoTotalDocs : 0,
-        recalls,
-        deadDocs: 0,
-        newUnreadDocs: 0,
-        distinctUsers: toNumber(row.distinct_users),
-      };
-    });
-
-    const domains: ProfileKnowledgeCoverageDomain[] = domainRows.map((row) => ({
+    const sources: ProfileKnowledgeSourceSummary[] = sourceRows.map((row) => ({
       sourceNamespace: String(row.source_namespace ?? 'local'),
-      domain: String(row.domain ?? ''),
-      totalDocs: toNumber(row.total_docs),
-      recalledDocs: toNumber(row.recalled_docs),
-      recalls: toNumber(row.recalls),
-      deadDocs: 0,
-      newUnreadDocs: 0,
+      label: String(row.source_namespace ?? 'local'),
+      accessedDocs: toNumber(row.accessed_docs),
+      accessCount: toNumber(row.access_count),
       distinctUsers: toNumber(row.distinct_users),
-      lastRecallAt: toIsoDate(row.last_recall_at),
+    }));
+
+    const pathDimensions: ProfileKnowledgePathDimensionSummary[] = buildPathDimensionSummaries(
+      pathDimensionFactRows.map((row) => ({
+        sourceNamespace: String(row.source_namespace ?? 'local'),
+        relativePath: String(row.relative_path ?? ''),
+        accessCount: toNumber(row.access_count),
+        userId: row.user_id == null ? null : toStringId(row.user_id),
+        lastAccessAt: (row.last_access_at as Date | string | null) ?? null,
+      })),
+    ).map((dimension) => ({
+      ...dimension,
+      lastAccessAt: toIsoDate(dimension.lastAccessAt),
     }));
 
     return {
-      scan: {
-        configured: false,
-        repos: repoRows.map((row) => ({
-          sourceNamespace: String(row.source_namespace ?? 'local'),
-          label: String(row.source_namespace ?? 'local'),
-          gitRef: null,
-          scannedAt: toIsoDate(row.last_recall_at) ?? new Date(0).toISOString(),
-        })),
-      },
       totals: {
-        totalDocs,
-        recalledDocs,
-        coverageRate,
-        recalls: toNumber(t.recalls),
-        coldDocs: 0,
-        deadDocs: 0,
-        newUnreadDocs: 0,
-        orphanPaths: 0,
+        accessedDocs: toNumber(t.accessed_docs),
+        accessCount: toNumber(t.access_count),
+        distinctUsers: toNumber(t.distinct_users),
       },
-      repos,
-      domains,
+      sources,
+      pathDimensions,
     };
   }
 
-  async getKnowledgeDomainDocs(
+  async getKnowledgePathDimensionDocs(
     profileId: string,
     runId: number,
     sourceNamespace: string,
-    domain: string,
-  ): Promise<ProfileKnowledgeDomainDocsResponse> {
+    pathSegment: string,
+  ): Promise<ProfileKnowledgePathDimensionDocsResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const namespaceSql = knowledgeSourceNamespaceSql('kr');
     const relativePathSql = knowledgeRelativePathSql('kr');
     const rows = (await dataSource.query(
       `SELECT
           ${relativePathSql} AS relative_path,
-          COUNT(*) AS recall_count,
+          COUNT(*) AS access_count,
           COUNT(DISTINCT kr.user_id) AS distinct_users,
-          MAX(kr.event_time) AS last_recall_at,
-          MIN(kr.event_time) AS added_at
+          MAX(kr.event_time) AS last_access_at,
+          MIN(kr.event_time) AS first_access_at
        FROM profile_knowledge_recalls kr
        WHERE kr.profile_id = ?
          AND kr.projection_run_id = ?
          AND ${namespaceSql} = ?
-         AND COALESCE(kr.knowledge_domain, ?) = ?
+         AND CONCAT('/', ${relativePathSql}, '/') LIKE ?
        GROUP BY ${relativePathSql}
-       ORDER BY recall_count DESC, relative_path ASC`,
-      [profileId, runId, sourceNamespace, ROOT_DOMAIN_LABEL, domain],
+       ORDER BY access_count DESC, relative_path ASC`,
+      [profileId, runId, sourceNamespace, `%/${escapeLikeLiteral(pathSegment)}/%`],
     )) as Array<Record<string, unknown>>;
 
     return {
       sourceNamespace,
-      domain,
-      items: rows.map((row) => {
-        const recallCount = toNumber(row.recall_count);
-        return {
-          relativePath: String(row.relative_path ?? ''),
-          recallCount,
-          distinctUsers: toNumber(row.distinct_users),
-          lastRecallAt: toIsoDate(row.last_recall_at),
-          status: recallCount >= 10 ? 'hot' : 'cold',
-          addedAt: toIsoDate(row.added_at),
-        };
-      }),
+      pathSegment,
+      items: rows.map((row) => ({
+        relativePath: String(row.relative_path ?? ''),
+        accessCount: toNumber(row.access_count),
+        distinctUsers: toNumber(row.distinct_users),
+        lastAccessAt: toIsoDate(row.last_access_at),
+        firstAccessAt: toIsoDate(row.first_access_at),
+      })),
     };
   }
 
@@ -1725,7 +1808,7 @@ export class ProfileProjectionRepository {
     const [trendRows, readerRows, sourceRows] = await Promise.all([
       dataSource.query(
         `SELECT DATE_FORMAT(kr.event_time, '%Y-%m-%dT00:00:00.000Z') AS bucket_ts,
-                COUNT(*) AS count
+                COUNT(*) AS access_count
          FROM profile_knowledge_recalls kr
          ${whereSql([...clauses, 'kr.event_time IS NOT NULL', 'kr.event_time >= ?'])}
          GROUP BY bucket_ts
@@ -1734,24 +1817,24 @@ export class ProfileProjectionRepository {
       ) as Promise<Array<Record<string, unknown>>>,
       dataSource.query(
         `SELECT kr.user_id, su.user_name,
-                COUNT(*) AS recall_count,
-                MAX(kr.event_time) AS last_recall_at
+                COUNT(*) AS access_count,
+                MAX(kr.event_time) AS last_access_at
          FROM profile_knowledge_recalls kr
          LEFT JOIN sdd_users su ON su.id = kr.user_id
          ${whereSql([...clauses, 'kr.user_id IS NOT NULL'])}
          GROUP BY kr.user_id, su.user_name
-         ORDER BY recall_count DESC, last_recall_at DESC`,
+         ORDER BY access_count DESC, last_access_at DESC`,
         params,
       ) as Promise<Array<Record<string, unknown>>>,
       dataSource.query(
         `SELECT kr.delivery_unit_id, du.unit_slug, du.business_domain,
-                COUNT(*) AS recall_count
+                COUNT(*) AS access_count
          FROM profile_knowledge_recalls kr
          LEFT JOIN profile_delivery_units du
            ON du.id = kr.delivery_unit_id AND du.projection_run_id = kr.projection_run_id
          ${whereSql([...clauses, 'kr.delivery_unit_id IS NOT NULL'])}
          GROUP BY kr.delivery_unit_id, du.unit_slug, du.business_domain
-         ORDER BY recall_count DESC`,
+         ORDER BY access_count DESC`,
         params,
       ) as Promise<Array<Record<string, unknown>>>,
     ]);
@@ -1761,19 +1844,19 @@ export class ProfileProjectionRepository {
       relativePath,
       trend: trendRows.map((row) => ({
         t: toIsoDate(row.bucket_ts) ?? '',
-        count: toNumber(row.count),
+        accessCount: toNumber(row.access_count),
       })),
       readers: readerRows.map((row) => ({
         userId: toStringId(row.user_id),
         userName: (row.user_name as string | null) ?? null,
-        recallCount: toNumber(row.recall_count),
-        lastRecallAt: toIsoDate(row.last_recall_at),
+        accessCount: toNumber(row.access_count),
+        lastAccessAt: toIsoDate(row.last_access_at),
       })),
       sourceDeliveryUnits: sourceRows.map((row) => ({
         deliveryUnitId: toStringId(row.delivery_unit_id),
         unitSlug: (row.unit_slug as string | null) ?? null,
         businessDomain: (row.business_domain as string | null) ?? null,
-        recallCount: toNumber(row.recall_count),
+        accessCount: toNumber(row.access_count),
       })),
     };
   }
@@ -1840,7 +1923,7 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: KnowledgeTimelineOptions,
-  ): Promise<{ points: ProfileKnowledgeTimelinePoint[] }> {
+  ): Promise<ProfileKnowledgeTimelineResponse> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const clauses = ['kr.profile_id = ?', 'kr.projection_run_id = ?', 'kr.event_time IS NOT NULL'];
     const params: unknown[] = [profileId, runId];
@@ -1848,11 +1931,14 @@ export class ProfileProjectionRepository {
       clauses.push('kr.event_time >= ?');
       params.push(query.rangeSinceDate);
     }
+    addKnowledgeSourceNamespaceWhere(clauses, params, query.sourceNamespace ?? null);
+    const relativePathSql = knowledgeRelativePathSql('kr');
+    addKnowledgePathSegmentWhere(clauses, params, query.pathSegment ?? null);
 
     const rows = (await dataSource.query(
       `SELECT
          kr.event_time,
-         JSON_UNQUOTE(JSON_EXTRACT(kr.evidence_json, '$.relative')) AS relative_path,
+         ${relativePathSql} AS relative_path,
          kr.knowledge_locator
        FROM profile_knowledge_recalls kr
        ${whereSql(clauses)}
@@ -1860,24 +1946,31 @@ export class ProfileProjectionRepository {
       params,
     )) as Array<Record<string, unknown>>;
 
-    return {
-      points: buildPathSegmentKnowledgeTimeline(
-        rows.map((row) => ({
-          eventTime: (row.event_time as Date | string | null) ?? null,
-          relativePath: (row.relative_path as string | null) ?? null,
-          locator: (row.knowledge_locator as string | null) ?? null,
-        })),
-        query.granularity,
-      ),
-    };
+    return buildPathSegmentKnowledgeTimeline(
+      rows.map((row) => ({
+        eventTime: (row.event_time as Date | string | null) ?? null,
+        relativePath: (row.relative_path as string | null) ?? null,
+        locator: (row.knowledge_locator as string | null) ?? null,
+      })),
+      query.granularity,
+      query.pathSegment,
+    );
   }
 
-  async listKnowledgeRecalls(
+  async listKnowledgeAccesses(
     profileId: string,
     runId: number,
-    query: { page: number; pageSize: number; rangeSinceDate?: Date | null; deliveryUnitId?: string; userId?: string; capabilityUsageId?: string },
-  ): Promise<{ items: ProfileKnowledgeRecallItem[]; total: number }> {
+    query: {
+      page: number;
+      pageSize: number;
+      rangeSinceDate?: Date | null;
+      deliveryUnitId?: string;
+      userId?: string;
+      capabilityUsageId?: string;
+    },
+  ): Promise<{ items: ProfileKnowledgeAccessItem[]; total: number }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const relativePathSql = knowledgeRelativePathSql('kr');
     const clauses = ['kr.profile_id = ?', 'kr.projection_run_id = ?'];
     const params: unknown[] = [profileId, runId];
 
@@ -1910,9 +2003,7 @@ export class ProfileProjectionRepository {
               kr.delivery_unit_id, kr.user_id,
               su.user_name AS user_name,
               kr.action_type, kr.knowledge_locator,
-              JSON_UNQUOTE(JSON_EXTRACT(kr.evidence_json, '$.relative')) AS knowledge_relative_path,
-              kr.knowledge_domain,
-              kr.knowledge_axis, kr.knowledge_system,
+              ${relativePathSql} AS knowledge_relative_path,
               kr.event_time
        FROM profile_knowledge_recalls kr
        LEFT JOIN sdd_users su ON su.id = kr.user_id
@@ -1922,21 +2013,21 @@ export class ProfileProjectionRepository {
       [...params, query.pageSize, offset],
     )) as Array<Record<string, unknown>>;
 
-    const items: ProfileKnowledgeRecallItem[] = rows.map((row) => ({
+    const items: ProfileKnowledgeAccessItem[] = rows.map((row) => ({
       id: toStringId(row.id),
       toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
       interactionId: row.interaction_id == null ? null : toStringId(row.interaction_id),
-      capabilityUsageId: row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
+      capabilityUsageId:
+        row.capability_usage_id == null ? null : toStringId(row.capability_usage_id),
       deliveryUnitId: row.delivery_unit_id == null ? null : toStringId(row.delivery_unit_id),
       userId: row.user_id == null ? null : toStringId(row.user_id),
       userName: (row.user_name as string | null) ?? null,
       actionType: String(row.action_type ?? ''),
       rawLocator: (row.knowledge_locator as string | null) ?? null,
       knowledgeRelativePath:
-        (row.knowledge_relative_path as string | null) ?? (row.knowledge_locator as string | null) ?? null,
-      knowledgeDomain: (row.knowledge_domain as string | null) ?? null,
-      knowledgeAxis: (row.knowledge_axis as string | null) ?? null,
-      knowledgeSystem: (row.knowledge_system as string | null) ?? null,
+        (row.knowledge_relative_path as string | null) ??
+        (row.knowledge_locator as string | null) ??
+        null,
       eventSequence: null,
       eventTime: toIsoDate(row.event_time),
     }));
@@ -1948,15 +2039,29 @@ export class ProfileProjectionRepository {
     profileId: string,
     runId: number,
     query: KnowledgeFilterOptions = {},
-  ): Promise<{ items: Array<{ deliveryUnitId: string; unitSlug: string | null; businessDomain: string | null; totalRecalls: number; distinctDomains: number; distinctSystems: number; userCount: number }>; total: number }> {
+  ): Promise<{
+    items: Array<{
+      deliveryUnitId: string;
+      unitSlug: string | null;
+      businessDomain: string | null;
+      accessCount: number;
+      userCount: number;
+    }>;
+    total: number;
+  }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses = ['kr.profile_id = ?', 'kr.projection_run_id = ?', 'kr.delivery_unit_id IS NOT NULL'];
+    const clauses = [
+      'kr.profile_id = ?',
+      'kr.projection_run_id = ?',
+      'kr.delivery_unit_id IS NOT NULL',
+    ];
     const params: unknown[] = [profileId, runId];
     if (query.rangeSinceDate) {
       clauses.push('kr.event_time >= ?');
       params.push(query.rangeSinceDate);
     }
-    addKnowledgeDomainWhere(clauses, params, query.wikiDomain ?? null);
+    addKnowledgeSourceNamespaceWhere(clauses, params, query.sourceNamespace ?? null);
+    addKnowledgePathSegmentWhere(clauses, params, query.pathSegment ?? null);
     if (query.userId) {
       clauses.push('kr.user_id = ?');
       params.push(query.userId);
@@ -1967,15 +2072,13 @@ export class ProfileProjectionRepository {
          kr.delivery_unit_id,
          du.unit_slug,
          du.business_domain,
-         COUNT(*) AS total_recalls,
-         COUNT(DISTINCT kr.knowledge_domain) AS distinct_domains,
-         COUNT(DISTINCT kr.knowledge_system) AS distinct_systems,
+         COUNT(*) AS access_count,
          COUNT(DISTINCT kr.user_id) AS user_count
        FROM profile_knowledge_recalls kr
        LEFT JOIN profile_delivery_units du ON du.id = kr.delivery_unit_id AND du.projection_run_id = kr.projection_run_id
        ${whereSql(clauses)}
        GROUP BY kr.delivery_unit_id, du.unit_slug, du.business_domain
-       ORDER BY total_recalls DESC`,
+       ORDER BY access_count DESC`,
       params,
     )) as Array<Record<string, unknown>>;
 
@@ -1984,9 +2087,7 @@ export class ProfileProjectionRepository {
         deliveryUnitId: toStringId(row.delivery_unit_id),
         unitSlug: (row.unit_slug as string | null) ?? null,
         businessDomain: (row.business_domain as string | null) ?? null,
-        totalRecalls: toNumber(row.total_recalls),
-        distinctDomains: toNumber(row.distinct_domains),
-        distinctSystems: toNumber(row.distinct_systems),
+        accessCount: toNumber(row.access_count),
         userCount: toNumber(row.user_count),
       })),
       total: rows.length,
@@ -1997,7 +2098,8 @@ export class ProfileProjectionRepository {
 function toProjectionRun(row: Record<string, unknown>): ProfileInspectorProjectionRun {
   return {
     id: toStringId(row.id),
-    profileConfigVersionId: row.profile_config_version_id == null ? null : toStringId(row.profile_config_version_id),
+    profileConfigVersionId:
+      row.profile_config_version_id == null ? null : toStringId(row.profile_config_version_id),
     runType: String(row.run_type ?? ''),
     status: String(row.status ?? ''),
     startedAt: toIsoDate(row.started_at),
@@ -2033,7 +2135,7 @@ function emptyFactCounts(): ProfileInspectorFactCounts {
     artifactWrites: 0,
     artifactTurns: 0,
     capabilityUsages: 0,
-    knowledgeRecalls: 0,
+    knowledgeAccesses: 0,
     codeActivities: 0,
     errorEvents: 0,
   };
@@ -2069,18 +2171,25 @@ async function loadKnowledgeDiagnostics(
   errorRules: ProfileErrorRule[],
 ): Promise<ProfileErrorOverviewResponse['knowledgeDiagnostics']> {
   if (query.category && query.category !== 'knowledge_read_failed') return [];
-  const knowledgeRule = errorRules.find((rule) => rule.enabled && rule.category === 'knowledge_read_failed');
+  const knowledgeRule = errorRules.find(
+    (rule) => rule.enabled && rule.category === 'knowledge_read_failed',
+  );
   const reasonGroups = knowledgeRule?.reasonGroups ?? [];
   if (reasonGroups.length === 0) return [];
 
-  const baseClauses = ['e.profile_id = ?', 'e.projection_run_id = ?', "e.category = 'knowledge_read_failed'"];
+  const baseClauses = [
+    'e.profile_id = ?',
+    'e.projection_run_id = ?',
+    "e.category = 'knowledge_read_failed'",
+  ];
   const baseParams: unknown[] = [profileId, runId];
   addTimeRangeWhere(baseClauses, baseParams, 'e.event_time', query);
 
-  const rows = await Promise.all(reasonGroups.map(async (reason) => {
-    const reasonWhere = buildExclusiveReasonWhere(reasonGroups, reason);
-    const rows = await dataSource.query(
-      `SELECT COUNT(*) AS count,
+  const rows = await Promise.all(
+    reasonGroups.map(async (reason) => {
+      const reasonWhere = buildExclusiveReasonWhere(reasonGroups, reason);
+      const rows = (await dataSource.query(
+        `SELECT COUNT(*) AS count,
               COUNT(DISTINCT e.user_id) AS affected_user_count,
               COUNT(DISTINCT e.interaction_id) AS affected_interaction_count,
               COUNT(DISTINCT e.delivery_unit_id) AS affected_delivery_unit_count,
@@ -2092,21 +2201,22 @@ async function loadKnowledgeDiagnostics(
               ) AS sample_locator
        FROM profile_error_events e
        ${whereSql([...baseClauses, reasonWhere.sql])}`,
-      [...baseParams, ...reasonWhere.params],
-    ) as Array<Record<string, unknown>>;
-    const row = rows[0] ?? {};
-    return {
-      reasonCode: reason.reasonCode,
-      displayName: reason.displayName,
-      description: reason.description ?? null,
-      count: toNumber(row.count),
-      affectedUserCount: toNumber(row.affected_user_count),
-      affectedInteractionCount: toNumber(row.affected_interaction_count),
-      affectedDeliveryUnitCount: toNumber(row.affected_delivery_unit_count),
-      latestAt: toIsoDate(row.latest_at),
-      sampleLocator: (row.sample_locator as string | null) ?? null,
-    };
-  }));
+        [...baseParams, ...reasonWhere.params],
+      )) as Array<Record<string, unknown>>;
+      const row = rows[0] ?? {};
+      return {
+        reasonCode: reason.reasonCode,
+        displayName: reason.displayName,
+        description: reason.description ?? null,
+        count: toNumber(row.count),
+        affectedUserCount: toNumber(row.affected_user_count),
+        affectedInteractionCount: toNumber(row.affected_interaction_count),
+        affectedDeliveryUnitCount: toNumber(row.affected_delivery_unit_count),
+        latestAt: toIsoDate(row.latest_at),
+        sampleLocator: (row.sample_locator as string | null) ?? null,
+      };
+    }),
+  );
 
   return rows.sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
 }
@@ -2152,10 +2262,11 @@ function buildExclusiveReasonWhere(
   };
 }
 
-function buildFallbackReasonWhere(nonFallback: ProfileErrorReasonGroup[]): { sql: string; params: unknown[] } {
-  const parts = nonFallback
-    .map(buildReasonWhere)
-    .filter((item) => item.sql !== '1 = 0');
+function buildFallbackReasonWhere(nonFallback: ProfileErrorReasonGroup[]): {
+  sql: string;
+  params: unknown[];
+} {
+  const parts = nonFallback.map(buildReasonWhere).filter((item) => item.sql !== '1 = 0');
   if (parts.length === 0) return { sql: '1 = 1', params: [] };
   return {
     sql: `NOT (${parts.map((item) => item.sql).join(' OR ')})`,
@@ -2163,7 +2274,10 @@ function buildFallbackReasonWhere(nonFallback: ProfileErrorReasonGroup[]): { sql
   };
 }
 
-function buildReasonWhere(reason: ProfileErrorReasonGroup): { sql: string; params: unknown[] } {
+function buildReasonWhere(reason: ProfileErrorReasonGroup): {
+  sql: string;
+  params: unknown[];
+} {
   const parts: string[] = [];
   const params: unknown[] = [];
 
@@ -2230,7 +2344,9 @@ function addErrorListFilters(
     params.push(query.deliveryUnitId);
   }
   if (query.keyword) {
-    clauses.push('(e.error_type LIKE ? OR e.tool_name LIKE ? OR e.message_preview LIKE ? OR e.input_preview LIKE ? OR e.locator LIKE ?)');
+    clauses.push(
+      '(e.error_type LIKE ? OR e.tool_name LIKE ? OR e.message_preview LIKE ? OR e.input_preview LIKE ? OR e.locator LIKE ?)',
+    );
     const kw = `%${query.keyword}%`;
     params.push(kw, kw, kw, kw, kw);
   }
@@ -2254,7 +2370,9 @@ function mergeErrorCategorySummaries(
     return {
       category: rule.category,
       displayName: row ? String(row.display_name ?? rule.displayName) : rule.displayName,
-      severity: (row ? String(row.severity ?? rule.severity) : rule.severity) as ProfileErrorOverviewResponse['categories'][number]['severity'],
+      severity: (row
+        ? String(row.severity ?? rule.severity)
+        : rule.severity) as ProfileErrorOverviewResponse['categories'][number]['severity'],
       count: toNumber(row?.count),
       affectedUserCount: toNumber(row?.affected_user_count),
       affectedInteractionCount: toNumber(row?.affected_interaction_count),
@@ -2304,25 +2422,22 @@ function deliveryUnitLabel(row: Record<string, unknown>): string | null {
 }
 
 function knowledgeSourceNamespaceSql(alias: string): string {
-  return `COALESCE(
-    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.sourceNamespace')), ''),
-    NULLIF(SUBSTRING_INDEX(${alias}.knowledge_locator, '/', 1), ''),
-    'local'
-  )`;
+  return `${alias}.source_namespace`;
 }
 
 function knowledgeRelativePathSql(alias: string): string {
-  const namespaceSql = knowledgeSourceNamespaceSql(alias);
-  const rawRelativeSql = `COALESCE(
-    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.relative')), ''),
-    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${alias}.evidence_json, '$.relativeLocator')), ''),
-    ${alias}.knowledge_locator
-  )`;
-  return `CASE
-    WHEN ${rawRelativeSql} LIKE CONCAT(${namespaceSql}, '/%')
-      THEN SUBSTRING(${rawRelativeSql}, CHAR_LENGTH(${namespaceSql}) + 2)
-    ELSE ${rawRelativeSql}
-  END`;
+  return `${alias}.relative_path`;
+}
+
+function addKnowledgeSourceNamespaceWhere(
+  clauses: string[],
+  params: unknown[],
+  sourceNamespace: string | null,
+): void {
+  const normalized = sourceNamespace?.trim();
+  if (!normalized) return;
+  clauses.push(`${knowledgeSourceNamespaceSql('kr')} = ?`);
+  params.push(normalized);
 }
 
 function toKnowledgeContentSource(row: Record<string, unknown>): ProfileKnowledgeContentSource {
@@ -2335,11 +2450,13 @@ function toKnowledgeContentSource(row: Record<string, unknown>): ProfileKnowledg
   };
 }
 
-function addKnowledgeDomainWhere(clauses: string[], params: unknown[], wikiDomain: string | null): void {
-  if (wikiDomain === ROOT_DOMAIN_LABEL) {
-    clauses.push('kr.knowledge_domain IS NULL');
-  } else if (wikiDomain) {
-    clauses.push('kr.knowledge_domain = ?');
-    params.push(wikiDomain);
-  }
+function addKnowledgePathSegmentWhere(
+  clauses: string[],
+  params: unknown[],
+  pathSegment: string | null,
+): void {
+  const normalized = pathSegment?.trim();
+  if (!normalized) return;
+  clauses.push(`CONCAT('/', ${knowledgeRelativePathSql('kr')}, '/') LIKE ?`);
+  params.push(`%/${escapeLikeLiteral(normalized)}/%`);
 }

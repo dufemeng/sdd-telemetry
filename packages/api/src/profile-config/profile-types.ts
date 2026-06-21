@@ -16,7 +16,15 @@ export const ONLINE_DOCS_PROFILE_ID = 'online-docs';
 /** 匹配置信度。只有 high + 非冲突事实会进入核心 KPI。 */
 export type ProfileRuleConfidence = 'high' | 'medium' | 'low';
 /** 标准化后的工具动作。来源于 source_references.action_type，而不是具体工具名。 */
-export type SourceAction = 'read' | 'grep' | 'glob' | 'write' | 'edit' | 'update' | 'delete' | 'invoke';
+export type SourceAction =
+  | 'read'
+  | 'grep'
+  | 'glob'
+  | 'write'
+  | 'edit'
+  | 'update'
+  | 'delete'
+  | 'invoke';
 
 /**
  * source 的业务类别。
@@ -153,7 +161,12 @@ export type SourceLocatorType = SourceRule['locatorType'];
 
 /** 从 locator 解析“需求 / 交付单元”的策略。 */
 export type DeliveryUnitLocatorStrategy =
-  | { kind: 'path_segment'; stripExtensions: boolean; domainSegment?: number; unitSegment: number }
+  | {
+      kind: 'path_segment';
+      stripExtensions: boolean;
+      domainSegment?: number;
+      unitSegment: number;
+    }
   | { kind: 'parent_dir'; stripExtensions: boolean }
   | { kind: 'url_resource_id' }
   | { kind: 'mcp_doc_id' };
@@ -265,8 +278,6 @@ export interface ProfilePresentationConfig {
   artifactStageOrder: string[];
   /** 当前 profile 下无意义的指标 id。 */
   hiddenMetrics: string[];
-  /** 知识库覆盖率口径：文件系统扫描或仅基于 recall facts。 */
-  knowledgeCoverageMode: 'filesystem_scan' | 'recall_facts';
   /** 页面通用名词。旧配置可省略，由 presentation helper 派生。 */
   labels?: ProfilePresentationLabels;
   /** 展示阶段描述。旧配置可省略，由 artifactStageOrder/maturityStages 派生。 */
@@ -407,8 +418,6 @@ export const SDD_PRESENTATION: ProfilePresentationConfig = {
   maturityStages: ['proposal', 'design', 'task', 'codereview'],
   artifactStageOrder: ['proposal', 'design', 'task', 'review'],
   hiddenMetrics: [],
-  // sdd-default 已是 source_backed,知识覆盖走召回事实(没有文件系统扫描)。
-  knowledgeCoverageMode: 'recall_facts',
 };
 
 /** source-backed 工作流默认隐藏 SDD 专属指标，避免页面展示一排没有语义的 0。 */
@@ -424,9 +433,7 @@ export const SOURCE_BACKED_PRESENTATION: ProfilePresentationConfig = {
     'multiStageDeliveryUnitCount',
     'maturity',
     'sddStageDots',
-    'knowledgeCoverageRate',
   ],
-  knowledgeCoverageMode: 'recall_facts',
 };
 
 export const READ_ACTIONS: SourceAction[] = ['read', 'grep', 'glob'];
@@ -438,5 +445,10 @@ export const EMPTY_ATTRIBUTION_POLICY: AttributionPolicy = {
   anchorCategories: [],
   anchorActions: [],
   sameInteraction: { enabled: false, preferActions: [] },
-  sameSessionWindow: { enabled: false, minutes: 0, requireSameUser: true, preferActions: [] },
+  sameSessionWindow: {
+    enabled: false,
+    minutes: 0,
+    requireSameUser: true,
+    preferActions: [],
+  },
 };

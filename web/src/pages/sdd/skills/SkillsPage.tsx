@@ -15,11 +15,7 @@ import { useShellContext } from '@/components/layout/useShellContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import {
-  formatInteger,
-  formatRelativeTime,
-  formatTime,
-} from '@/lib/format';
+import { formatInteger, formatRelativeTime, formatTime } from '@/lib/format';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { timeRangeToFromIso } from '@/lib/timeRange';
 import {
@@ -98,27 +94,6 @@ export default function SkillsPage() {
     navigate(`/sdd/skills/detail?${params.toString()}`);
   };
 
-  if (analytics?.readMode === 'legacy') {
-    return (
-      <main className="grid gap-4">
-        <section
-          className="grid min-h-[360px] place-items-center rounded-[6px] p-[14px] text-center"
-          style={PANEL_STYLE}
-        >
-          <div className="grid gap-3">
-            <div className="mx-auto grid h-11 w-11 place-items-center rounded-[6px] bg-[#202016] text-[var(--color-primary)]">
-              <Layers3 size={22} />
-            </div>
-            <h2 className="text-[16px] font-semibold text-[#f5f5f5]">该视图需投影数据</h2>
-            <p className="mx-auto max-w-[440px] text-[12px] leading-5 text-[var(--color-muted)]">
-              当前 profile 走 sdd_bridge 读取模式，{capabilityLabel}语义聚合、触发结构与配置缺口依赖投影结果；完成投影后即可查看完整{capabilityLabel}分析。
-            </p>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   return (
     <main className="grid gap-4">
       <header className="rounded-[6px] p-[14px]" style={PANEL_STYLE}>
@@ -133,12 +108,16 @@ export default function SkillsPage() {
                   {presentation.labels.capabilityPlural}分析
                 </h2>
                 <p className="mt-[2px] text-[12px] text-[var(--color-secondary)]">
-                  近 {timeRange}，判断技能是否被使用、是否覆盖{deliveryUnitLabel}、体系配置是否有缺口。
+                  近 {timeRange}，判断技能是否被使用、是否覆盖
+                  {deliveryUnitLabel}、体系配置是否有缺口。
                 </p>
               </div>
             </div>
             <p className="mt-4 max-w-[900px] text-[13px] leading-6 text-[var(--color-text)]">
-              {capabilityLabel}调用 {formatInteger(usageCount)} 次，{formatInteger(activeUserCount)} 人使用，关联 {formatInteger(coveredDeliveryUnitCount)} 个{deliveryUnitLabel}，{formatInteger(configGapCount)} 次调用待纳入体系。
+              {capabilityLabel}调用 {formatInteger(usageCount)} 次，
+              {formatInteger(activeUserCount)} 人使用，关联{' '}
+              {formatInteger(coveredDeliveryUnitCount)} 个{deliveryUnitLabel}，
+              {formatInteger(configGapCount)} 次调用待纳入体系。
             </p>
           </div>
           <TriggerSummary
@@ -183,18 +162,23 @@ export default function SkillsPage() {
 
       <div className="grid grid-cols-12 gap-4">
         <section className="col-span-8 rounded-[6px]" style={PANEL_STYLE}>
-          <div className="flex items-center justify-between gap-3 px-[14px] py-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div
+            className="flex items-center justify-between gap-3 px-[14px] py-3"
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
             <div>
-              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">
-                技能语义分布
-              </h3>
+              <h3 className="text-[14px] font-semibold text-[#f5f5f5]">技能语义分布</h3>
               <p className="mt-[2px] text-[11px] text-[var(--color-muted)]">
-                按当前 profile 的技能语义聚合，点击查看 raw 别名、用户和关联{deliveryUnitLabel}。
+                按当前 profile 的技能语义聚合，点击查看 raw 别名、用户和关联
+                {deliveryUnitLabel}。
               </p>
             </div>
             <div
               className="flex h-[30px] w-[260px] items-center gap-2 rounded-[4px] px-[10px]"
-              style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'var(--color-base)' }}
+              style={{
+                border: '1px solid rgba(255,255,255,0.10)',
+                background: 'var(--color-base)',
+              }}
             >
               <Search size={13} className="shrink-0 text-[var(--color-muted)]" />
               <input
@@ -207,19 +191,27 @@ export default function SkillsPage() {
           </div>
 
           {semanticQuery.error ? (
-            <SectionError error={semanticQuery.error} onRetry={() => void semanticQuery.refetch()} />
+            <SectionError
+              error={semanticQuery.error}
+              onRetry={() => void semanticQuery.refetch()}
+            />
           ) : (
             <SemanticTable
               items={semanticItems}
               deliveryUnitLabel={deliveryUnitLabel}
               capabilityLabel={capabilityLabel}
               loading={!semanticQuery.data}
-              emptyText={debouncedKeyword ? `无匹配${capabilityLabel}` : `暂无已纳入体系的${capabilityLabel}`}
+              emptyText={
+                debouncedKeyword ? `无匹配${capabilityLabel}` : `暂无已纳入体系的${capabilityLabel}`
+              }
               onOpen={openCapability}
             />
           )}
 
-          <div className="flex items-center justify-between px-[14px] py-[10px]" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <div
+            className="flex items-center justify-between px-[14px] py-[10px]"
+            style={{ borderTop: '1px solid var(--color-border)' }}
+          >
             <span className="text-[11px] text-[var(--color-muted)]">
               共 {formatInteger(semanticTotal)} 个核心{capabilityLabel}
             </span>
@@ -237,22 +229,36 @@ export default function SkillsPage() {
         </section>
 
         <section className="col-span-4 rounded-[6px]" style={PANEL_STYLE}>
-          <div className="flex items-start justify-between gap-3 px-[14px] py-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div
+            className="flex items-start justify-between gap-3 px-[14px] py-3"
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
             <div>
               <h3 className="text-[14px] font-semibold text-[#f5f5f5]">配置缺口</h3>
               <p className="mt-[2px] text-[11px] leading-4 text-[var(--color-muted)]">
                 已经出现但尚未纳入技能语义的 raw skill，用于补别名或新增语义。
               </p>
             </div>
-            <StatusBadge status={configGapCount > 0 ? '需配置' : '已覆盖'} variant={configGapCount > 0 ? 'warn' : 'good'} />
+            <StatusBadge
+              status={configGapCount > 0 ? '需配置' : '已覆盖'}
+              variant={configGapCount > 0 ? 'warn' : 'good'}
+            />
           </div>
 
           {unclassifiedQuery.error ? (
-            <SectionError error={unclassifiedQuery.error} onRetry={() => void unclassifiedQuery.refetch()} compact />
+            <SectionError
+              error={unclassifiedQuery.error}
+              onRetry={() => void unclassifiedQuery.refetch()}
+              compact
+            />
           ) : !unclassifiedQuery.data ? (
-            <div className="p-8"><EmptyState text="加载中..." /></div>
+            <div className="p-8">
+              <EmptyState text="加载中..." />
+            </div>
           ) : configGapItems.length === 0 ? (
-            <div className="p-8"><EmptyState text="当前 profile 未发现配置缺口" /></div>
+            <div className="p-8">
+              <EmptyState text="当前 profile 未发现配置缺口" />
+            </div>
           ) : (
             <div className="divide-y divide-[var(--color-border)]">
               {configGapItems.map((item) => (
@@ -263,7 +269,10 @@ export default function SkillsPage() {
                   className="group flex w-full items-center justify-between gap-3 px-[14px] py-[11px] text-left hover:bg-[#171717]"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-medium text-[#f5f5f5]" title={item.rawCapabilityName}>
+                    <div
+                      className="truncate text-[12px] font-medium text-[#f5f5f5]"
+                      title={item.rawCapabilityName}
+                    >
                       {item.rawCapabilityName}
                     </div>
                     <div className="mt-[3px] flex flex-wrap gap-2 text-[11px] text-[var(--color-muted)]">
@@ -272,14 +281,16 @@ export default function SkillsPage() {
                       <span>{formatRelativeTime(item.lastSeenAt)}</span>
                     </div>
                   </div>
-                  <ArrowRight size={14} className="shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-primary)]" />
+                  <ArrowRight
+                    size={14}
+                    className="shrink-0 text-[var(--color-muted)] group-hover:text-[var(--color-primary)]"
+                  />
                 </button>
               ))}
             </div>
           )}
         </section>
       </div>
-
     </main>
   );
 }
@@ -299,7 +310,8 @@ function MetricTile({
   tone?: MetricTone;
   loading: boolean;
 }) {
-  const color = tone === 'warn'
+  const color =
+    tone === 'warn'
     ? 'var(--color-warn-text)'
     : tone === 'good'
       ? 'var(--color-good-text)'
@@ -312,7 +324,10 @@ function MetricTile({
         </div>
         <span className="text-[11px] text-[var(--color-muted)]">{label}</span>
       </div>
-      <strong className="mt-4 block text-[26px] font-semibold leading-none" style={{ color, fontFamily: 'var(--font-mono)' }}>
+      <strong
+        className="mt-4 block text-[26px] font-semibold leading-none"
+        style={{ color, fontFamily: 'var(--font-mono)' }}
+      >
         {loading ? '...' : formatInteger(value)}
       </strong>
       <p className="mt-3 text-[11px] leading-4 text-[var(--color-muted)]">{hint}</p>
@@ -338,12 +353,19 @@ function TriggerSummary({
         <span className="text-[var(--color-muted)]">{formatInteger(total)} 次</span>
       </div>
       <div className="mt-3 flex h-[8px] overflow-hidden rounded-full bg-[#202020]">
-        <div style={{ width: `${userPct * 100}%`, background: 'var(--color-primary)' }} />
+        <div
+          style={{
+            width: `${userPct * 100}%`,
+            background: 'var(--color-primary)',
+          }}
+        />
         <div style={{ flex: 1, background: 'rgba(255,255,255,0.16)' }} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
         <span className="text-[var(--color-secondary)]">用户触发 {formatInteger(userCount)}</span>
-        <span className="text-right text-[var(--color-muted)]">自动触发 {formatInteger(autoCount)}</span>
+        <span className="text-right text-[var(--color-muted)]">
+          自动触发 {formatInteger(autoCount)}
+        </span>
       </div>
     </div>
   );
@@ -369,11 +391,22 @@ function SemanticTable({
       <table className="w-full" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {[`${capabilityLabel}语义`, '调用量', '使用人数', `关联${deliveryUnitLabel}`, '原始技能', '触发结构', '最近调用'].map((header) => (
+            {[
+              `${capabilityLabel}语义`,
+              '调用量',
+              '使用人数',
+              `关联${deliveryUnitLabel}`,
+              '原始技能',
+              '触发结构',
+              '最近调用',
+            ].map((header) => (
               <th
                 key={header}
                 className="whitespace-nowrap px-[12px] py-[9px] text-left text-[10px] font-bold text-[var(--color-muted)]"
-                style={{ background: '#141414', borderBottom: '1px solid var(--color-border)' }}
+                style={{
+                  background: '#141414',
+                  borderBottom: '1px solid var(--color-border)',
+                }}
               >
                 {header}
               </th>
@@ -387,7 +420,8 @@ function SemanticTable({
             <TableMessage colSpan={7} text={emptyText} />
           ) : (
             items.map((item) => {
-              const title = item.capabilityDisplayName ?? item.capabilityCode ?? item.rawCapabilityName;
+              const title =
+                item.capabilityDisplayName ?? item.capabilityCode ?? item.rawCapabilityName;
               return (
                 <tr
                   key={item.capabilityCode ?? item.rawCapabilityName}
@@ -398,12 +432,21 @@ function SemanticTable({
                   <td className="px-[12px] py-[11px] group-hover:bg-[#171717]">
                     <div className="min-w-[220px]">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium text-[#f5f5f5]" title={title}>
+                        <span
+                          className="truncate text-[13px] font-medium text-[#f5f5f5]"
+                          title={title}
+                        >
                           {title}
                         </span>
-                        <ArrowRight size={13} className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                        <ArrowRight
+                          size={13}
+                          className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+                        />
                       </div>
-                      <div className="mt-[3px] truncate text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <div
+                        className="mt-[3px] truncate text-[10px] text-[var(--color-muted)]"
+                        style={{ fontFamily: 'var(--font-mono)' }}
+                      >
                         {item.capabilityCode ?? item.rawCapabilityName}
                       </div>
                     </div>
@@ -412,15 +455,26 @@ function SemanticTable({
                   <NumberCell value={item.activeUserCount} />
                   <NumberCell value={item.deliveryUnitCount} emptyZero />
                   <td className="px-[12px] py-[11px] group-hover:bg-[#171717]">
-                    <AliasPreview names={item.rawCapabilityNames ?? [item.rawCapabilityName]} count={item.rawCapabilityCount ?? 1} />
+                    <AliasPreview
+                      names={item.rawCapabilityNames ?? [item.rawCapabilityName]}
+                      count={item.rawCapabilityCount ?? 1}
+                    />
                   </td>
                   <td className="px-[12px] py-[11px] group-hover:bg-[#171717]">
-                    <MiniTrigger userCount={item.userTriggeredCount ?? 0} autoCount={item.autoTriggeredCount ?? 0} />
+                    <MiniTrigger
+                      userCount={item.userTriggeredCount ?? 0}
+                      autoCount={item.autoTriggeredCount ?? 0}
+                    />
                   </td>
                   <td className="px-[12px] py-[11px] group-hover:bg-[#171717]">
                     <div className="flex flex-col gap-[2px]">
-                      <span className="text-[12px] text-[var(--color-secondary)]">{formatRelativeTime(item.lastSeenAt)}</span>
-                      <span className="text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <span className="text-[12px] text-[var(--color-secondary)]">
+                        {formatRelativeTime(item.lastSeenAt)}
+                      </span>
+                      <span
+                        className="text-[11px] text-[var(--color-muted)]"
+                        style={{ fontFamily: 'var(--font-mono)' }}
+                      >
                         {formatTime(item.lastSeenAt)}
                       </span>
                     </div>
@@ -440,7 +494,10 @@ function AliasPreview({ names, count }: { names: string[]; count: number }) {
   return (
     <div className="flex flex-col gap-[3px]">
       <span className="text-[12px] text-[var(--color-secondary)]">{formatInteger(count)} 个</span>
-      <span className="max-w-[180px] truncate text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+      <span
+        className="max-w-[180px] truncate text-[10px] text-[var(--color-muted)]"
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
         {preview.join(' / ') || 'unknown'}
       </span>
     </div>
@@ -468,7 +525,14 @@ function MiniTrigger({ userCount, autoCount }: { userCount: number; autoCount: n
 function NumberCell({ value, emptyZero = false }: { value: number; emptyZero?: boolean }) {
   return (
     <td className="px-[12px] py-[11px] text-right group-hover:bg-[#171717]">
-      <span className={emptyZero && value === 0 ? 'text-[12px] text-[var(--color-muted)]' : 'text-[12px] text-[var(--color-secondary)]'} style={{ fontFamily: 'var(--font-mono)' }}>
+      <span
+        className={
+          emptyZero && value === 0
+            ? 'text-[12px] text-[var(--color-muted)]'
+            : 'text-[12px] text-[var(--color-secondary)]'
+        }
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
         {emptyZero && value === 0 ? '0' : formatInteger(value)}
       </span>
     </td>

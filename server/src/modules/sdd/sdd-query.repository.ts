@@ -2,7 +2,6 @@ import { Inject, Provide } from '@midwayjs/core';
 import type { ReportUserSettingsRequest } from '@sdd-telemetry/api';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
 import { whereSql } from '../query-utils';
-import { ROOT_DOMAIN_LABEL } from './wiki-coverage';
 
 export interface SemanticRow {
   id: string | number;
@@ -267,57 +266,6 @@ export interface WorkItemSummaryRow {
   wiki_recall_count: string | number;
 }
 
-export interface WikiRecallUserRankingRow {
-  userId: string | number;
-  userName: string | null;
-  hasWikiRootPath: string | number | boolean;
-  totalRecalls: string | number;
-  distinctFiles: string | number;
-  distinctDomains: string | number;
-  distinctSystems: string | number;
-  lastRecallAt: Date | string | null;
-}
-
-export interface WikiRecallWorkItemRankingRow {
-  workItemId: string | number;
-  workItemSlug: string;
-  businessDomain: string | null;
-  totalRecalls: string | number;
-  distinctDomains: string | number;
-  distinctSystems: string | number;
-  userCount: string | number;
-}
-
-export interface WikiRecallHeatmapBucketRow {
-  key: string;
-  totalRecalls: string | number;
-  distinctUsers: string | number;
-}
-
-export interface WikiRecallTimelinePointRow {
-  t: string;
-  group: string | null;
-  count: string | number;
-}
-
-export interface WikiRecallListRow {
-  id: string | number;
-  toolCallId: string | number;
-  interactionId: string | number;
-  skillUsageId: string | number | null;
-  workItemId: string | number | null;
-  userId: string | number | null;
-  userName: string | null;
-  actionType: string;
-  rawPath: string;
-  wikiRelativePath: string | null;
-  wikiDomain: string | null;
-  wikiAxis: string | null;
-  wikiSystem: string | null;
-  eventSequence: string | number | null;
-  eventTime: Date | string | null;
-}
-
 export interface WikiRecallContentSourceRow {
   raw_path: string;
   wiki_relative_path: string | null;
@@ -346,10 +294,7 @@ export class SddQueryRepository {
     )) as SemanticRow[];
   }
 
-  async countOverviewUsage(
-    clauses: string[],
-    params: unknown[],
-  ): Promise<OverviewUsageRow[]> {
+  async countOverviewUsage(clauses: string[], params: unknown[]): Promise<OverviewUsageRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT
@@ -410,10 +355,7 @@ export class SddQueryRepository {
     )) as FunnelQualityRow[];
   }
 
-  async aggregateSemanticDistribution(
-    clauses: string[],
-    params: unknown[],
-  ): Promise<FunnelRow[]> {
+  async aggregateSemanticDistribution(clauses: string[], params: unknown[]): Promise<FunnelRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT s.semantic_code, s.display_name,
@@ -560,11 +502,7 @@ export class SddQueryRepository {
     )) as UsageVersionRow[];
   }
 
-  async listUsages(
-    clauses: string[],
-    params: unknown[],
-    limit: number,
-  ): Promise<UsageRow[]> {
+  async listUsages(clauses: string[], params: unknown[], limit: number): Promise<UsageRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT u.id, u.usage_key, s.semantic_code, s.display_name AS semantic_display_name,
@@ -727,11 +665,7 @@ export class SddQueryRepository {
     )) as VersionRow[];
   }
 
-  async listWorkItems(
-    clauses: string[],
-    params: unknown[],
-    limit: number,
-  ): Promise<WorkItemRow[]> {
+  async listWorkItems(clauses: string[], params: unknown[], limit: number): Promise<WorkItemRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     return (await dataSource.query(
       `SELECT
@@ -796,9 +730,7 @@ export class SddQueryRepository {
     userId?: string,
   ): Promise<ArtifactWriteRow[]> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const userFilter = userId
-      ? ` AND {alias}.user_id = ?`
-      : '';
+    const userFilter = userId ? ` AND {alias}.user_id = ?` : '';
     const writeUserParams = userId ? [userId] : [];
     const turnUserParams = userId ? [userId] : [];
     return (await dataSource.query(
@@ -862,300 +794,6 @@ export class SddQueryRepository {
       `SELECT COUNT(*) AS count_value FROM sdd_errors WHERE work_item_id = ?`,
       [workItemId],
     )) as CountRow[];
-  }
-
-  async listWikiRecallUserRanking(
-    rangeSinceDate: Date | null,
-    sortBy: 'total' | 'distinct_files' | 'recent',
-    limit: number,
-    offset: number,
-  ): Promise<{ items: WikiRecallUserRankingRow[]; total: string | number }> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const whereTime = rangeSinceDate ? 'AND wr.event_time >= ?' : '';
-    const params = rangeSinceDate ? [rangeSinceDate] : [];
-    const orderBy =
-      sortBy === 'distinct_files'
-        ? 'distinctFiles DESC'
-        : sortBy === 'recent'
-          ? 'lastRecallAt DESC'
-          : 'totalRecalls DESC';
-
-    const items = (await dataSource.query(
-      `SELECT u.id AS userId, u.user_name AS userName,
-              (u.wiki_root_path IS NOT NULL) AS hasWikiRootPath,
-              COUNT(wr.id) AS totalRecalls,
-              COUNT(DISTINCT CASE WHEN wr.action_type = 'read' THEN wr.wiki_relative_path END) AS distinctFiles,
-              COUNT(DISTINCT wr.wiki_domain) AS distinctDomains,
-              COUNT(DISTINCT wr.wiki_system) AS distinctSystems,
-              MAX(wr.event_time) AS lastRecallAt
-       FROM sdd_users u
-       LEFT JOIN sdd_wiki_recalls wr ON wr.user_id = u.id ${whereTime}
-       GROUP BY u.id
-       HAVING totalRecalls > 0
-       ORDER BY ${orderBy}
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
-    )) as WikiRecallUserRankingRow[];
-
-    const totalRows = (await dataSource.query(
-      `SELECT COUNT(DISTINCT wr.user_id) AS total
-       FROM sdd_wiki_recalls wr
-       WHERE wr.user_id IS NOT NULL ${whereTime}`,
-      params,
-    )) as Array<{ total: string | number }>;
-
-    return { items, total: totalRows[0]?.total ?? 0 };
-  }
-
-  async listWikiRecallWorkItemRanking(
-    rangeSinceDate: Date | null,
-    wikiDomain: string | null,
-    userId: string | null,
-    limit: number,
-    offset: number,
-  ): Promise<{ items: WikiRecallWorkItemRankingRow[]; total: string | number }> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const effectiveWorkItemIdSql = 'COALESCE(wr.work_item_id, su.work_item_id)';
-    const clauses: string[] = [`${effectiveWorkItemIdSql} IS NOT NULL`];
-    const params: unknown[] = [];
-    if (rangeSinceDate) {
-      clauses.push('wr.event_time >= ?');
-      params.push(rangeSinceDate);
-    }
-    if (wikiDomain === ROOT_DOMAIN_LABEL) {
-      // 根目录文档（库根、非 domain-* 目录）召回记录的 wiki_domain 落库为 NULL
-      clauses.push('wr.wiki_domain IS NULL');
-    } else if (wikiDomain) {
-      clauses.push('wr.wiki_domain = ?');
-      params.push(wikiDomain);
-    }
-    if (userId) {
-      clauses.push('wr.user_id = ?');
-      params.push(userId);
-    }
-    const where = clauses.join(' AND ');
-
-    const items = (await dataSource.query(
-      `SELECT wi.id AS workItemId, wi.work_item_slug AS workItemSlug,
-              wi.business_domain AS businessDomain,
-              COUNT(wr.id) AS totalRecalls,
-              COUNT(DISTINCT wr.wiki_domain) AS distinctDomains,
-              COUNT(DISTINCT wr.wiki_system) AS distinctSystems,
-              COUNT(DISTINCT wr.user_id) AS userCount
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
-       JOIN sdd_work_items wi ON wi.id = ${effectiveWorkItemIdSql}
-       WHERE ${where}
-       GROUP BY wi.id
-       ORDER BY totalRecalls DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
-    )) as WikiRecallWorkItemRankingRow[];
-
-    const totalRows = (await dataSource.query(
-      `SELECT COUNT(DISTINCT ${effectiveWorkItemIdSql}) AS total
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
-       JOIN sdd_work_items wi ON wi.id = ${effectiveWorkItemIdSql}
-       WHERE ${where}`,
-      params,
-    )) as Array<{ total: string | number }>;
-
-    return { items, total: totalRows[0]?.total ?? 0 };
-  }
-
-  async wikiRecallHeatmap(
-    rangeSinceDate: Date | null,
-    groupBy: 'domain' | 'axis' | 'system',
-  ): Promise<WikiRecallHeatmapBucketRow[]> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const columnName =
-      groupBy === 'domain' ? 'wiki_domain' : groupBy === 'axis' ? 'wiki_axis' : 'wiki_system';
-    const whereTime = rangeSinceDate ? 'AND event_time >= ?' : '';
-    const params = rangeSinceDate ? [rangeSinceDate] : [];
-
-    return (await dataSource.query(
-      `SELECT ${columnName} AS \`key\`,
-              COUNT(*) AS totalRecalls,
-              COUNT(DISTINCT user_id) AS distinctUsers
-       FROM sdd_wiki_recalls
-       WHERE action_type = 'read' AND ${columnName} IS NOT NULL ${whereTime}
-       GROUP BY ${columnName}
-       ORDER BY totalRecalls DESC
-       LIMIT 50`,
-      params,
-    )) as WikiRecallHeatmapBucketRow[];
-  }
-
-  async wikiRecallTimeline(
-    rangeSinceDate: Date | null,
-    granularity: 'day' | 'hour',
-    groupBy: 'domain' | 'axis',
-    wikiDomain?: string | null,
-  ): Promise<WikiRecallTimelinePointRow[]> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const dateFormat =
-      granularity === 'day'
-        ? "DATE_FORMAT(event_time, '%Y-%m-%dT00:00:00.000Z')"
-        : "DATE_FORMAT(event_time, '%Y-%m-%dT%H:00:00.000Z')";
-    const columnName = groupBy === 'domain' ? 'wiki_domain' : 'wiki_axis';
-    const clauses: string[] = ['event_time IS NOT NULL'];
-    const params: unknown[] = [];
-    if (rangeSinceDate) {
-      clauses.push('event_time >= ?');
-      params.push(rangeSinceDate);
-    }
-    if (wikiDomain === ROOT_DOMAIN_LABEL) {
-      clauses.push('wiki_domain IS NULL');
-    } else if (wikiDomain) {
-      clauses.push('wiki_domain = ?');
-      params.push(wikiDomain);
-    }
-    const where = clauses.join(' AND ');
-
-    return (await dataSource.query(
-      `SELECT ${dateFormat} AS t, ${columnName} AS \`group\`, COUNT(*) AS count
-       FROM sdd_wiki_recalls
-       WHERE ${where}
-       GROUP BY t, \`group\`
-       ORDER BY t ASC`,
-      params,
-    )) as WikiRecallTimelinePointRow[];
-  }
-
-  async listWikiRecallDocDetailTrend(
-    relativePath: string,
-    sinceDate: Date | null,
-  ): Promise<Array<{ t: string; count: string | number }>> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses = ['wiki_relative_path = ?', 'event_time IS NOT NULL'];
-    const params: unknown[] = [relativePath];
-    if (sinceDate) {
-      clauses.push('event_time >= ?');
-      params.push(sinceDate);
-    }
-    const where = clauses.join(' AND ');
-    return (await dataSource.query(
-      `SELECT DATE_FORMAT(event_time, '%Y-%m-%dT00:00:00.000Z') AS t, COUNT(*) AS count
-       FROM sdd_wiki_recalls
-       WHERE ${where}
-       GROUP BY t
-       ORDER BY t ASC`,
-      params,
-    )) as Array<{ t: string; count: string | number }>;
-  }
-
-  async listWikiRecallDocDetailReaders(
-    relativePath: string,
-  ): Promise<
-    Array<{
-      userId: string | number;
-      userName: string | null;
-      recallCount: string | number;
-      lastRecallAt: Date | string | null;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return (await dataSource.query(
-      `SELECT wr.user_id AS userId, u.user_name AS userName,
-              COUNT(*) AS recallCount, MAX(wr.event_time) AS lastRecallAt
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_users u ON u.id = wr.user_id
-       WHERE wr.wiki_relative_path = ? AND wr.user_id IS NOT NULL
-       GROUP BY wr.user_id
-       ORDER BY recallCount DESC`,
-      [relativePath],
-    )) as Array<{
-      userId: string | number;
-      userName: string | null;
-      recallCount: string | number;
-      lastRecallAt: Date | string | null;
-    }>;
-  }
-
-  async listWikiRecallDocDetailSourceWorkItems(
-    relativePath: string,
-  ): Promise<
-    Array<{
-      workItemId: string | number;
-      workItemSlug: string;
-      businessDomain: string | null;
-      recallCount: string | number;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return (await dataSource.query(
-      `SELECT wi.id AS workItemId, wi.work_item_slug AS workItemSlug,
-              wi.business_domain AS businessDomain,
-              COUNT(*) AS recallCount
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
-       JOIN sdd_work_items wi ON wi.id = COALESCE(wr.work_item_id, su.work_item_id)
-       WHERE wr.wiki_relative_path = ?
-       GROUP BY wi.id
-       ORDER BY recallCount DESC`,
-      [relativePath],
-    )) as Array<{
-      workItemId: string | number;
-      workItemSlug: string;
-      businessDomain: string | null;
-      recallCount: string | number;
-    }>;
-  }
-
-  async listWikiRecalls(
-    filters: { workItemId?: string; userId?: string; skillUsageId?: string },
-    rangeSinceDate: Date | null,
-    limit: number,
-    offset: number,
-  ): Promise<{ items: WikiRecallListRow[]; total: string | number }> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (filters.workItemId) {
-      clauses.push('COALESCE(wr.work_item_id, su.work_item_id) = ?');
-      params.push(filters.workItemId);
-    }
-    if (filters.userId) {
-      clauses.push('wr.user_id = ?');
-      params.push(filters.userId);
-    }
-    if (filters.skillUsageId) {
-      clauses.push('wr.skill_usage_id = ?');
-      params.push(filters.skillUsageId);
-    }
-    if (rangeSinceDate) {
-      clauses.push('wr.event_time >= ?');
-      params.push(rangeSinceDate);
-    }
-    const where = whereSql(clauses);
-
-    const items = (await dataSource.query(
-      `SELECT wr.id, wr.tool_call_id AS toolCallId, wr.interaction_id AS interactionId,
-              wr.skill_usage_id AS skillUsageId,
-              COALESCE(wr.work_item_id, su.work_item_id) AS workItemId,
-              wr.user_id AS userId, u.user_name AS userName, wr.action_type AS actionType,
-              wr.raw_path AS rawPath, wr.wiki_relative_path AS wikiRelativePath,
-              wr.wiki_domain AS wikiDomain, wr.wiki_axis AS wikiAxis, wr.wiki_system AS wikiSystem,
-              wr.event_sequence AS eventSequence, wr.event_time AS eventTime
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
-       LEFT JOIN sdd_users u ON u.id = wr.user_id
-       ${where}
-       ORDER BY wr.id DESC
-       LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
-    )) as WikiRecallListRow[];
-
-    const totalRows = (await dataSource.query(
-      `SELECT COUNT(*) AS total
-       FROM sdd_wiki_recalls wr
-       LEFT JOIN sdd_skill_usages su ON su.id = wr.skill_usage_id
-       ${where}`,
-      params,
-    )) as Array<{ total: string | number }>;
-
-    return { items, total: totalRows[0]?.total ?? 0 };
   }
 
   async upsertUserSettings(input: ReportUserSettingsRequest, userKey: string): Promise<void> {
@@ -1257,99 +895,6 @@ export class SddQueryRepository {
        WHERE u.event_time >= ? AND u.event_time <= ?`,
       [window.from, window.to, window.from, window.to, window.from, window.to],
     )) as SkillQualityAnalyticsRow[];
-  }
-
-  async aggregateRecallPaths(): Promise<
-    Array<{
-      raw_path: string;
-      wiki_relative_path: string;
-      recalls: number;
-      users: number;
-      last_at: string | null;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return dataSource.query(`
-      SELECT MIN(raw_path) AS raw_path,
-             wiki_relative_path,
-             COUNT(*) AS recalls,
-             COUNT(DISTINCT user_id) AS users,
-             MAX(event_time) AS last_at
-      FROM sdd_wiki_recalls
-      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
-      GROUP BY wiki_relative_path
-    `);
-  }
-
-  async aggregateRecallDistinctUsers(): Promise<
-    Array<{
-      wiki_domain: string | null;
-      repo: string;
-      distinct_users: number;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return dataSource.query(`
-      SELECT wiki_domain,
-             CASE
-               WHEN raw_path LIKE '%bk-fe-knowledge-trade%' THEN 'trade'
-               WHEN raw_path LIKE '%bk-fe-knowledge-loan%' THEN 'loan'
-               WHEN raw_path LIKE '%bk-fe-knowledge-wealth%' THEN 'wealth'
-               ELSE 'unknown'
-             END AS repo,
-             COUNT(DISTINCT user_id) AS distinct_users
-      FROM sdd_wiki_recalls
-      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
-      GROUP BY wiki_domain, repo
-    `);
-  }
-
-  async aggregateRecallRepoDistinctUsers(): Promise<
-    Array<{
-      repo: string;
-      distinct_users: number;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return dataSource.query(`
-      SELECT CASE
-               WHEN raw_path LIKE '%bk-fe-knowledge-trade%' THEN 'trade'
-               WHEN raw_path LIKE '%bk-fe-knowledge-loan%' THEN 'loan'
-               WHEN raw_path LIKE '%bk-fe-knowledge-wealth%' THEN 'wealth'
-               ELSE 'unknown'
-             END AS repo,
-             COUNT(DISTINCT user_id) AS distinct_users
-      FROM sdd_wiki_recalls
-      WHERE action_type = 'read' AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
-      GROUP BY repo
-    `);
-  }
-
-  async listDomainDocRecalls(
-    domain: string,
-  ): Promise<
-    Array<{
-      raw_path: string;
-      wiki_relative_path: string;
-      recalls: number;
-      users: number;
-      last_at: string | null;
-      last_tool_call_id: string | null;
-    }>
-  > {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    return dataSource.query(
-      `SELECT MIN(r.raw_path) AS raw_path,
-              r.wiki_relative_path,
-              COUNT(*) AS recalls,
-              COUNT(DISTINCT r.user_id) AS users,
-              MAX(r.event_time) AS last_at,
-              SUBSTRING_INDEX(GROUP_CONCAT(r.tool_call_id ORDER BY r.event_time DESC), ',', 1) AS last_tool_call_id
-       FROM sdd_wiki_recalls r
-       WHERE r.action_type = 'read' AND r.wiki_domain = ? AND r.wiki_relative_path IS NOT NULL
-       GROUP BY r.wiki_relative_path`,
-      [domain],
-    );
   }
 
   async listUserArtifactCounts(): Promise<UserArtifactCountRow[]> {

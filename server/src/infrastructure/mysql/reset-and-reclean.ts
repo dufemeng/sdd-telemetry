@@ -56,7 +56,10 @@ function parseFlags(): Flags {
 
 async function promptUser(query: string): Promise<string> {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     rl.question(query, (answer) => {
       rl.close();
       resolve(answer);
@@ -84,7 +87,7 @@ async function backfillWikiRecalls(dataSource: DataSource): Promise<number> {
   const result = await dataSource.query(
     `INSERT INTO sdd_wiki_recalls
       (recall_key, tool_call_id, interaction_id, skill_usage_id, work_item_id, user_id,
-       action_type, raw_path, wiki_relative_path, wiki_domain, wiki_axis, wiki_system,
+       action_type, raw_path, wiki_relative_path,
        event_id, event_sequence, event_time, rule_version, gmt_create, gmt_modified)
     SELECT
       SHA2(CONCAT(tc.id, ':', JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path'))), 256),
@@ -98,35 +101,6 @@ async function backfillWikiRecalls(dataSource: DataSource): Promise<number> {
       TRIM(LEADING '/' FROM SUBSTRING(
         JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
         LENGTH(u.wiki_root_path) + 1)),
-      CASE
-        WHEN SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 1) LIKE 'domain-%'
-        THEN SUBSTRING(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 1), 8)
-        ELSE NULL
-      END,
-      CASE
-        WHEN TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)) = '' THEN 'root'
-        WHEN SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 1) NOT LIKE 'domain-%' THEN 'root'
-        ELSE SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 2), '/', -1)
-      END,
-      CASE
-        WHEN SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 3), '/', -1) = 'apps'
-        THEN SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '/' FROM SUBSTRING(
-          JSON_UNQUOTE(JSON_EXTRACT(tc.tool_input_preview, '$.file_path')),
-          LENGTH(u.wiki_root_path) + 1)), '/', 4), '/', -1)
-        ELSE NULL
-      END,
       NULL,
       tc.sequence,
       i.started_at,
@@ -189,7 +163,9 @@ async function main(): Promise<void> {
     const lossRate = batches > 0 ? (batches - raws) / batches : 0;
 
     console.info('[reclean] preflight:');
-    console.info(`  batches=${batches}  raw_payloads=${raws}  loss_rate=${(lossRate * 100).toFixed(2)}%`);
+    console.info(
+      `  batches=${batches}  raw_payloads=${raws}  loss_rate=${(lossRate * 100).toFixed(2)}%`,
+    );
     console.info(`  failed_terminal=${failedTerminal}  recent_processing=${recentProcessing}`);
     console.info(`  sdd_skill_semantics=${semantics}  sdd_skill_aliases=${aliases}`);
 
@@ -225,7 +201,9 @@ async function main(): Promise<void> {
     if (!flags.skipBuild) {
       if (usePnpm) {
         console.info('[reclean] building worker...');
-        execSync('pnpm --filter @sdd-telemetry/worker build', { stdio: 'inherit' });
+        execSync('pnpm --filter @sdd-telemetry/worker build', {
+          stdio: 'inherit',
+        });
       } else {
         if (!existsSync(WORKER_DIST_MAIN)) {
           throw new Error(
@@ -302,7 +280,9 @@ async function main(): Promise<void> {
     }
 
     if (iteration >= flags.maxIterations) {
-      console.error(`[reclean] reached --max-iterations=${flags.maxIterations}; outbox not drained.`);
+      console.error(
+        `[reclean] reached --max-iterations=${flags.maxIterations}; outbox not drained.`,
+      );
       stuck = true;
     }
 

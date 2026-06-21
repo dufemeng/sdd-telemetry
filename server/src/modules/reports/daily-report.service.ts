@@ -10,10 +10,14 @@ import {
 import { DailyReportRepository } from './daily-report.repository';
 import { summarizeCodeImpactRows } from './daily-report-code-impact';
 import { renderHeadline, renderMarkdown } from './daily-report-renderer';
+import { extractPathSegments } from '../profiles/profile-knowledge-timeline';
 
 const TEMPLATE_VERSION = 'daily-report-v2';
 const QUERY_VERSION = 'daily-report-query-v2';
-const STAGE_MAP: Record<string, { code: 'proposal' | 'design' | 'task' | 'review'; label: string }> = {
+const STAGE_MAP: Record<
+  string,
+  { code: 'proposal' | 'design' | 'task' | 'review'; label: string }
+> = {
   proposal: { code: 'proposal', label: '需求撰写' },
   design: { code: 'design', label: '系统设计' },
   task: { code: 'task', label: '任务拆分' },
@@ -29,19 +33,38 @@ export class DailyReportService {
   @Config('dailyReport')
   dailyReportConfig!: { baseUrl: string };
 
-  async generateDailyReport(reportDate: string, generatedBy: 'schedule' | 'manual' | 'regenerate'): Promise<void> {
+  async generateDailyReport(
+    reportDate: string,
+    generatedBy: 'schedule' | 'manual' | 'regenerate',
+  ): Promise<void> {
     const { periodStart, periodEnd, previousStart, previousEnd } = computePeriods(reportDate);
     const now = new Date();
 
     try {
       const [
-        activeUsers, skillUsages, coveredWorkItems, documentOutputs, wikiRecalls,
-        prevActiveUsers, prevSkillUsages, prevCoveredWorkItems, prevDocumentOutputs, prevWikiRecalls,
-        stageCoverageRows, fullChainCount, multiStageCount,
-        prevStageCoverageRows, prevFullChainCount, prevMultiStageCount,
-        wikiDistinctFiles, wikiDistinctDomains, topDomains,
-        benchmarks, codeImpactRows,
-        outboxPending, outboxFailed, failedBatches,
+        activeUsers,
+        skillUsages,
+        coveredWorkItems,
+        documentOutputs,
+        wikiRecalls,
+        prevActiveUsers,
+        prevSkillUsages,
+        prevCoveredWorkItems,
+        prevDocumentOutputs,
+        prevWikiRecalls,
+        stageCoverageRows,
+        fullChainCount,
+        multiStageCount,
+        prevStageCoverageRows,
+        prevFullChainCount,
+        prevMultiStageCount,
+        wikiDistinctFiles,
+        wikiPathAccessCounts,
+        benchmarks,
+        codeImpactRows,
+        outboxPending,
+        outboxFailed,
+        failedBatches,
       ] = await Promise.all([
         this.repo.countDistinctUsers(periodStart, periodEnd),
         this.repo.countSkillUsages(periodStart, periodEnd),
@@ -60,8 +83,7 @@ export class DailyReportService {
         this.repo.countFullChainWorkItems(previousStart, previousEnd),
         this.repo.countMultiStageWorkItems(previousStart, previousEnd),
         this.repo.countWikiDistinctFiles(periodStart, periodEnd),
-        this.repo.countWikiDistinctDomains(periodStart, periodEnd),
-        this.repo.topWikiDomains(periodStart, periodEnd, 5),
+        this.repo.listWikiPathAccessCounts(periodStart, periodEnd),
         this.repo.listBenchmarks(periodStart, periodEnd, 5),
         this.repo.listCodeImpactRows(periodStart, periodEnd),
         this.repo.countOutboxPending(),
@@ -72,6 +94,7 @@ export class DailyReportService {
       const stages = buildStages(stageCoverageRows, prevStageCoverageRows);
       const warnings = buildWarnings(outboxPending, outboxFailed, failedBatches);
       const codeImpact = summarizeCodeImpactRows(codeImpactRows);
+      const pathDimensions = summarizePathDimensions(wikiPathAccessCounts, 5);
 
       const metrics: DailyReportMetrics = {
         reportDate,
@@ -102,9 +125,9 @@ export class DailyReportService {
         knowledge: {
           wikiRecallCount: wikiRecalls,
           distinctFileCount: wikiDistinctFiles,
-          distinctDomainCount: wikiDistinctDomains,
-          topDomains,
-          summary: buildKnowledgeSummary(wikiRecalls, wikiDistinctFiles, wikiDistinctDomains),
+          distinctPathDimensionCount: pathDimensions.total,
+          topPathDimensions: pathDimensions.top,
+          summary: buildKnowledgeSummary(wikiRecalls, wikiDistinctFiles, pathDimensions.total),
         },
         codeImpact,
         links: {
@@ -188,9 +211,10 @@ export class DailyReportService {
     const total = typeof rawTotal === 'string' ? parseInt(rawTotal, 10) : rawTotal;
     return {
       items: items.map((row): DailyReportListItem => {
-        const reportDate = typeof row.report_date === 'string'
-          ? row.report_date
-          : new Date(row.report_date as any).toISOString().slice(0, 10);
+        const reportDate =
+          typeof row.report_date === 'string'
+            ? row.report_date
+            : new Date(row.report_date as any).toISOString().slice(0, 10);
         return {
           id: String(row.id),
           reportDate,
@@ -206,13 +230,20 @@ export class DailyReportService {
     };
   }
 
-  private toDetail(row: import('./daily-report.repository').DailyReportRow): DailyReportDetailResponse {
+  private toDetail(
+    row: import('./daily-report.repository').DailyReportRow,
+  ): DailyReportDetailResponse {
     const isFailed = row.status === 'failed';
-    const rawMetrics = isFailed ? null : (typeof row.metrics_json === 'string' ? JSON.parse(row.metrics_json) : row.metrics_json);
+    const rawMetrics = isFailed
+      ? null
+      : typeof row.metrics_json === 'string'
+        ? JSON.parse(row.metrics_json)
+        : row.metrics_json;
     const metrics = rawMetrics ? DailyReportMetricsSchema.parse(rawMetrics) : null;
-    const reportDate = typeof row.report_date === 'string'
-      ? row.report_date
-      : new Date(row.report_date as any).toISOString().slice(0, 10);
+    const reportDate =
+      typeof row.report_date === 'string'
+        ? row.report_date
+        : new Date(row.report_date as any).toISOString().slice(0, 10);
     return {
       id: String(row.id),
       reportDate,
@@ -254,7 +285,12 @@ function buildStages(
   rows: Array<{ artifact_type: string; work_item_count: string | number }>,
   prevRows: Array<{ artifact_type: string; work_item_count: string | number }>,
 ): DailyReportMetrics['chain']['stages'] {
-  const order: Array<'proposal' | 'design' | 'task' | 'review'> = ['proposal', 'design', 'task', 'review'];
+  const order: Array<'proposal' | 'design' | 'task' | 'review'> = [
+    'proposal',
+    'design',
+    'task',
+    'review',
+  ];
   const countMap = new Map<string, number>();
   const prevMap = new Map<string, number>();
 
@@ -268,7 +304,14 @@ function buildStages(
   }
 
   return order.map((code) => {
-    const label = code === 'proposal' ? '需求撰写' : code === 'design' ? '系统设计' : code === 'task' ? '任务拆分' : '代码评审';
+    const label =
+      code === 'proposal'
+        ? '需求撰写'
+        : code === 'design'
+          ? '系统设计'
+          : code === 'task'
+            ? '任务拆分'
+            : '代码评审';
     const cnt = countMap.get(code) ?? 0;
     const prev = prevMap.get(code) ?? 0;
     const delta = cnt - prev;
@@ -326,7 +369,9 @@ function buildBenchmarks(
 function buildWarnings(outboxPending: number, outboxFailed: number, failedBatch: number): string[] {
   const warnings: string[] = [];
   if (outboxPending > 0) {
-    warnings.push(`数据提示：当前仍有 ${outboxPending} 个清洗任务 pending，本日报可能低估部分使用量。`);
+    warnings.push(
+      `数据提示：当前仍有 ${outboxPending} 个清洗任务 pending，本日报可能低估部分使用量。`,
+    );
   }
   if (outboxFailed > 0) {
     warnings.push(`数据提示：当前有 ${outboxFailed} 个终态失败的清洗任务，部分数据可能缺失。`);
@@ -352,9 +397,28 @@ function buildChainSummary(
   return `${parts.join('，')}${fullChain > 0 ? `，其中 ${fullChain} 个需求进入 3+ 阶段全链路。` : '。'}`;
 }
 
-function buildKnowledgeSummary(recalls: number, files: number, domains: number): string {
-  if (recalls === 0) return '昨日未观测到知识库召回。';
-  return `昨日 Wiki 召回 ${recalls} 次，覆盖 ${files} 个文件、${domains} 个业务域。`;
+function buildKnowledgeSummary(recalls: number, files: number, pathDimensions: number): string {
+  if (recalls === 0) return '昨日未观测到知识库访问。';
+  return `昨日 Wiki 访问 ${recalls} 次，覆盖 ${files} 个文件、${pathDimensions} 个路径维度。`;
+}
+
+export function summarizePathDimensions(
+  rows: Array<{ relativePath: string; count: number }>,
+  limit: number,
+): { total: number; top: Array<{ pathSegment: string; count: number }> } {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const segment of extractPathSegments(row.relativePath)) {
+      counts.set(segment, (counts.get(segment) ?? 0) + row.count);
+    }
+  }
+  return {
+    total: counts.size,
+    top: [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, limit)
+      .map(([pathSegment, count]) => ({ pathSegment, count })),
+  };
 }
 
 function toIso(value: Date | string): string {

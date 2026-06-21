@@ -11,9 +11,9 @@ import type {
   ProfileErrorDetail,
   ProfileErrorListResponse,
   ProfileErrorOverviewResponse,
-  ProfileKnowledgeCoverageResponse,
+  ProfileKnowledgeOverviewResponse,
   ProfileKnowledgeDeliveryUnitRankingResponse,
-  ProfileKnowledgeRecallListResponse,
+  ProfileKnowledgeAccessListResponse,
   ProfileKnowledgeTimelineResponse,
   ProfileOverview,
   ProfilePresentation,
@@ -23,7 +23,10 @@ import type {
   ProfileUserItem,
 } from '@sdd-telemetry/api';
 import { requestData } from '@/api/client';
-import { normalizeProfilePresentation, type NormalizedProfilePresentation } from './profilePresentation';
+import {
+  normalizeProfilePresentation,
+  type NormalizedProfilePresentation,
+} from './profilePresentation';
 
 export function useProfiles() {
   return useQuery({
@@ -52,13 +55,11 @@ export function useProfilePresentationModel(profileId: string): NormalizedProfil
   return normalizeProfilePresentation(useProfilePresentation(profileId));
 }
 
-
 export function useProfileDemands(profileId: string, fromIso?: string) {
   const query = fromIso ? `?from=${fromIso}` : '';
   return useQuery({
     queryKey: ['profile-demands', profileId, fromIso],
-    queryFn: () =>
-      requestData<ProfileDemand[]>(`/api/profiles/${profileId}/demands${query}`),
+    queryFn: () => requestData<ProfileDemand[]>(`/api/profiles/${profileId}/demands${query}`),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
@@ -95,8 +96,7 @@ export function useProfileOverview(profileId: string, fromIso?: string) {
   const query = fromIso ? `?from=${fromIso}` : '';
   return useQuery({
     queryKey: ['profile-overview', profileId, fromIso],
-    queryFn: () =>
-      requestData<ProfileOverview>(`/api/profiles/${profileId}/overview${query}`),
+    queryFn: () => requestData<ProfileOverview>(`/api/profiles/${profileId}/overview${query}`),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
@@ -182,14 +182,20 @@ export function useProfileCapabilityAnalytics(profileId: string, fromIso?: strin
   return useQuery({
     queryKey: ['profile-capability-analytics', profileId, fromIso],
     queryFn: () =>
-      requestData<ProfileCapabilityAnalytics>(`/api/profiles/${profileId}/capabilities/analytics${query}`),
+      requestData<ProfileCapabilityAnalytics>(
+        `/api/profiles/${profileId}/capabilities/analytics${query}`,
+      ),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
   });
 }
 
-export function useProfileCapabilityTimeseries(profileId: string, fromIso?: string, bucket?: string) {
+export function useProfileCapabilityTimeseries(
+  profileId: string,
+  fromIso?: string,
+  bucket?: string,
+) {
   const params = new URLSearchParams();
   if (fromIso) params.set('from', fromIso);
   if (bucket) params.set('bucket', bucket);
@@ -197,7 +203,9 @@ export function useProfileCapabilityTimeseries(profileId: string, fromIso?: stri
   return useQuery({
     queryKey: ['profile-capability-timeseries', profileId, fromIso, bucket],
     queryFn: () =>
-      requestData<ProfileCapabilityTimeseries>(`/api/profiles/${profileId}/capabilities/timeseries${qs ? `?${qs}` : ''}`),
+      requestData<ProfileCapabilityTimeseries>(
+        `/api/profiles/${profileId}/capabilities/timeseries${qs ? `?${qs}` : ''}`,
+      ),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
@@ -229,9 +237,12 @@ export function useProfileCapabilityUsageSummary(
   return useQuery({
     queryKey: ['profile-capability-usage-summary', profileId, params],
     queryFn: () =>
-      requestData<{ items: ProfileCapabilityUsageSummaryItem[]; total: number; page: number; pageSize: number }>(
-        `/api/profiles/${profileId}/capabilities/usages/summary?${qs}`,
-      ),
+      requestData<{
+        items: ProfileCapabilityUsageSummaryItem[];
+        total: number;
+        page: number;
+        pageSize: number;
+      }>(`/api/profiles/${profileId}/capabilities/usages/summary?${qs}`),
     staleTime: 15_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
@@ -261,7 +272,8 @@ export function useProfileCapabilityUsages(
         `/api/profiles/${profileId}/capabilities/usages?${qs}`,
       ),
     staleTime: 15_000,
-    enabled: Boolean(profileId) && (Boolean(params.rawCapabilityName) || Boolean(params.capabilityCode)),
+    enabled:
+      Boolean(profileId) && (Boolean(params.rawCapabilityName) || Boolean(params.capabilityCode)),
   });
 }
 
@@ -284,9 +296,12 @@ export function useProfileUsers(
   return useQuery({
     queryKey: ['profile-users', profileId, params],
     queryFn: () =>
-      requestData<{ items: ProfileUserItem[]; total: number; page: number; pageSize: number }>(
-        `/api/profiles/${profileId}/users?${qs}`,
-      ),
+      requestData<{
+        items: ProfileUserItem[];
+        total: number;
+        page: number;
+        pageSize: number;
+      }>(`/api/profiles/${profileId}/users?${qs}`),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     enabled: Boolean(profileId),
@@ -296,8 +311,7 @@ export function useProfileUsers(
 export function useProfileUserDetail(profileId: string, userId: string | null) {
   return useQuery({
     queryKey: ['profile-user-detail', profileId, userId],
-    queryFn: () =>
-      requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
+    queryFn: () => requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
     staleTime: 30_000,
     enabled: Boolean(profileId) && Boolean(userId),
   });
@@ -327,12 +341,12 @@ export function useProfileUserActivity(
   });
 }
 
-export function useProfileKnowledgeCoverage(profileId: string) {
+export function useProfileKnowledgeOverview(profileId: string) {
   return useQuery({
-    queryKey: ['profile-knowledge-coverage', profileId],
+    queryKey: ['profile-knowledge-overview', profileId],
     queryFn: () =>
-      requestData<ProfileKnowledgeCoverageResponse>(
-        `/api/profiles/${profileId}/knowledge/coverage`,
+      requestData<ProfileKnowledgeOverviewResponse>(
+        `/api/profiles/${profileId}/knowledge/overview`,
       ),
     staleTime: 30_000,
     enabled: Boolean(profileId),
@@ -343,12 +357,14 @@ export function useProfileKnowledgeTimeline(
   profileId: string,
   range: string,
   granularity?: string,
+  pathSegment?: string | null,
 ) {
   const qs = new URLSearchParams();
   if (range) qs.set('range', range);
   if (granularity) qs.set('granularity', granularity);
+  if (pathSegment) qs.set('pathSegment', pathSegment);
   return useQuery({
-    queryKey: ['profile-knowledge-timeline', profileId, range, granularity],
+    queryKey: ['profile-knowledge-timeline', profileId, range, granularity, pathSegment ?? null],
     queryFn: () =>
       requestData<ProfileKnowledgeTimelineResponse>(
         `/api/profiles/${profileId}/knowledge/timeline?${qs}`,
@@ -358,12 +374,16 @@ export function useProfileKnowledgeTimeline(
   });
 }
 
-export function useProfileKnowledgeDeliveryUnits(profileId: string, range?: string, wikiDomain?: string | null) {
+export function useProfileKnowledgeDeliveryUnits(
+  profileId: string,
+  range?: string,
+  pathSegment?: string | null,
+) {
   const qs = new URLSearchParams();
   if (range) qs.set('range', range);
-  if (wikiDomain) qs.set('wikiDomain', wikiDomain);
+  if (pathSegment) qs.set('pathSegment', pathSegment);
   return useQuery({
-    queryKey: ['profile-knowledge-delivery-units', profileId, range ?? null, wikiDomain ?? null],
+    queryKey: ['profile-knowledge-delivery-units', profileId, range ?? null, pathSegment ?? null],
     queryFn: () =>
       requestData<ProfileKnowledgeDeliveryUnitRankingResponse>(
         `/api/profiles/${profileId}/knowledge/delivery-units${qs.toString() ? `?${qs}` : ''}`,
@@ -373,7 +393,7 @@ export function useProfileKnowledgeDeliveryUnits(profileId: string, range?: stri
   });
 }
 
-export function useProfileKnowledgeRecalls(
+export function useProfileKnowledgeAccesses(
   profileId: string,
   params: {
     range?: string;
@@ -392,10 +412,10 @@ export function useProfileKnowledgeRecalls(
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
   return useQuery({
-    queryKey: ['profile-knowledge-recalls', profileId, params],
+    queryKey: ['profile-knowledge-accesses', profileId, params],
     queryFn: () =>
-      requestData<ProfileKnowledgeRecallListResponse>(
-        `/api/profiles/${profileId}/knowledge/recalls?${qs}`,
+      requestData<ProfileKnowledgeAccessListResponse>(
+        `/api/profiles/${profileId}/knowledge/accesses?${qs}`,
       ),
     staleTime: 30_000,
     enabled: Boolean(profileId),

@@ -1,9 +1,4 @@
-import type {
-  Pool,
-  PoolConnection,
-  ResultSetHeader,
-  RowDataPacket,
-} from "mysql2/promise";
+import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 export interface LoadedBatch {
   batchId: string;
@@ -256,9 +251,6 @@ export interface UpsertWikiRecallInput {
   actionType: string;
   rawPath: string;
   wikiRelativePath: string | null;
-  wikiDomain: string | null;
-  wikiAxis: string | null;
-  wikiSystem: string | null;
   eventId: string | null;
   eventSequence: number | null;
   eventTime: Date | null;
@@ -269,7 +261,7 @@ export class CleaningRepository {
   async markBatchFailed(
     pool: Pool,
     batchId: string,
-    status: "failed_retryable" | "failed_terminal",
+    status: 'failed_retryable' | 'failed_terminal',
     statusReason: string,
     errorMessage: string,
   ): Promise<void> {
@@ -290,10 +282,7 @@ export class CleaningRepository {
     );
   }
 
-  async lockAndLoadBatch(
-    connection: PoolConnection,
-    batchId: string,
-  ): Promise<BatchRow[]> {
+  async lockAndLoadBatch(connection: PoolConnection, batchId: string): Promise<BatchRow[]> {
     const [rows] = await connection.query<BatchRow[]>(
       `SELECT b.id, b.user_id, b.status, r.payload_json
        FROM otel_ingest_batches b
@@ -306,10 +295,7 @@ export class CleaningRepository {
     return rows;
   }
 
-  async markBatchProcessing(
-    connection: PoolConnection,
-    batchId: string,
-  ): Promise<void> {
+  async markBatchProcessing(connection: PoolConnection, batchId: string): Promise<void> {
     await connection.query(
       `UPDATE otel_ingest_batches
        SET status = 'processing',
@@ -325,10 +311,7 @@ export class CleaningRepository {
     );
   }
 
-  async upsertLogEvent(
-    connection: PoolConnection,
-    input: UpsertLogEventInput,
-  ): Promise<void> {
+  async upsertLogEvent(connection: PoolConnection, input: UpsertLogEventInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO otel_log_events
         (event_id, batch_id, user_id, session_id, prompt_id, trace_id, span_id, event_name,
@@ -395,7 +378,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE ${clauses.map((clause) => `(${clause})`).join(" OR ")}
+       WHERE ${clauses.map((clause) => `(${clause})`).join(' OR ')}
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       params,
     );
@@ -415,7 +398,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE session_id IN (${sessionIds.map(() => "?").join(",")})
+       WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
          AND prompt_id IS NOT NULL
          AND event_name LIKE '%user_prompt%'
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
@@ -424,10 +407,7 @@ export class CleaningRepository {
     return rows;
   }
 
-  async loadTraceAnchorEvents(
-    connection: PoolConnection,
-    traceIds: string[],
-  ): Promise<EventRow[]> {
+  async loadTraceAnchorEvents(connection: PoolConnection, traceIds: string[]): Promise<EventRow[]> {
     if (traceIds.length === 0) {
       return [];
     }
@@ -437,7 +417,7 @@ export class CleaningRepository {
               service_version, severity_text, severity_number, event_time, event_sequence,
               attributes_json, body_json, body_text
        FROM otel_log_events
-       WHERE trace_id IN (${traceIds.map(() => "?").join(",")})
+       WHERE trace_id IN (${traceIds.map(() => '?').join(',')})
          AND prompt_id IS NOT NULL
        ORDER BY event_sequence IS NULL, event_sequence ASC, COALESCE(event_time, gmt_create), id`,
       traceIds,
@@ -479,12 +459,12 @@ export class CleaningRepository {
            WHEN VALUES(completed_at) IS NULL THEN completed_at
            ELSE GREATEST(completed_at, VALUES(completed_at))
          END,
-         duration_ms = ${this.greatestNullableSql("duration_ms")},
-         cost_usd = ${this.greatestNullableSql("cost_usd")},
-         input_tokens = ${this.greatestNullableSql("input_tokens")},
-         output_tokens = ${this.greatestNullableSql("output_tokens")},
-         cache_read_tokens = ${this.greatestNullableSql("cache_read_tokens")},
-         cache_creation_tokens = ${this.greatestNullableSql("cache_creation_tokens")},
+         duration_ms = ${this.greatestNullableSql('duration_ms')},
+         cost_usd = ${this.greatestNullableSql('cost_usd')},
+         input_tokens = ${this.greatestNullableSql('input_tokens')},
+         output_tokens = ${this.greatestNullableSql('output_tokens')},
+         cache_read_tokens = ${this.greatestNullableSql('cache_read_tokens')},
+         cache_creation_tokens = ${this.greatestNullableSql('cache_creation_tokens')},
          llm_call_count = GREATEST(VALUES(llm_call_count), llm_call_count),
          tool_call_count = GREATEST(VALUES(tool_call_count), tool_call_count),
          skill_name = COALESCE(VALUES(skill_name), skill_name),
@@ -555,10 +535,7 @@ export class CleaningRepository {
     );
   }
 
-  async upsertToolCall(
-    connection: PoolConnection,
-    input: UpsertToolCallInput,
-  ): Promise<void> {
+  async upsertToolCall(connection: PoolConnection, input: UpsertToolCallInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_interaction_tool_calls
         (interaction_id, skill_usage_id, tool_use_id, tool_name, sequence, decision, decision_source,
@@ -635,9 +612,7 @@ export class CleaningRepository {
   async listSubagentInteractionsByIds(
     connection: PoolConnection,
     interactionIds: string[],
-  ): Promise<
-    Array<{ id: string; sessionId: string | null; startedAt: Date | null }>
-  > {
+  ): Promise<Array<{ id: string; sessionId: string | null; startedAt: Date | null }>> {
     if (interactionIds.length === 0) return [];
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, session_id AS sessionId, started_at AS startedAt
@@ -701,10 +676,10 @@ export class CleaningRepository {
     const updates = assignments.filter((a) => a.skillUsageId !== null);
     if (updates.length === 0) return 0;
 
-    const caseWhen = updates.map(() => `WHEN ? THEN ?`).join(" ");
+    const caseWhen = updates.map(() => `WHEN ? THEN ?`).join(' ');
     const ids = updates.map((a) => a.toolCallId);
     const caseParams = updates.flatMap((a) => [a.toolCallId, a.skillUsageId]);
-    const idPlaceholders = ids.map(() => "?").join(",");
+    const idPlaceholders = ids.map(() => '?').join(',');
 
     await connection.query<ResultSetHeader>(
       `UPDATE sdd_interaction_tool_calls
@@ -725,10 +700,7 @@ export class CleaningRepository {
     return aliases;
   }
 
-  async upsertSkillUsage(
-    connection: PoolConnection,
-    input: UpsertSkillUsageInput,
-  ): Promise<void> {
+  async upsertSkillUsage(connection: PoolConnection, input: UpsertSkillUsageInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_skill_usages
         (usage_key, semantic_id, alias_id, interaction_id, work_item_id, user_id, session_id,
@@ -776,10 +748,7 @@ export class CleaningRepository {
     );
   }
 
-  async upsertError(
-    connection: PoolConnection,
-    input: UpsertErrorInput,
-  ): Promise<void> {
+  async upsertError(connection: PoolConnection, input: UpsertErrorInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_errors
         (error_key, user_id, batch_id, event_id, interaction_id, usage_id, work_item_id,
@@ -824,10 +793,7 @@ export class CleaningRepository {
     );
   }
 
-  async upsertWorkItem(
-    connection: PoolConnection,
-    input: UpsertWorkItemInput,
-  ): Promise<void> {
+  async upsertWorkItem(connection: PoolConnection, input: UpsertWorkItemInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_work_items
         (work_item_key, requirements_repo_name, business_domain, work_item_slug,
@@ -896,15 +862,13 @@ export class CleaningRepository {
     const [rows] = await connection.query<UserRequirementsRootRow[]>(
       `SELECT id, requirements_root_path
        FROM sdd_users
-       WHERE id IN (${userIds.map(() => "?").join(",")})`,
+       WHERE id IN (${userIds.map(() => '?').join(',')})`,
       userIds,
     );
     return rows;
   }
 
-  async loadSkillSemanticMatchers(
-    connection: PoolConnection,
-  ): Promise<SemanticPatternRow[]> {
+  async loadSkillSemanticMatchers(connection: PoolConnection): Promise<SemanticPatternRow[]> {
     const [rows] = await connection.query<SemanticPatternRow[]>(
       `SELECT s.id AS semantic_id, s.semantic_code, s.artifact_filename_patterns, a.skill_name
        FROM sdd_skill_semantics s
@@ -1012,15 +976,15 @@ export class CleaningRepository {
              ?
            ),
            gmt_modified = CURRENT_TIMESTAMP(3)
-       WHERE event_id IN (${eventIds.map(() => "?").join(",")})`,
+       WHERE event_id IN (${eventIds.map(() => '?').join(',')})`,
       [reason, ...eventIds],
     );
   }
 
   async selectIdByKey(
     connection: PoolConnection,
-    tableName: "sdd_interactions" | "sdd_work_items",
-    keyColumn: "interaction_key" | "work_item_key",
+    tableName: 'sdd_interactions' | 'sdd_work_items',
+    keyColumn: 'interaction_key' | 'work_item_key',
     key: string,
   ): Promise<string> {
     const id = await this.findIdByKey(connection, tableName, keyColumn, key);
@@ -1032,8 +996,8 @@ export class CleaningRepository {
 
   async findIdByKey(
     connection: PoolConnection,
-    tableName: "sdd_interactions" | "sdd_work_items",
-    keyColumn: "interaction_key" | "work_item_key",
+    tableName: 'sdd_interactions' | 'sdd_work_items',
+    keyColumn: 'interaction_key' | 'work_item_key',
     key: string,
   ): Promise<string | null> {
     const [rows] = await connection.query<IdRow[]>(
@@ -1044,25 +1008,19 @@ export class CleaningRepository {
     return id ? String(id) : null;
   }
 
-  async upsertWikiRecall(
-    connection: PoolConnection,
-    input: UpsertWikiRecallInput,
-  ): Promise<void> {
+  async upsertWikiRecall(connection: PoolConnection, input: UpsertWikiRecallInput): Promise<void> {
     await connection.query<ResultSetHeader>(
       `INSERT INTO sdd_wiki_recalls
         (recall_key, tool_call_id, interaction_id, skill_usage_id, work_item_id, user_id,
-         action_type, raw_path, wiki_relative_path, wiki_domain, wiki_axis, wiki_system,
+         action_type, raw_path, wiki_relative_path,
          event_id, event_sequence, event_time, rule_version, gmt_create, gmt_modified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE
          skill_usage_id = COALESCE(VALUES(skill_usage_id), skill_usage_id),
          work_item_id = COALESCE(VALUES(work_item_id), work_item_id),
          user_id = COALESCE(VALUES(user_id), user_id),
          action_type = VALUES(action_type),
          wiki_relative_path = VALUES(wiki_relative_path),
-         wiki_domain = VALUES(wiki_domain),
-         wiki_axis = VALUES(wiki_axis),
-         wiki_system = VALUES(wiki_system),
          event_id = COALESCE(VALUES(event_id), event_id),
          event_sequence = COALESCE(VALUES(event_sequence), event_sequence),
          event_time = COALESCE(VALUES(event_time), event_time),
@@ -1078,9 +1036,6 @@ export class CleaningRepository {
         input.actionType,
         input.rawPath,
         input.wikiRelativePath,
-        input.wikiDomain,
-        input.wikiAxis,
-        input.wikiSystem,
         input.eventId,
         input.eventSequence,
         input.eventTime,
@@ -1171,9 +1126,7 @@ export class CleaningRepository {
       sessionId: string;
       writeEventTime: Date;
     },
-  ): Promise<
-    Array<{ id: string; startedAt: Date | null; anchorEventTime: Date | null }>
-  > {
+  ): Promise<Array<{ id: string; startedAt: Date | null; anchorEventTime: Date | null }>> {
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT i.id AS id, i.started_at AS startedAt,
               COALESCE(
@@ -1199,12 +1152,7 @@ export class CleaningRepository {
                SELECT awr.interaction_id FROM sdd_work_item_artifact_writes awr
                WHERE awr.session_id = i.session_id AND awr.interaction_id IS NOT NULL)
        ORDER BY i.started_at ASC, i.id ASC`,
-      [
-        input.writeEventTime,
-        input.sessionId,
-        input.writeEventTime,
-        input.writeEventTime,
-      ],
+      [input.writeEventTime, input.sessionId, input.writeEventTime, input.writeEventTime],
     );
     return (
       rows as Array<{
@@ -1261,9 +1209,7 @@ export class CleaningRepository {
     return id ? String(id) : null;
   }
 
-  async loadUserWikiRoots(
-    connection: PoolConnection,
-  ): Promise<Map<string, string>> {
+  async loadUserWikiRoots(connection: PoolConnection): Promise<Map<string, string>> {
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, wiki_root_path FROM sdd_users WHERE wiki_root_path IS NOT NULL`,
     );
@@ -1281,10 +1227,7 @@ export class CleaningRepository {
     connection: PoolConnection,
     interactionIds: string[],
   ): Promise<Map<string, { userId: string | null; startedAt: Date | null }>> {
-    const m = new Map<
-      string,
-      { userId: string | null; startedAt: Date | null }
-    >();
+    const m = new Map<string, { userId: string | null; startedAt: Date | null }>();
     if (interactionIds.length === 0) return m;
     const [rows] = await connection.query<RowDataPacket[]>(
       `SELECT id, user_id AS userId, started_at AS startedAt
@@ -1354,17 +1297,14 @@ export class CleaningRepository {
     const [rows] = await connection.query<UsageWorkItemRow[]>(
       `SELECT id, work_item_id
        FROM sdd_skill_usages
-       WHERE id IN (${skillUsageIds.map(() => "?").join(",")})`,
+       WHERE id IN (${skillUsageIds.map(() => '?').join(',')})`,
       skillUsageIds,
     );
 
     const m = new Map<string, string | null>();
     for (const row of rows) {
       if (row.id == null) continue;
-      m.set(
-        String(row.id),
-        row.work_item_id == null ? null : String(row.work_item_id),
-      );
+      m.set(String(row.id), row.work_item_id == null ? null : String(row.work_item_id));
     }
     return m;
   }

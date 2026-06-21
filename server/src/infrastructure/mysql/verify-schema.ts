@@ -81,9 +81,6 @@ const expectedColumns: Record<string, string[]> = {
     'action_type',
     'raw_path',
     'wiki_relative_path',
-    'wiki_domain',
-    'wiki_axis',
-    'wiki_system',
     'event_id',
     'event_sequence',
     'event_time',
@@ -146,6 +143,7 @@ const expectedColumns: Record<string, string[]> = {
     'last_profile_config_version_id',
     'last_error',
   ],
+  profile_knowledge_recalls: ['source_namespace', 'relative_path'],
   profile_configs: [
     'profile_id',
     'display_name',
@@ -181,8 +179,8 @@ async function main(): Promise<void> {
        FROM information_schema.tables
        WHERE table_schema = DATABASE()`,
     )) as Array<{ tableName: string }>;
-    const actualTables = new Set(tables.map(row => row.tableName));
-    const missingTables = expectedTables.filter(tableName => !actualTables.has(tableName));
+    const actualTables = new Set(tables.map((row) => row.tableName));
+    const missingTables = expectedTables.filter((tableName) => !actualTables.has(tableName));
 
     if (missingTables.length > 0) {
       throw new Error(`missing tables: ${missingTables.join(', ')}`);
@@ -194,8 +192,10 @@ async function main(): Promise<void> {
        WHERE table_schema = DATABASE()
          AND non_unique = 0`,
     )) as Array<{ indexName: string }>;
-    const actualIndexes = new Set(indexes.map(row => row.indexName));
-    const missingIndexes = expectedUniqueIndexes.filter(indexName => !actualIndexes.has(indexName));
+    const actualIndexes = new Set(indexes.map((row) => row.indexName));
+    const missingIndexes = expectedUniqueIndexes.filter(
+      (indexName) => !actualIndexes.has(indexName),
+    );
 
     if (missingIndexes.length > 0) {
       throw new Error(`missing unique indexes: ${missingIndexes.join(', ')}`);
@@ -209,8 +209,8 @@ async function main(): Promise<void> {
            AND table_name = ?`,
         [tableName],
       )) as Array<{ columnName: string }>;
-      const actualColumns = new Set(columns.map(row => row.columnName));
-      const missingColumns = columnNames.filter(columnName => !actualColumns.has(columnName));
+      const actualColumns = new Set(columns.map((row) => row.columnName));
+      const missingColumns = columnNames.filter((columnName) => !actualColumns.has(columnName));
 
       if (missingColumns.length > 0) {
         throw new Error(`missing columns in ${tableName}: ${missingColumns.join(', ')}`);

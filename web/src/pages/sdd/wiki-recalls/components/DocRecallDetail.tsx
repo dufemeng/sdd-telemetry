@@ -1,23 +1,23 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, BookOpen, Clock3, FileText, Users } from 'lucide-react';
-import type { WikiDomainDoc } from '@sdd-telemetry/api';
+import type { ProfileKnowledgePathDimensionDoc } from '@sdd-telemetry/api';
 import { WikiDocModal } from '@/components/sdd/WikiDocModal';
 import { useWikiRecallDocDetail } from '../useWikiRecalls';
 import { CARD_STYLE } from '../styles';
 import { formatInteger, formatRelativeTime } from '@/lib/format';
 
 export function DocRecallDetail({
-  repo,
+  sourceNamespace,
   doc,
 }: {
-  repo: string;
-  doc: WikiDomainDoc | null;
+  sourceNamespace: string;
+  doc: ProfileKnowledgePathDimensionDoc | null;
 }) {
   const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const detailQuery = useWikiRecallDocDetail(
-    doc ? repo : null,
+    doc ? sourceNamespace : null,
     doc ? doc.relativePath : null,
   );
 
@@ -30,19 +30,28 @@ export function DocRecallDetail({
   }
 
   const detail = detailQuery.data;
-  const hasRecall = (doc.recallCount > 0) || (detail && (detail.readers.length > 0 || detail.sourceWorkItems.length > 0));
-  const isEmpty = !detailQuery.isLoading && !hasRecall;
+  const hasAccess =
+    doc.accessCount > 0 ||
+    (detail && (detail.readers.length > 0 || detail.sourceDeliveryUnits.length > 0));
+  const isEmpty = !detailQuery.isLoading && !hasAccess;
 
   return (
     <div className="grid gap-3 rounded-[6px] p-[14px]" style={CARD_STYLE}>
-      <div className="flex items-start justify-between gap-3 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div
+        className="flex items-start justify-between gap-3 pb-2"
+        style={{ borderBottom: '1px solid var(--color-border)' }}
+      >
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold text-[#f5f5f5]" style={{ fontFamily: 'var(--font-mono)' }} title={doc.relativePath}>
+          <div
+            className="truncate text-[13px] font-semibold text-[#f5f5f5]"
+            style={{ fontFamily: 'var(--font-mono)' }}
+            title={doc.relativePath}
+          >
             {doc.relativePath}
           </div>
           <div className="mt-1 text-[11px] text-[var(--color-muted)]">
-            {formatInteger(doc.recallCount)} 次召回 · {formatInteger(doc.distinctUsers)} 位读者
-            {doc.lastRecallAt ? ` · 最近 ${formatRelativeTime(doc.lastRecallAt)}` : ''}
+            {formatInteger(doc.accessCount)} 次访问 · {formatInteger(doc.distinctUsers)} 位读者
+            {doc.lastAccessAt ? ` · 最近 ${formatRelativeTime(doc.lastAccessAt)}` : ''}
           </div>
         </div>
         <button
@@ -61,25 +70,42 @@ export function DocRecallDetail({
         <div className="py-4 text-center text-[12px] text-[var(--color-muted)]">该文档暂无召回</div>
       ) : detail ? (
         <>
-          <DocTrendSection trend={detail.trend} total={doc.recallCount} />
-          <ReadersSection readers={detail.readers} onNavigate={(uid) => navigate(`/sdd/users/${uid}`)} />
-          <SourceWorkItemsSection items={detail.sourceWorkItems} onNavigate={(wid) => navigate(`/sdd/work-items/${wid}`)} />
+          <DocTrendSection trend={detail.trend} total={doc.accessCount} />
+          <ReadersSection
+            readers={detail.readers}
+            onNavigate={(uid) => navigate(`/sdd/users/${uid}`)}
+          />
+          <SourceWorkItemsSection
+            items={detail.sourceDeliveryUnits.map((item) => ({
+              workItemId: item.deliveryUnitId,
+              workItemSlug: item.unitSlug ?? '',
+              businessDomain: item.businessDomain,
+              accessCount: item.accessCount,
+            }))}
+            onNavigate={(wid) => navigate(`/sdd/work-items/${wid}`)}
+          />
         </>
       ) : null}
 
       <WikiDocModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        toolCallId={doc.lastToolCallId ?? null}
-        source={doc.lastToolCallId ? null : { repo, relativePath: doc.relativePath }}
+        toolCallId={null}
+        source={{ repo: sourceNamespace, relativePath: doc.relativePath }}
       />
     </div>
   );
 }
 
-function DocTrendSection({ trend, total }: { trend: Array<{ t: string; count: number }>; total: number }) {
+function DocTrendSection({
+  trend,
+  total,
+}: {
+  trend: Array<{ t: string; accessCount: number }>;
+  total: number;
+}) {
   const sparkline = useMemo(() => {
-    const values = trend.map((p) => p.count);
+    const values = trend.map((p) => p.accessCount);
     const max = Math.max(...values, 1);
     return { values, max };
   }, [trend]);
@@ -89,7 +115,10 @@ function DocTrendSection({ trend, total }: { trend: Array<{ t: string; count: nu
       <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[#f5f5f5]">
         <Clock3 size={13} style={{ color: 'var(--color-primary)' }} />
         趋势(近30天)
-        <span className="text-[11px] font-normal text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+        <span
+          className="text-[11px] font-normal text-[var(--color-muted)]"
+          style={{ fontFamily: 'var(--font-mono)' }}
+        >
           {formatInteger(total)} 次
         </span>
       </div>
@@ -119,7 +148,12 @@ function ReadersSection({
   readers,
   onNavigate,
 }: {
-  readers: Array<{ userId: string; userName: string | null; recallCount: number; lastRecallAt: string | null }>;
+  readers: Array<{
+    userId: string;
+    userName: string | null;
+    accessCount: number;
+    lastAccessAt: string | null;
+  }>;
   onNavigate: (userId: string) => void;
 }) {
   return (
@@ -127,7 +161,9 @@ function ReadersSection({
       <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[#f5f5f5]">
         <Users size={13} style={{ color: 'var(--color-primary)' }} />
         读者
-        <span className="text-[11px] font-normal text-[var(--color-muted)]">· {readers.length} 人</span>
+        <span className="text-[11px] font-normal text-[var(--color-muted)]">
+          · {readers.length} 人
+        </span>
       </div>
       {readers.length === 0 ? (
         <div className="text-[11px] text-[var(--color-muted)]">暂无读者数据</div>
@@ -143,13 +179,23 @@ function ReadersSection({
                 <span className="truncate text-[12px] text-[var(--color-secondary)]">
                   {r.userName ?? r.userId}
                 </span>
-                {r.lastRecallAt && (
-                  <span className="flex-none text-[10px] text-[var(--color-muted)]">{formatRelativeTime(r.lastRecallAt)}</span>
+                {r.lastAccessAt && (
+                  <span className="flex-none text-[10px] text-[var(--color-muted)]">
+                    {formatRelativeTime(r.lastAccessAt)}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>{r.recallCount} 次</span>
-                <ArrowRight size={12} className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                <span
+                  className="text-[11px] text-[var(--color-muted)]"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {r.accessCount} 次
+                </span>
+                <ArrowRight
+                  size={12}
+                  className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+                />
               </div>
             </button>
           ))}
@@ -163,7 +209,12 @@ function SourceWorkItemsSection({
   items,
   onNavigate,
 }: {
-  items: Array<{ workItemId: string; workItemSlug: string; businessDomain: string | null; recallCount: number }>;
+  items: Array<{
+    workItemId: string;
+    workItemSlug: string;
+    businessDomain: string | null;
+    accessCount: number;
+  }>;
   onNavigate: (workItemId: string) => void;
 }) {
   return (
@@ -171,7 +222,9 @@ function SourceWorkItemsSection({
       <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[#f5f5f5]">
         <FileText size={13} style={{ color: 'var(--color-primary)' }} />
         来源需求
-        <span className="text-[11px] font-normal text-[var(--color-muted)]">· {items.length} 个</span>
+        <span className="text-[11px] font-normal text-[var(--color-muted)]">
+          · {items.length} 个
+        </span>
       </div>
       {items.length === 0 ? (
         <div className="text-[11px] text-[var(--color-muted)]">暂无来源需求</div>
@@ -184,16 +237,30 @@ function SourceWorkItemsSection({
               onClick={() => onNavigate(w.workItemId)}
             >
               <div className="flex min-w-0 flex-col">
-                <span className="truncate text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }} title={w.workItemSlug}>
+                <span
+                  className="truncate text-[12px] text-[var(--color-secondary)]"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                  title={w.workItemSlug}
+                >
                   {w.workItemSlug}
                 </span>
                 {w.businessDomain && (
-                  <span className="truncate text-[10px] text-[var(--color-muted)]">{w.businessDomain}</span>
+                  <span className="truncate text-[10px] text-[var(--color-muted)]">
+                    {w.businessDomain}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[11px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>{w.recallCount} 次</span>
-                <ArrowRight size={12} className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                <span
+                  className="text-[11px] text-[var(--color-muted)]"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {w.accessCount} 次
+                </span>
+                <ArrowRight
+                  size={12}
+                  className="text-[var(--color-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+                />
               </div>
             </button>
           ))}

@@ -219,33 +219,21 @@ export class DailyReportRepository {
     return toNumber(rows[0]?.cnt);
   }
 
-  async countWikiDistinctDomains(periodStart: string, periodEnd: string): Promise<number> {
-    const dataSource = await this.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT COUNT(DISTINCT wiki_domain) AS cnt FROM sdd_wiki_recalls
-       WHERE event_time >= ? AND event_time < ? AND wiki_domain IS NOT NULL`,
-      [periodStart, periodEnd],
-    )) as Array<{ cnt: string | number }>;
-    return toNumber(rows[0]?.cnt);
-  }
-
-  async topWikiDomains(
+  async listWikiPathAccessCounts(
     periodStart: string,
     periodEnd: string,
-    limit: number,
-  ): Promise<Array<{ domain: string; count: number }>> {
+  ): Promise<Array<{ relativePath: string; count: number }>> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = await dataSource.query(
-      `SELECT wiki_domain AS domain, COUNT(*) AS count
+      `SELECT wiki_relative_path, COUNT(*) AS count
        FROM sdd_wiki_recalls
-       WHERE event_time >= ? AND event_time < ? AND wiki_domain IS NOT NULL
-       GROUP BY wiki_domain
-       ORDER BY count DESC
-       LIMIT ?`,
-      [periodStart, periodEnd, limit],
+       WHERE event_time >= ? AND event_time < ?
+         AND wiki_relative_path IS NOT NULL AND wiki_relative_path <> ''
+       GROUP BY wiki_relative_path`,
+      [periodStart, periodEnd],
     );
-    return (rows as Array<{ domain: string; count: string | number }>).map(r => ({
-      domain: r.domain,
+    return (rows as Array<{ wiki_relative_path: string; count: string | number }>).map((r) => ({
+      relativePath: r.wiki_relative_path,
       count: toNumber(r.count),
     }));
   }
@@ -331,10 +319,7 @@ export class DailyReportRepository {
     );
   }
 
-  async countFullChainWorkItems(
-    periodStart: string,
-    periodEnd: string,
-  ): Promise<number> {
+  async countFullChainWorkItems(periodStart: string, periodEnd: string): Promise<number> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
       `SELECT COUNT(*) AS cnt FROM (
@@ -353,10 +338,7 @@ export class DailyReportRepository {
     return toNumber(rows[0]?.cnt);
   }
 
-  async countMultiStageWorkItems(
-    periodStart: string,
-    periodEnd: string,
-  ): Promise<number> {
+  async countMultiStageWorkItems(periodStart: string, periodEnd: string): Promise<number> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const rows = (await dataSource.query(
       `SELECT COUNT(*) AS cnt FROM (
@@ -428,13 +410,18 @@ export class DailyReportRepository {
        ORDER BY document_count DESC, usage_count DESC
       LIMIT ?`,
       [
-        periodStart, periodEnd,
-        periodStart, periodEnd,
-        periodStart, periodEnd,
-        periodStart, periodEnd,
-        periodStart, periodEnd,
+        periodStart,
+        periodEnd,
+        periodStart,
+        periodEnd,
+        periodStart,
+        periodEnd,
+        periodStart,
+        periodEnd,
+        periodStart,
+        periodEnd,
         limit,
-      ]
+      ],
     );
   }
 

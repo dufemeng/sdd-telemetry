@@ -7,7 +7,11 @@ import {
   type SourceAction,
   type WorkflowProfileConfig,
 } from '@sdd-telemetry/api';
-import { selectAttributionAnchor, type AttributionAnchor, type AttributionResult } from './source-registry/attribution';
+import {
+  selectAttributionAnchor,
+  type AttributionAnchor,
+  type AttributionResult,
+} from './source-registry/attribution';
 import { globMatch } from './source-registry/matcher';
 import {
   isReadAction,
@@ -18,6 +22,7 @@ import {
 } from './source-registry/projection';
 import type { MatchedSource, SourceReferenceFact } from './source-registry/types';
 import type { ProjectionContext, ProjectionOperator } from './runner';
+import { insertProfileKnowledgeAccess } from './knowledge-access-writer';
 
 interface SourceReferenceRow extends RowDataPacket {
   source_reference_id: number;
@@ -108,7 +113,9 @@ export const sourceBackedDeliveryArtifactOperator: ProjectionOperator = {
         continue;
       }
       const deliveryPlan = buildDeliveryPlan(ctx.profileId, item.match, config);
-      const artifactPlan = deliveryPlan ? buildArtifactPlan(ctx.profileId, item.match, deliveryPlan, config) : null;
+      const artifactPlan = deliveryPlan
+        ? buildArtifactPlan(ctx.profileId, item.match, deliveryPlan, config)
+        : null;
       if (!deliveryPlan || !artifactPlan) {
         skipped += 1;
         continue;
@@ -144,7 +151,8 @@ export const sourceBackedCapabilityOperator: ProjectionOperator = {
       source += 1;
       const attribution = await resolveDeliveryUnit(ctx, item, config, attributor);
       if (attribution.ambiguous) ambiguousContext += 1;
-      if (!attribution.deliveryUnitId && item.match.category !== 'process_doc') unmappedContext += 1;
+      if (!attribution.deliveryUnitId && item.match.category !== 'process_doc')
+        unmappedContext += 1;
       await insertCapabilityUsage(ctx, item, rule, attribution);
       projected += 1;
     }
@@ -234,7 +242,12 @@ export const sourceBackedArtifactTurnOperator: ProjectionOperator = {
         skipped += 1;
         continue;
       }
-      const turns = await loadDiscussionTurns(ctx.pool, ctx.projectionRunId, write.session_id, write.event_time);
+      const turns = await loadDiscussionTurns(
+        ctx.pool,
+        ctx.projectionRunId,
+        write.session_id,
+        write.event_time,
+      );
       if (turns.length === 0) {
         skipped += 1;
         continue;
@@ -243,7 +256,11 @@ export const sourceBackedArtifactTurnOperator: ProjectionOperator = {
       // turn 的能力归属 = 本次 write 的著作技能(与 bridge 一致:同一 write 的所有 turn 共享其作者能力)。
       const capabilityUsageId = await resolveWriteCapabilityUsageId(ctx, write);
       for (const turn of turns) {
-        const turnKey = buildArtifactTurnKey(ctx.profileId, write.artifact_key, turn.interaction_id);
+        const turnKey = buildArtifactTurnKey(
+          ctx.profileId,
+          write.artifact_key,
+          turn.interaction_id,
+        );
         if (insertedTurnKeys.has(turnKey)) {
           skipped += 1;
           continue;
@@ -271,7 +288,11 @@ async function loadProjectionInput(ctx: ProjectionContext): Promise<{
   matchedFacts: MatchedFact[];
 }> {
   const config = ctx.profileConfig;
-  const matchedFacts = await loadMatchedSourceFacts(ctx.pool, ctx.profileId, ctx.profileConfigVersionId);
+  const matchedFacts = await loadMatchedSourceFacts(
+    ctx.pool,
+    ctx.profileId,
+    ctx.profileConfigVersionId,
+  );
   return { config, matchedFacts };
 }
 
@@ -368,15 +389,17 @@ export function buildDeliveryPlan(
   match: MatchedSource,
   config: WorkflowProfileConfig,
 ): DeliveryPlan | null {
-  const rule = config.deliveryUnitRules.find((candidate) => candidate.sourceRuleIds.includes(match.ruleId));
+  const rule = config.deliveryUnitRules.find((candidate) =>
+    candidate.sourceRuleIds.includes(match.ruleId),
+  );
   if (!rule) return null;
 
   const unitLocator = parseDeliveryUnitLocator(match, rule);
   if (!unitLocator) return null;
   const namespaced = withNamespace(match, unitLocator);
   const parts = namespaced.split('/').filter(Boolean);
-  const businessDomain = parts.length >= 3 ? parts[1] ?? null : null;
-  const unitSlug = parts.length >= 3 ? parts[2] ?? null : parts[1] ?? parts[0] ?? null;
+  const businessDomain = parts.length >= 3 ? (parts[1] ?? null) : null;
+  const unitSlug = parts.length >= 3 ? (parts[2] ?? null) : (parts[1] ?? parts[0] ?? null);
 
   return {
     rule,
@@ -404,11 +427,17 @@ function parseDeliveryUnitLocator(match: MatchedSource, rule: DeliveryUnitRule):
     const unit = parts[rule.locatorStrategy.unitSegment];
     if (!unit) return null;
     const normalizedUnit = rule.locatorStrategy.stripExtensions ? stripExt(unit) : unit;
-    const domain = rule.locatorStrategy.domainSegment == null ? null : parts[rule.locatorStrategy.domainSegment] ?? null;
+    const domain =
+      rule.locatorStrategy.domainSegment == null
+        ? null
+        : (parts[rule.locatorStrategy.domainSegment] ?? null);
     return domain ? `${domain}/${normalizedUnit}` : normalizedUnit;
   }
 
-  if (rule.locatorStrategy.kind === 'url_resource_id' || rule.locatorStrategy.kind === 'mcp_doc_id') {
+  if (
+    rule.locatorStrategy.kind === 'url_resource_id' ||
+    rule.locatorStrategy.kind === 'mcp_doc_id'
+  ) {
     return stripExt(match.resourceId ?? locator);
   }
 
@@ -421,9 +450,14 @@ function buildArtifactPlan(
   deliveryPlan: DeliveryPlan,
   config: WorkflowProfileConfig,
 ): ArtifactPlan | null {
-  const rule = config.artifactRules.find((candidate) => candidate.sourceRuleIds.includes(match.ruleId));
+  const rule = config.artifactRules.find((candidate) =>
+    candidate.sourceRuleIds.includes(match.ruleId),
+  );
   if (!rule) return null;
-  const artifactLocator = withNamespace(match, match.relativeLocator ?? match.resourceId ?? match.normalizedLocator);
+  const artifactLocator = withNamespace(
+    match,
+    match.relativeLocator ?? match.resourceId ?? match.normalizedLocator,
+  );
   const artifactType = inferArtifactType(artifactLocator, rule);
   return {
     rule,
@@ -438,7 +472,8 @@ export function buildCodePlan(match: MatchedSource): CodePlan | null {
   const locator = match.relativeLocator ?? match.resourceId ?? match.normalizedLocator;
   if (!locator) return null;
   const parts = locator.split('/').filter(Boolean);
-  const rootName = typeof match.metadata.rootName === 'string' ? match.metadata.rootName : match.sourceNamespace;
+  const rootName =
+    typeof match.metadata.rootName === 'string' ? match.metadata.rootName : match.sourceNamespace;
   return {
     repoName: parts.length > 1 ? parts[0]! : rootName,
     moduleName: parts[1] ?? null,
@@ -446,13 +481,18 @@ export function buildCodePlan(match: MatchedSource): CodePlan | null {
   };
 }
 
-function findCapabilityRule(match: MatchedSource, config: WorkflowProfileConfig): CapabilityRule | null {
-  return config.capabilityRules.find((rule) => {
-    if (!rule.actions.includes(match.actionType)) return false;
-    if (rule.sourceRuleIds?.includes(match.ruleId)) return true;
-    if (rule.sourceCategories?.includes(match.category)) return true;
-    return false;
-  }) ?? null;
+function findCapabilityRule(
+  match: MatchedSource,
+  config: WorkflowProfileConfig,
+): CapabilityRule | null {
+  return (
+    config.capabilityRules.find((rule) => {
+      if (!rule.actions.includes(match.actionType)) return false;
+      if (rule.sourceRuleIds?.includes(match.ruleId)) return true;
+      if (rule.sourceCategories?.includes(match.category)) return true;
+      return false;
+    }) ?? null
+  );
 }
 
 async function upsertDeliveryUnit(
@@ -472,14 +512,31 @@ async function upsertDeliveryUnit(
        last_seen_at=COALESCE(GREATEST(last_seen_at, VALUES(last_seen_at)), last_seen_at, VALUES(last_seen_at)),
        evidence_json=VALUES(evidence_json)`,
     [
-      ctx.profileId, ctx.projectionRunId, plan.deliveryUnitKey, item.fact.sourceReferenceId, item.fact.sourceReferenceKey,
-      'process_doc', plan.businessDomain, plan.unitSlug, plan.title, plan.relativeLocator,
-      item.fact.eventTime, item.fact.eventTime, plan.rule.ruleId, item.match.confidence,
+      ctx.profileId,
+      ctx.projectionRunId,
+      plan.deliveryUnitKey,
+      item.fact.sourceReferenceId,
+      item.fact.sourceReferenceKey,
+      'process_doc',
+      plan.businessDomain,
+      plan.unitSlug,
+      plan.title,
+      plan.relativeLocator,
+      item.fact.eventTime,
+      item.fact.eventTime,
+      plan.rule.ruleId,
+      item.match.confidence,
       JSON.stringify(evidence(item, { normalizedUnitLocator: plan.normalizedUnitLocator })),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
-  return selectId(ctx.pool, 'profile_delivery_units', 'delivery_unit_key', ctx.projectionRunId, plan.deliveryUnitKey);
+  return selectId(
+    ctx.pool,
+    'profile_delivery_units',
+    'delivery_unit_key',
+    ctx.projectionRunId,
+    plan.deliveryUnitKey,
+  );
 }
 
 async function upsertArtifact(
@@ -500,14 +557,29 @@ async function upsertArtifact(
        last_seen_at=COALESCE(GREATEST(last_seen_at, VALUES(last_seen_at)), last_seen_at, VALUES(last_seen_at)),
        evidence_json=VALUES(evidence_json)`,
     [
-      ctx.profileId, ctx.projectionRunId, plan.artifactKey, deliveryUnitId, item.fact.sourceReferenceId,
-      plan.artifactType, plan.artifactLocator, plan.artifactTitle,
-      item.fact.eventTime, item.fact.eventTime, plan.rule.ruleId, item.match.confidence,
+      ctx.profileId,
+      ctx.projectionRunId,
+      plan.artifactKey,
+      deliveryUnitId,
+      item.fact.sourceReferenceId,
+      plan.artifactType,
+      plan.artifactLocator,
+      plan.artifactTitle,
+      item.fact.eventTime,
+      item.fact.eventTime,
+      plan.rule.ruleId,
+      item.match.confidence,
       JSON.stringify(evidence(item)),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
-  return selectId(ctx.pool, 'profile_artifacts', 'artifact_key', ctx.projectionRunId, plan.artifactKey);
+  return selectId(
+    ctx.pool,
+    'profile_artifacts',
+    'artifact_key',
+    ctx.projectionRunId,
+    plan.artifactKey,
+  );
 }
 
 async function insertArtifactWrite(
@@ -523,10 +595,25 @@ async function insertArtifactWrite(
         event_sequence, event_time, matched_rule_id, confidence, evidence_json, rule_version)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      ctx.profileId, ctx.projectionRunId, sourceBackedStableKey(ctx.profileId, 'artifact_write', item.fact.sourceReferenceKey),
-      artifactId, deliveryUnitId, item.fact.interactionId, null, item.fact.userId, item.fact.sessionId,
-      item.fact.promptId, item.fact.eventId, item.match.actionType, null, null, item.fact.eventTime,
-      item.match.ruleId, item.match.confidence, JSON.stringify(evidence(item)), SOURCE_BACKED_RULE_VERSION,
+      ctx.profileId,
+      ctx.projectionRunId,
+      sourceBackedStableKey(ctx.profileId, 'artifact_write', item.fact.sourceReferenceKey),
+      artifactId,
+      deliveryUnitId,
+      item.fact.interactionId,
+      null,
+      item.fact.userId,
+      item.fact.sessionId,
+      item.fact.promptId,
+      item.fact.eventId,
+      item.match.actionType,
+      null,
+      null,
+      item.fact.eventTime,
+      item.match.ruleId,
+      item.match.confidence,
+      JSON.stringify(evidence(item)),
+      SOURCE_BACKED_RULE_VERSION,
     ],
   );
 }
@@ -540,8 +627,10 @@ async function insertCapabilityUsage(
   // skill 类匹配:per-usage 字段从 source_reference.evidence_json 读(复现 bridge 的 user/auto-triggered、
   // skill_source、status、raw_skill_name 口径);非 skill(路径类能力)沿用静态值。
   const isSkill = item.match.category === 'skill';
-  const ev = isSkill ? item.fact.evidenceJson ?? {} : {};
-  const rawCapabilityName = isSkill ? (item.match.normalizedLocator || rule.capabilityCode) : rule.capabilityCode;
+  const ev = isSkill ? (item.fact.evidenceJson ?? {}) : {};
+  const rawCapabilityName = isSkill
+    ? item.match.normalizedLocator || rule.capabilityCode
+    : rule.capabilityCode;
   const capabilitySource = isSkill ? evString(ev, 'skillSource') : 'source_reference';
   const triggerSource = isSkill ? evString(ev, 'invocationTrigger') : (rule.triggerSource ?? null);
   const status = isSkill ? (evString(ev, 'status') ?? 'observed') : 'observed';
@@ -552,11 +641,29 @@ async function insertCapabilityUsage(
         matched_rule_id, confidence, evidence_json, rule_version)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      ctx.profileId, ctx.projectionRunId, sourceBackedStableKey(ctx.profileId, 'capability', item.fact.sourceReferenceKey),
-      attribution.deliveryUnitId, item.fact.interactionId, item.fact.userId, item.fact.sessionId, item.fact.promptId,
-      rawCapabilityName, rule.capabilityCode, rule.displayName, capabilitySource, triggerSource,
-      status, item.fact.eventTime, rule.ruleId, item.match.confidence,
-      JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
+      ctx.profileId,
+      ctx.projectionRunId,
+      sourceBackedStableKey(ctx.profileId, 'capability', item.fact.sourceReferenceKey),
+      attribution.deliveryUnitId,
+      item.fact.interactionId,
+      item.fact.userId,
+      item.fact.sessionId,
+      item.fact.promptId,
+      rawCapabilityName,
+      rule.capabilityCode,
+      rule.displayName,
+      capabilitySource,
+      triggerSource,
+      status,
+      item.fact.eventTime,
+      rule.ruleId,
+      item.match.confidence,
+      JSON.stringify(
+        evidence(item, {
+          attributionMethod: attribution.method,
+          ambiguous: attribution.ambiguous,
+        }),
+      ),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
@@ -580,25 +687,41 @@ async function insertKnowledgeRecall(
     ctx.projectionRunId,
     sourceBackedStableKey(ctx.profileId, 'capability', item.fact.sourceReferenceKey),
   );
-  const locator = withNamespace(item.match, item.match.relativeLocator ?? item.match.resourceId ?? item.match.normalizedLocator);
-  const domain = item.match.relativeLocator ? item.match.relativeLocator.split('/').filter(Boolean)[0] ?? null : item.fact.collectionId ?? item.fact.spaceId;
-
-  await ctx.pool.query<ResultSetHeader>(
-    `INSERT INTO profile_knowledge_recalls
-       (profile_id, projection_run_id, recall_key, source_reference_key, source_reference_id,
-        tool_call_id, interaction_id, capability_usage_id, delivery_unit_id, user_id, session_id, prompt_id,
-        action_type, knowledge_locator, knowledge_domain, knowledge_axis, knowledge_system, event_time,
-        matched_rule_id, confidence, evidence_json, rule_version)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      ctx.profileId, ctx.projectionRunId, recallKey, item.fact.sourceReferenceKey, item.fact.sourceReferenceId,
-      item.fact.toolCallId, item.fact.interactionId, capabilityUsageId, attribution.deliveryUnitId,
-      item.fact.userId, item.fact.sessionId, item.fact.promptId, item.match.actionType, locator,
-      domain, null, item.fact.mcpServer, item.fact.eventTime, item.match.ruleId, item.match.confidence,
-      JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
-      SOURCE_BACKED_RULE_VERSION,
-    ],
+  const locator = withNamespace(
+    item.match,
+    item.match.relativeLocator ?? item.match.resourceId ?? item.match.normalizedLocator,
   );
+  const relativePath =
+    item.match.relativeLocator ?? item.match.resourceId ?? item.match.normalizedLocator;
+
+  await insertProfileKnowledgeAccess(ctx.pool, {
+    profileId: ctx.profileId,
+    projectionRunId: ctx.projectionRunId,
+    recallKey,
+    sourceReferenceKey: item.fact.sourceReferenceKey,
+    sourceReferenceId: item.fact.sourceReferenceId,
+    toolCallId: item.fact.toolCallId,
+    interactionId: item.fact.interactionId,
+    capabilityUsageId,
+    deliveryUnitId: attribution.deliveryUnitId,
+    userId: item.fact.userId,
+    sessionId: item.fact.sessionId,
+    promptId: item.fact.promptId,
+    actionType: item.match.actionType,
+    knowledgeLocator: locator,
+    sourceNamespace: item.match.sourceNamespace ?? 'local',
+    relativePath,
+    eventTime: item.fact.eventTime,
+    matchedRuleId: item.match.ruleId,
+    confidence: item.match.confidence,
+    evidenceJson: JSON.stringify(
+      evidence(item, {
+        attributionMethod: attribution.method,
+        ambiguous: attribution.ambiguous,
+      }),
+    ),
+    ruleVersion: SOURCE_BACKED_RULE_VERSION,
+  });
 }
 
 async function insertCodeActivity(
@@ -622,12 +745,32 @@ async function insertCodeActivity(
         matched_rule_id, confidence, evidence_json, rule_version)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      ctx.profileId, ctx.projectionRunId, sourceBackedStableKey(ctx.profileId, 'code', item.fact.sourceReferenceKey),
-      item.fact.sourceReferenceKey, item.fact.sourceReferenceId, item.fact.toolCallId, item.fact.interactionId,
-      attribution.deliveryUnitId, capabilityUsageId, item.fact.userId, item.fact.sessionId, item.fact.promptId,
-      item.match.actionType, code.codeLocator, code.repoName, code.moduleName, null, item.fact.eventTime,
-      item.match.ruleId, item.match.confidence,
-      JSON.stringify(evidence(item, { attributionMethod: attribution.method, ambiguous: attribution.ambiguous })),
+      ctx.profileId,
+      ctx.projectionRunId,
+      sourceBackedStableKey(ctx.profileId, 'code', item.fact.sourceReferenceKey),
+      item.fact.sourceReferenceKey,
+      item.fact.sourceReferenceId,
+      item.fact.toolCallId,
+      item.fact.interactionId,
+      attribution.deliveryUnitId,
+      capabilityUsageId,
+      item.fact.userId,
+      item.fact.sessionId,
+      item.fact.promptId,
+      item.match.actionType,
+      code.codeLocator,
+      code.repoName,
+      code.moduleName,
+      null,
+      item.fact.eventTime,
+      item.match.ruleId,
+      item.match.confidence,
+      JSON.stringify(
+        evidence(item, {
+          attributionMethod: attribution.method,
+          ambiguous: attribution.ambiguous,
+        }),
+      ),
       SOURCE_BACKED_RULE_VERSION,
     ],
   );
@@ -652,7 +795,11 @@ interface DiscussionTurnRow extends RowDataPacket {
   anchor_event_time: Date | null;
 }
 
-async function loadRunArtifactWrites(pool: Pool, profileId: string, runId: number): Promise<ArtifactWriteRow[]> {
+async function loadRunArtifactWrites(
+  pool: Pool,
+  profileId: string,
+  runId: number,
+): Promise<ArtifactWriteRow[]> {
   const [rows] = await pool.query<ArtifactWriteRow[]>(
     `SELECT w.id AS write_id, w.artifact_id, a.artifact_key, w.delivery_unit_id, w.interaction_id,
             w.user_id, w.session_id, w.event_time, w.matched_rule_id, w.confidence
@@ -701,7 +848,10 @@ async function loadDiscussionTurns(
   return rows;
 }
 
-async function resolveWriteCapabilityUsageId(ctx: ProjectionContext, write: ArtifactWriteRow): Promise<number | null> {
+async function resolveWriteCapabilityUsageId(
+  ctx: ProjectionContext,
+  write: ArtifactWriteRow,
+): Promise<number | null> {
   if (write.interaction_id != null) {
     const [byInteraction] = await ctx.pool.query<RowDataPacket[]>(
       `SELECT id FROM profile_capability_usages
@@ -737,9 +887,20 @@ async function insertArtifactTurn(
         matched_rule_id, confidence, evidence_json, rule_version)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      ctx.profileId, ctx.projectionRunId, turnKey, write.artifact_id, write.delivery_unit_id, turn.interaction_id,
-      capabilityUsageId, write.user_id, write.session_id, turn.anchor_event_time, write.event_time, turn.started_at,
-      write.matched_rule_id, write.confidence,
+      ctx.profileId,
+      ctx.projectionRunId,
+      turnKey,
+      write.artifact_id,
+      write.delivery_unit_id,
+      turn.interaction_id,
+      capabilityUsageId,
+      write.user_id,
+      write.session_id,
+      turn.anchor_event_time,
+      write.event_time,
+      turn.started_at,
+      write.matched_rule_id,
+      write.confidence,
       JSON.stringify({
         source: 'source_references',
         artifactKey: write.artifact_key,
@@ -751,7 +912,11 @@ async function insertArtifactTurn(
   );
 }
 
-export function buildArtifactTurnKey(profileId: string, artifactKey: string, interactionId: number): string {
+export function buildArtifactTurnKey(
+  profileId: string,
+  artifactKey: string,
+  interactionId: number,
+): string {
   return sourceBackedStableKey(profileId, 'artifact_turn', `${artifactKey}:${interactionId}`);
 }
 
@@ -795,7 +960,9 @@ async function createAttributor(
       eventTime: item.fact.eventTime,
     };
     return selectAttributionAnchor(
-      policy.sameInteraction.enabled ? anchors : anchors.map((anchor) => ({ ...anchor, interactionId: null })),
+      policy.sameInteraction.enabled
+        ? anchors
+        : anchors.map((anchor) => ({ ...anchor, interactionId: null })),
       target,
       policy.sameSessionWindow.enabled ? policy.sameSessionWindow.minutes : 0,
       policy.sameSessionWindow.requireSameUser,
@@ -833,13 +1000,25 @@ async function loadDeliveryUnitIds(pool: Pool, runId: number): Promise<Map<strin
   return map;
 }
 
-async function selectId(pool: Pool, table: string, keyColumn: string, runId: number, key: string): Promise<number> {
+async function selectId(
+  pool: Pool,
+  table: string,
+  keyColumn: string,
+  runId: number,
+  key: string,
+): Promise<number> {
   const id = await selectOptionalId(pool, table, keyColumn, runId, key);
   if (id == null) throw new Error(`missing inserted row: ${table}.${keyColumn}=${key}`);
   return id;
 }
 
-async function selectOptionalId(pool: Pool, table: string, keyColumn: string, runId: number, key: string): Promise<number | null> {
+async function selectOptionalId(
+  pool: Pool,
+  table: string,
+  keyColumn: string,
+  runId: number,
+  key: string,
+): Promise<number | null> {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT id FROM \`${table}\` WHERE projection_run_id=? AND \`${keyColumn}\`=? LIMIT 1`,
     [runId, key],
@@ -850,29 +1029,42 @@ async function selectOptionalId(pool: Pool, table: string, keyColumn: string, ru
 function inferArtifactType(locator: string, rule: ArtifactRule): string {
   const fileName = path.posix.basename(locator);
   for (const pattern of rule.typePatterns) {
-    if (pattern.include.some((include) => globMatch(fileName, include) || globMatch(locator, include))) {
+    if (
+      pattern.include.some((include) => globMatch(fileName, include) || globMatch(locator, include))
+    ) {
       return pattern.artifactType;
     }
   }
   return rule.defaultArtifactType;
 }
 
-function titleForDeliveryUnit(match: MatchedSource, rule: DeliveryUnitRule, unitSlug: string | null): string | null {
-  if (rule.titleStrategy === 'doc_title' && typeof match.metadata.title === 'string') return match.metadata.title;
-  if (rule.titleStrategy === 'file_name') return titleFromLocator(match, match.relativeLocator ?? match.resourceId ?? match.normalizedLocator);
+function titleForDeliveryUnit(
+  match: MatchedSource,
+  rule: DeliveryUnitRule,
+  unitSlug: string | null,
+): string | null {
+  if (rule.titleStrategy === 'doc_title' && typeof match.metadata.title === 'string')
+    return match.metadata.title;
+  if (rule.titleStrategy === 'file_name')
+    return titleFromLocator(
+      match,
+      match.relativeLocator ?? match.resourceId ?? match.normalizedLocator,
+    );
   if (rule.titleStrategy === 'none') return null;
   return unitSlug;
 }
 
 function titleFromLocator(match: MatchedSource, locator: string): string | null {
-  if (typeof match.metadata.title === 'string' && match.metadata.title.length > 0) return match.metadata.title;
+  if (typeof match.metadata.title === 'string' && match.metadata.title.length > 0)
+    return match.metadata.title;
   return path.posix.basename(locator) || null;
 }
 
 function withNamespace(match: MatchedSource, locator: string): string {
   if (match.locatorType !== 'path') return locator;
   if (!match.sourceNamespace) return locator;
-  if (locator === match.sourceNamespace || locator.startsWith(`${match.sourceNamespace}/`)) return locator;
+  if (locator === match.sourceNamespace || locator.startsWith(`${match.sourceNamespace}/`))
+    return locator;
   return `${match.sourceNamespace}/${locator}`;
 }
 
@@ -912,7 +1104,7 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};

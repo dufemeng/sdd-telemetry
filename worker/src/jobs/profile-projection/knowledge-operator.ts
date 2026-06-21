@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import { parseWikiPath } from '../wiki-path';
+import path from 'node:path';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
+import { relativeWikiPath } from '../wiki-path';
 import type { ProjectionContext, ProjectionOperator } from './runner';
+import { insertProfileKnowledgeAccess } from './knowledge-access-writer';
 
 /**
  * Knowledge recall projection（MVP-1，Task 12）—— 非自证链路。
@@ -80,32 +82,44 @@ export const knowledgeOperator: ProjectionOperator = {
         const locator = row.normalized_locator as string;
         if (!isInsideRoot(locator, wikiRoot)) continue;
 
-        const parsed = parseWikiPath(wikiRoot, locator);
+        const relativePath = relativeWikiPath(wikiRoot, locator);
+        if (relativePath == null) continue;
         const recallKey = sha256(`${ctx.profileId}:knowledge:${row.source_reference_key}`);
         const capabilityUsageId =
           row.skill_usage_id != null
-            ? ctx.registry.capabilityUsageBySkillUsageId.get(row.skill_usage_id) ?? null
+            ? (ctx.registry.capabilityUsageBySkillUsageId.get(row.skill_usage_id) ?? null)
             : null;
-        const deliveryUnitId = row.work_item_id != null
-          ? ctx.registry.deliveryUnitByWorkItemId.get(row.work_item_id) ?? null
-          : null;
+        const deliveryUnitId =
+          row.work_item_id != null
+            ? (ctx.registry.deliveryUnitByWorkItemId.get(row.work_item_id) ?? null)
+            : null;
 
-        await ctx.pool.query<ResultSetHeader>(
-          `INSERT INTO profile_knowledge_recalls
-             (profile_id, projection_run_id, recall_key, source_reference_key, source_reference_id,
-              tool_call_id, interaction_id, delivery_unit_id, capability_usage_id, user_id, session_id, prompt_id,
-              action_type, knowledge_locator, knowledge_domain, knowledge_axis, knowledge_system,
-              event_time, matched_rule_id, confidence, evidence_json, rule_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [
-            ctx.profileId, ctx.projectionRunId, recallKey, row.source_reference_key,
-            row.source_reference_id, row.tool_call_id, row.interaction_id, deliveryUnitId,
-            capabilityUsageId,
-            row.user_id, row.session_id, row.prompt_id, row.action_type, locator,
-            parsed.domain, parsed.axis, parsed.system, row.event_time, 'wiki-root',
-            'high', JSON.stringify({ wikiRoot, relative: parsed.relative }), KNOWLEDGE_RULE_VERSION,
-          ],
-        );
+        await insertProfileKnowledgeAccess(ctx.pool, {
+          profileId: ctx.profileId,
+          projectionRunId: ctx.projectionRunId,
+          recallKey,
+          sourceReferenceKey: row.source_reference_key,
+          sourceReferenceId: row.source_reference_id,
+          toolCallId: row.tool_call_id,
+          interactionId: row.interaction_id,
+          capabilityUsageId,
+          deliveryUnitId,
+          userId: row.user_id,
+          sessionId: row.session_id,
+          promptId: row.prompt_id,
+          actionType: row.action_type,
+          knowledgeLocator: locator,
+          sourceNamespace: path.basename(wikiRoot) || 'local',
+          relativePath,
+          eventTime: row.event_time,
+          matchedRuleId: 'wiki-root',
+          confidence: 'high',
+          evidenceJson: JSON.stringify({
+            wikiRoot,
+            relativeLocator: relativePath,
+          }),
+          ruleVersion: KNOWLEDGE_RULE_VERSION,
+        });
         projected += 1;
       }
     }

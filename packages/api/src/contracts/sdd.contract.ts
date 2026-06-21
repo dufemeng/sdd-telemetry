@@ -139,26 +139,30 @@ export const SddSkillAnalyticsSchema = z.object({
     responseCoverageRate: z.number().nullable(),
     pairingSuccessRate: z.number().nullable(),
   }),
-  topSemantics: z.array(
-    z.object({
-      semanticCode: z.string(),
-      displayName: z.string(),
-      usageCount: z.number(),
-      userCount: z.number(),
-      workItemCount: z.number(),
-      conversionRate: z.number().nullable(),
-    }),
-  ).max(10),
+  topSemantics: z
+    .array(
+      z.object({
+        semanticCode: z.string(),
+        displayName: z.string(),
+        usageCount: z.number(),
+        userCount: z.number(),
+        workItemCount: z.number(),
+        conversionRate: z.number().nullable(),
+      }),
+    )
+    .max(10),
   matchHealth: z.object({
     matchedCount: z.number(),
     unmatchedCount: z.number(),
     matchRate: z.number().nullable(),
-    topUnmatched: z.array(
-      z.object({
-        rawSkillName: z.string(),
-        usageCount: z.number(),
-      }),
-    ).max(5),
+    topUnmatched: z
+      .array(
+        z.object({
+          rawSkillName: z.string(),
+          usageCount: z.number(),
+        }),
+      )
+      .max(5),
   }),
 });
 
@@ -412,170 +416,6 @@ export const ReportUserSettingsRequestSchema = z.object({
   settings: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const WikiRecallRangeSchema = z.enum(['24h', '7d', '30d', '90d', 'all']);
-
-export const WikiRecallUserRankingItemSchema = z.object({
-  userId: IdSchema,
-  userName: z.string().nullable(),
-  hasWikiRootPath: z.boolean(),
-  totalRecalls: z.number(),
-  distinctFiles: z.number(),
-  distinctDomains: z.number(),
-  distinctSystems: z.number(),
-  lastRecallAt: ISODateTimeSchema.nullable(),
-});
-
-export const WikiRecallUserRankingResponseSchema = z.object({
-  items: z.array(WikiRecallUserRankingItemSchema),
-  total: z.number(),
-});
-
-export const WikiRecallWorkItemRankingItemSchema = z.object({
-  workItemId: IdSchema,
-  workItemSlug: z.string(),
-  businessDomain: z.string().nullable(),
-  totalRecalls: z.number(),
-  distinctDomains: z.number(),
-  distinctSystems: z.number(),
-  userCount: z.number(),
-});
-
-export const WikiRecallWorkItemRankingResponseSchema = z.object({
-  items: z.array(WikiRecallWorkItemRankingItemSchema),
-  total: z.number(),
-});
-
-export const WikiRecallHeatmapBucketSchema = z.object({
-  key: z.string(),
-  totalRecalls: z.number(),
-  distinctUsers: z.number(),
-});
-
-export const WikiRecallHeatmapResponseSchema = z.object({
-  buckets: z.array(WikiRecallHeatmapBucketSchema),
-});
-
-export const WikiRecallTimelinePointSchema = z.object({
-  t: ISODateTimeSchema,
-  group: z.string().nullable(),
-  count: z.number(),
-});
-
-export const WikiRecallTimelineResponseSchema = z.object({
-  points: z.array(WikiRecallTimelinePointSchema),
-});
-
-export const WikiRecallRowSchema = z.object({
-  id: IdSchema,
-  toolCallId: IdSchema,
-  interactionId: IdSchema,
-  skillUsageId: IdSchema.nullable(),
-  workItemId: IdSchema.nullable(),
-  userId: IdSchema.nullable(),
-  userName: z.string().nullable(),
-  actionType: z.string(),
-  rawPath: z.string(),
-  wikiRelativePath: z.string().nullable(),
-  wikiDomain: z.string().nullable(),
-  wikiAxis: z.string().nullable(),
-  wikiSystem: z.string().nullable(),
-  eventSequence: z.number().nullable(),
-  eventTime: ISODateTimeSchema.nullable(),
-});
-
-export const WikiRecallListResponseSchema = z.object({
-  items: z.array(WikiRecallRowSchema),
-  total: z.number(),
-});
-
-export const WikiCoverageRepoSchema = z.object({
-  repo: z.string(),
-  label: z.string(),
-  totalDocs: z.number(),
-  recalledDocs: z.number(),
-  coverageRate: z.number(),
-  recalls: z.number(),
-  deadDocs: z.number(),
-  newUnreadDocs: z.number(),
-  distinctUsers: z.number(),
-});
-
-export const WikiCoverageDomainSchema = z.object({
-  repo: z.string(),
-  domain: z.string(),
-  totalDocs: z.number(),
-  recalledDocs: z.number(),
-  recalls: z.number(),
-  deadDocs: z.number(),
-  newUnreadDocs: z.number(),
-  distinctUsers: z.number(),
-  lastRecallAt: ISODateTimeSchema.nullable(),
-});
-
-export const WikiCoverageResponseSchema = z.object({
-  scan: z.object({
-    configured: z.boolean(),
-    repos: z.array(
-      z.object({
-        repo: z.string(),
-        label: z.string(),
-        gitRef: z.string().nullable(),
-        scannedAt: ISODateTimeSchema,
-      }),
-    ),
-  }),
-  totals: z.object({
-    totalDocs: z.number(),
-    recalledDocs: z.number(),
-    coverageRate: z.number(),
-    recalls: z.number(),
-    coldDocs: z.number(),
-    deadDocs: z.number(),
-    newUnreadDocs: z.number(),
-    orphanPaths: z.number(),
-  }),
-  repos: z.array(WikiCoverageRepoSchema),
-  domains: z.array(WikiCoverageDomainSchema),
-});
-
-export const WikiDomainDocSchema = z.object({
-  relativePath: z.string(),
-  recallCount: z.number(),
-  distinctUsers: z.number(),
-  lastRecallAt: ISODateTimeSchema.nullable(),
-  lastToolCallId: IdSchema.nullable(),
-  status: z.enum(['hot', 'cold', 'dead', 'new']),
-  addedAt: ISODateTimeSchema.nullable(),
-});
-
-export const WikiDomainDocsResponseSchema = z.object({
-  repo: z.string(),
-  domain: z.string(),
-  items: z.array(WikiDomainDocSchema),
-});
-
-export const WikiDocDetailResponseSchema = z.object({
-  repo: z.string(),
-  relativePath: z.string(),
-  trend: z.array(z.object({ t: ISODateTimeSchema, count: z.number() })),
-  readers: z.array(
-    z.object({
-      userId: IdSchema,
-      userName: z.string().nullable(),
-      recallCount: z.number(),
-      lastRecallAt: ISODateTimeSchema.nullable(),
-    }),
-  ),
-  sourceWorkItems: z.array(
-    z.object({
-      workItemId: IdSchema,
-      workItemSlug: z.string(),
-      businessDomain: z.string().nullable(),
-      recallCount: z.number(),
-    }),
-  ),
-});
-
 export type SddSemantic = z.infer<typeof SddSemanticSchema>;
 export type CreateSddSemanticRequest = z.infer<typeof CreateSddSemanticRequestSchema>;
 export type UpdateSddSemanticRequest = z.infer<typeof UpdateSddSemanticRequestSchema>;
@@ -613,24 +453,3 @@ export type SddWorkItemDetail = z.infer<typeof SddWorkItemDetailSchema>;
 export type SddArtifactWrite = z.infer<typeof SddArtifactWriteSchema>;
 export type SddArtifactWriteListResponse = z.infer<typeof SddArtifactWriteListResponseSchema>;
 export type ReportUserSettingsRequest = z.infer<typeof ReportUserSettingsRequestSchema>;
-export type WikiRecallRange = z.infer<typeof WikiRecallRangeSchema>;
-export type WikiRecallUserRankingItem = z.infer<typeof WikiRecallUserRankingItemSchema>;
-export type WikiRecallUserRankingResponse = z.infer<
-  typeof WikiRecallUserRankingResponseSchema
->;
-export type WikiRecallWorkItemRankingItem = z.infer<typeof WikiRecallWorkItemRankingItemSchema>;
-export type WikiRecallWorkItemRankingResponse = z.infer<
-  typeof WikiRecallWorkItemRankingResponseSchema
->;
-export type WikiRecallHeatmapBucket = z.infer<typeof WikiRecallHeatmapBucketSchema>;
-export type WikiRecallHeatmapResponse = z.infer<typeof WikiRecallHeatmapResponseSchema>;
-export type WikiRecallTimelinePoint = z.infer<typeof WikiRecallTimelinePointSchema>;
-export type WikiRecallTimelineResponse = z.infer<typeof WikiRecallTimelineResponseSchema>;
-export type WikiRecallRow = z.infer<typeof WikiRecallRowSchema>;
-export type WikiRecallListResponse = z.infer<typeof WikiRecallListResponseSchema>;
-export type WikiCoverageResponse = z.infer<typeof WikiCoverageResponseSchema>;
-export type WikiCoverageRepo = z.infer<typeof WikiCoverageRepoSchema>;
-export type WikiCoverageDomain = z.infer<typeof WikiCoverageDomainSchema>;
-export type WikiDomainDoc = z.infer<typeof WikiDomainDocSchema>;
-export type WikiDomainDocsResponse = z.infer<typeof WikiDomainDocsResponseSchema>;
-export type WikiDocDetailResponse = z.infer<typeof WikiDocDetailResponseSchema>;

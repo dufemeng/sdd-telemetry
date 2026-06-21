@@ -29,15 +29,6 @@ import {
   SddVersionItemSchema,
   SddWorkItemDetailSchema,
   SddWorkItemSchema,
-  WikiCoverageResponseSchema,
-  WikiDocDetailResponseSchema,
-  WikiDomainDocsResponseSchema,
-  WikiRecallHeatmapResponseSchema,
-  WikiRecallListResponseSchema,
-  WikiRecallRangeSchema,
-  WikiRecallTimelineResponseSchema,
-  WikiRecallUserRankingResponseSchema,
-  WikiRecallWorkItemRankingResponseSchema,
   type SddArtifactWriteListResponse,
   type SddErrorItem,
   type SddFunnel,
@@ -56,15 +47,6 @@ import {
   type SddVersionItem,
   type SddWorkItem,
   type SddWorkItemDetail,
-  type WikiCoverageResponse,
-  type WikiDocDetailResponse,
-  type WikiDomainDocsResponse,
-  type WikiRecallHeatmapResponse,
-  type WikiRecallListResponse,
-  type WikiRecallRange,
-  type WikiRecallTimelineResponse,
-  type WikiRecallUserRankingResponse,
-  type WikiRecallWorkItemRankingResponse,
 } from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
 import { parseWithSchema } from '../../common/validation/parse-with-schema';
@@ -204,108 +186,21 @@ export class SddController {
     return ok(parseWithSchema(SddVersionItemSchema.array(), data));
   }
 
-  @Get('/wiki-recalls/users')
-  async wikiRecallUserRanking() {
-    const range = this.parseWikiRecallRange();
-    const sortBy = parseWikiRecallUserSortBy(firstQueryValue(this.ctx.query.sortBy));
-    const data: WikiRecallUserRankingResponse =
-      await this.sddQueryService.getWikiRecallUserRanking(
-        range,
-        sortBy,
-        parsePage(firstQueryValue(this.ctx.query.page), 1, 10_000),
-        parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 200),
-      );
-    return ok(parseWithSchema(WikiRecallUserRankingResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/work-items')
-  async wikiRecallWorkItemRanking() {
-    const data: WikiRecallWorkItemRankingResponse =
-      await this.sddQueryService.getWikiRecallWorkItemRanking(
-        this.parseWikiRecallRange(),
-        firstQueryValue(this.ctx.query.wikiDomain) ?? null,
-        firstQueryValue(this.ctx.query.userId) ?? null,
-        parsePage(firstQueryValue(this.ctx.query.page), 1, 10_000),
-        parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 200),
-      );
-    return ok(parseWithSchema(WikiRecallWorkItemRankingResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/heatmap')
-  async wikiRecallHeatmap() {
-    const data: WikiRecallHeatmapResponse = await this.sddQueryService.getWikiRecallHeatmap(
-      this.parseWikiRecallRange(),
-      parseWikiRecallHeatmapGroupBy(firstQueryValue(this.ctx.query.groupBy)),
-    );
-    return ok(parseWithSchema(WikiRecallHeatmapResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/timeline')
-  async wikiRecallTimeline() {
-    const data: WikiRecallTimelineResponse = await this.sddQueryService.getWikiRecallTimeline(
-      this.parseWikiRecallRange(),
-      firstQueryValue(this.ctx.query.granularity) === 'hour' ? 'hour' : 'day',
-      firstQueryValue(this.ctx.query.groupBy) === 'axis' ? 'axis' : 'domain',
-      firstQueryValue(this.ctx.query.wikiDomain) ?? null,
-    );
-    return ok(parseWithSchema(WikiRecallTimelineResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/list')
-  async listWikiRecalls() {
-    const filters: { workItemId?: string; userId?: string; skillUsageId?: string } = {};
-    const workItemId = firstQueryValue(this.ctx.query.workItemId);
-    const userId = firstQueryValue(this.ctx.query.userId);
-    const skillUsageId = firstQueryValue(this.ctx.query.skillUsageId);
-    if (workItemId) filters.workItemId = workItemId;
-    if (userId) filters.userId = userId;
-    if (skillUsageId) filters.skillUsageId = skillUsageId;
-
-    const data: WikiRecallListResponse = await this.sddQueryService.listWikiRecalls(
-      this.parseWikiRecallRange(),
-      filters,
-      parsePage(firstQueryValue(this.ctx.query.page), 1, 10_000),
-      parsePage(firstQueryValue(this.ctx.query.pageSize), 50, 500),
-    );
-    return ok(parseWithSchema(WikiRecallListResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/coverage')
-  async wikiRecallCoverage() {
-    const data: WikiCoverageResponse = await this.sddQueryService.getWikiRecallCoverage();
-    return ok(parseWithSchema(WikiCoverageResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/docs')
-  async wikiRecallDomainDocs() {
-    const repo = firstQueryValue(this.ctx.query.repo) ?? '';
-    const domain = firstQueryValue(this.ctx.query.domain) ?? '';
-    const data: WikiDomainDocsResponse = await this.sddQueryService.getWikiRecallDomainDocs(repo, domain);
-    return ok(parseWithSchema(WikiDomainDocsResponseSchema, data));
-  }
-
-  @Get('/wiki-recalls/doc-detail')
-  async wikiRecallDocDetail() {
-    const repo = firstQueryValue(this.ctx.query.repo) ?? '';
-    const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
-    const data: WikiDocDetailResponse =
-      await this.sddQueryService.getWikiRecallDocDetail(repo, relativePath);
-    return ok(parseWithSchema(WikiDocDetailResponseSchema, data));
-  }
-
   @Get('/wiki-recalls/content/by-path')
   async wikiRecallContentByPath() {
     const repo = firstQueryValue(this.ctx.query.repo) ?? '';
     const relativePath = firstQueryValue(this.ctx.query.relativePath) ?? '';
-    const data: SddWikiRecallContent = await this.sddQueryService.getWikiRecallContentByPath(repo, relativePath);
+    const data: SddWikiRecallContent = await this.sddQueryService.getWikiRecallContentByPath(
+      repo,
+      relativePath,
+    );
     return ok(parseWithSchema(SddWikiRecallContentSchema, data));
   }
 
   @Get('/wiki-recalls/content/:toolCallId')
   async wikiRecallContent() {
     const toolCallId = this.ctx.params.toolCallId as string;
-    const data: SddWikiRecallContent =
-      await this.sddQueryService.getWikiRecallContent(toolCallId);
+    const data: SddWikiRecallContent = await this.sddQueryService.getWikiRecallContent(toolCallId);
     return ok(parseWithSchema(SddWikiRecallContentSchema, data));
   }
 
@@ -332,8 +227,11 @@ export class SddController {
     const workItemId = this.ctx.params.workItemId as string;
     const artifactId = this.ctx.params.artifactId as string;
     const userId = firstQueryValue(this.ctx.query.userId);
-    const data: SddArtifactWriteListResponse =
-      await this.sddQueryService.listArtifactWrites(workItemId, artifactId, userId ?? undefined);
+    const data: SddArtifactWriteListResponse = await this.sddQueryService.listArtifactWrites(
+      workItemId,
+      artifactId,
+      userId ?? undefined,
+    );
     return ok(parseWithSchema(SddArtifactWriteListResponseSchema, data));
   }
 
@@ -342,13 +240,6 @@ export class SddController {
     const input = parseWithSchema(ReportUserSettingsRequestSchema, this.ctx.request.body);
     const data: SddUserItem = await this.sddQueryService.reportUserSettings(input);
     return ok(parseWithSchema(SddUserItemSchema, data));
-  }
-
-  private parseWikiRecallRange(): WikiRecallRange {
-    return parseWithSchema(
-      WikiRecallRangeSchema,
-      firstQueryValue(this.ctx.query.range) ?? '30d',
-    );
   }
 }
 
@@ -363,17 +254,4 @@ function parsePage(value: string | undefined, fallback: number, max: number): nu
   const parsed = value ? Number(value) : fallback;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(1, Math.floor(parsed)));
-}
-
-function parseWikiRecallUserSortBy(
-  value: string | undefined,
-): 'total' | 'distinct_files' | 'recent' {
-  return value === 'distinct_files' || value === 'recent' ? value : 'total';
-}
-
-function parseWikiRecallHeatmapGroupBy(
-  value: string | undefined,
-): 'domain' | 'axis' | 'system' {
-  if (value === 'axis' || value === 'system') return value;
-  return 'domain';
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Clock3 } from 'lucide-react';
-import type { WikiRecallTimelinePoint } from '@sdd-telemetry/api';
+import type { ProfileKnowledgeTimelineResponse } from '@sdd-telemetry/api';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatInteger } from '@/lib/format';
 import { useWikiRecallTimeline } from '../useWikiRecalls';
@@ -9,152 +9,132 @@ import { CARD_STYLE } from '../styles';
 
 type TimelineGranularity = 'day' | 'hour';
 
-const GRANULARITY_OPTIONS: Array<{ value: TimelineGranularity; label: string }> = [
+const GRANULARITY_OPTIONS: Array<{
+  value: TimelineGranularity;
+  label: string;
+}> = [
   { value: 'day', label: '按日' },
   { value: 'hour', label: '按小时' },
-];
-
-const SERIES_COLORS = [
-  '#c9ce3c',
-  '#60a5fa',
-  '#34d399',
-  '#f59e0b',
-  '#a78bfa',
-  '#f472b6',
-  '#94a3b8',
-  '#22d3ee',
 ];
 
 export function RecallTrendChart() {
   const [granularity, setGranularity] = useState<TimelineGranularity>('day');
   const { data, isLoading, error } = useWikiRecallTimeline('30d', granularity);
-  const chart = useMemo(
-    () => buildTimelineChart(data?.points ?? []),
-    [data?.points],
-  );
+  const chart = useMemo(() => buildTimelineChart(data ?? { buckets: [], dimensions: [] }), [data]);
 
   return (
-    <section className="p-[14px] rounded-[6px]" style={CARD_STYLE}>
-      <div className="mb-1 flex items-center justify-between">
+    <section className="rounded-[6px] p-[14px]" style={CARD_STYLE}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2" style={{ color: 'var(--color-primary)' }}>
           <Clock3 size={18} />
-          <span className="text-[14px] font-semibold text-[#f5f5f5]">路径维度趋势</span>
+          <span className="text-[14px] font-semibold text-[#f5f5f5]">知识访问与路径维度</span>
         </div>
-        <div className="flex items-center gap-2">
-          <SegmentedControl label="" value={granularity} options={GRANULARITY_OPTIONS} onChange={setGranularity} />
-        </div>
+        <SegmentedControl
+          label=""
+          value={granularity}
+          options={GRANULARITY_OPTIONS}
+          onChange={setGranularity}
+        />
       </div>
-      <div className="grid gap-3">
-        <QueryNotice loading={isLoading} error={error} loadingText="正在加载时间线..." />
-        {chart.times.length > 0 ? (
-          <>
-            <div className="flex min-h-[230px] items-end gap-2 overflow-x-auto rounded-[4px] px-2 py-3">
-              {chart.times.map((time) => {
-                const bucket = chart.byTime.get(time)!;
-                const total = bucket.total;
-                return (
-                  <div key={time} className="flex min-w-[28px] flex-col items-center gap-2">
-                    <div
-                      className="relative w-[18px] overflow-hidden rounded-t-[4px]"
-                      style={{
-                        height: `${Math.max((total / chart.maxTotal) * 172, 4)}px`,
-                        background: 'rgba(255,255,255,0.06)',
-                      }}
-                      title={`${formatTimelineTick(time, granularity)}: ${formatInteger(total)} 次`}
-                    >
-                      <div className="absolute inset-x-0 bottom-0 flex h-full flex-col-reverse">
-                        {chart.groups.map((group, index) => {
-                          const value = bucket.values.get(group) ?? 0;
-                          if (value === 0) return null;
-                          return (
-                            <div
-                              key={group}
-                              style={{
-                                flexGrow: value,
-                                background: SERIES_COLORS[index % SERIES_COLORS.length],
-                                minHeight: 2,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <span className="w-[44px] rotate-[-35deg] text-right text-[10px] text-[var(--color-muted)]">
-                      {formatTimelineTick(time, granularity)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {chart.groups.map((group, index) => (
-                <span
-                  key={group}
-                  className="inline-flex items-center gap-1 rounded-[4px] px-2 py-[3px] text-[11px] text-[var(--color-secondary)]"
-                  style={{ border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)' }}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: SERIES_COLORS[index % SERIES_COLORS.length] }}
-                  />
-                  {group}
-                </span>
-              ))}
-              <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-muted)]">
-                共 {formatInteger(chart.total)} 次
+      <QueryNotice loading={isLoading} error={error} loadingText="正在加载知识访问..." />
+      {chart.buckets.length > 0 ? (
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center justify-between text-[11px]">
+              <span className="font-medium text-[var(--color-secondary)]">访问次数</span>
+              <span
+                className="text-[var(--color-muted)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                共 {formatInteger(chart.totalAccesses)} 次
               </span>
             </div>
-          </>
-        ) : (
-          !isLoading && !error ? <EmptyState text="暂无召回时间线数据" /> : null
-        )}
-      </div>
+            <div className="flex min-h-[230px] items-end gap-2 overflow-x-auto px-2 py-3">
+              {chart.buckets.map((bucket) => (
+                <div key={bucket.t} className="flex min-w-[28px] flex-col items-center gap-2">
+                  <div
+                    className="w-[18px] rounded-t-[4px]"
+                    style={{
+                      height: `${Math.max((bucket.accessCount / chart.maxAccessCount) * 172, 4)}px`,
+                      background: 'var(--color-primary)',
+                    }}
+                    title={`${formatTimelineTick(bucket.t, granularity)}: ${formatInteger(bucket.accessCount)} 次访问`}
+                  />
+                  <span className="w-[44px] rotate-[-35deg] text-right text-[10px] text-[var(--color-muted)]">
+                    {formatTimelineTick(bucket.t, granularity)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center justify-between text-[11px]">
+              <span className="font-medium text-[var(--color-secondary)]">全部路径维度</span>
+              <span
+                className="text-[var(--color-muted)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {formatInteger(chart.dimensions.length)} 个
+              </span>
+            </div>
+            <div className="max-h-[230px] overflow-y-auto pr-1">
+              {chart.dimensions.map((dimension) => (
+                <div
+                  key={dimension.segment}
+                  className="grid grid-cols-[minmax(0,1fr)_84px_36px] items-center gap-2 py-[5px]"
+                >
+                  <span
+                    className="truncate text-[11px] text-[var(--color-secondary)]"
+                    title={dimension.segment}
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {dimension.segment}
+                  </span>
+                  <span
+                    className="h-[6px] overflow-hidden rounded-full"
+                    style={{ background: '#202016' }}
+                  >
+                    <span
+                      className="block h-full rounded-full"
+                      style={{
+                        width: `${Math.max((dimension.accessCount / chart.maxDimensionAccessCount) * 100, 3)}%`,
+                        background: '#c9ce3c',
+                      }}
+                    />
+                  </span>
+                  <span
+                    className="text-right text-[11px] text-[#f5f5f5]"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {formatInteger(dimension.accessCount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : !isLoading && !error ? (
+        <EmptyState text="暂无知识访问数据" />
+      ) : null}
     </section>
   );
 }
 
-function buildTimelineChart(points: WikiRecallTimelinePoint[]) {
-  const rawGroupTotals = new Map<string, number>();
-  for (const point of points) {
-    const group = displayGroup(point.group);
-    rawGroupTotals.set(group, (rawGroupTotals.get(group) ?? 0) + point.count);
-  }
-
-  const topGroups = [...rawGroupTotals.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 7)
-    .map(([group]) => group);
-  const topGroupSet = new Set(topGroups);
-  const hasOther = [...rawGroupTotals.keys()].some((group) => !topGroupSet.has(group));
-  const groups = hasOther ? [...topGroups, '其他'] : topGroups;
-
-  const byTime = new Map<string, { total: number; values: Map<string, number> }>();
-  let total = 0;
-  let maxTotal = 1;
-
-  for (const point of points) {
-    const rawGroup = displayGroup(point.group);
-    const group = topGroupSet.has(rawGroup) ? rawGroup : '其他';
-    const bucket = byTime.get(point.t) ?? { total: 0, values: new Map<string, number>() };
-    bucket.total += point.count;
-    bucket.values.set(group, (bucket.values.get(group) ?? 0) + point.count);
-    byTime.set(point.t, bucket);
-    total += point.count;
-    maxTotal = Math.max(maxTotal, bucket.total);
-  }
+export function buildTimelineChart(data: ProfileKnowledgeTimelineResponse) {
+  const buckets = [...data.buckets].sort((a, b) => a.t.localeCompare(b.t));
+  const dimensions = [...data.dimensions].sort(
+    (a, b) => b.accessCount - a.accessCount || a.segment.localeCompare(b.segment),
+  );
 
   return {
-    groups,
-    byTime,
-    times: [...byTime.keys()].sort(),
-    total,
-    maxTotal,
+    buckets,
+    dimensions,
+    totalAccesses: buckets.reduce((total, bucket) => total + bucket.accessCount, 0),
+    maxAccessCount: Math.max(1, ...buckets.map((bucket) => bucket.accessCount)),
+    maxDimensionAccessCount: Math.max(1, ...dimensions.map((dimension) => dimension.accessCount)),
   };
-}
-
-function displayGroup(group: string | null): string {
-  return group && group.length > 0 ? group : '(未识别)';
 }
 
 function formatTimelineTick(value: string, granularity: TimelineGranularity): string {

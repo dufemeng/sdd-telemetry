@@ -60,7 +60,6 @@ export type ProfilePresentationStages = z.infer<typeof ProfilePresentationStages
 export const ProfilePresentationWidgetsSchema = z.object({
   artifactCoverageFunnel: z.enum(['sdd_stage', 'artifact_type', 'none']),
   userMaturity: z.enum(['sdd_maturity', 'none']),
-  knowledgeCoverage: z.enum(['filesystem_scan', 'recall_facts']),
   callQuality: z.boolean(),
   matchHealth: z.boolean(),
   triggerSourceBreakdown: z.boolean(),
@@ -73,7 +72,6 @@ export const ProfilePresentationSchema = z.object({
   maturityStages: z.array(z.string()),
   artifactStageOrder: z.array(z.string()),
   hiddenMetrics: z.array(z.string()),
-  knowledgeCoverageMode: z.enum(['filesystem_scan', 'recall_facts']),
   labels: ProfilePresentationLabelsSchema.optional(),
   stages: ProfilePresentationStagesSchema.optional(),
   widgets: ProfilePresentationWidgetsSchema.optional(),
@@ -116,7 +114,7 @@ export const ProfileInspectorFactCountsSchema = z.object({
   artifactWrites: z.number(),
   artifactTurns: z.number(),
   capabilityUsages: z.number(),
-  knowledgeRecalls: z.number(),
+  knowledgeAccesses: z.number(),
   codeActivities: z.number(),
   errorEvents: z.number(),
 });
@@ -155,7 +153,9 @@ export const ProfileInspectorResolvedSourceRuleSchema = z.object({
   resolvedRoot: z.string().nullable(),
   description: z.string().nullable(),
 });
-export type ProfileInspectorResolvedSourceRule = z.infer<typeof ProfileInspectorResolvedSourceRuleSchema>;
+export type ProfileInspectorResolvedSourceRule = z.infer<
+  typeof ProfileInspectorResolvedSourceRuleSchema
+>;
 
 export const ProfileInspectorResponseSchema = z.object({
   profile: z.object({
@@ -163,31 +163,34 @@ export const ProfileInspectorResponseSchema = z.object({
     displayName: z.string(),
     status: ProfileStatusSchema,
     projectionMode: z.enum(['sdd_bridge', 'source_backed']),
-    readSource: z.enum(['legacy_sdd', 'profile_projection']),
     manifest: ProfileCapabilityManifestSchema,
     presentation: ProfilePresentationSchema,
   }),
   validation: z.object({
     valid: z.boolean(),
-    issues: z.array(z.object({
-      ruleId: z.string().optional(),
-      code: z.string().optional(),
-      severity: z.enum(['error', 'warning']).optional(),
-      path: z.string().optional(),
-      message: z.string(),
-    })),
+    issues: z.array(
+      z.object({
+        ruleId: z.string().optional(),
+        code: z.string().optional(),
+        severity: z.enum(['error', 'warning']).optional(),
+        path: z.string().optional(),
+        message: z.string(),
+      }),
+    ),
   }),
   runtime: z.object({
     configured: z.boolean(),
     resolvedRuleCount: z.number(),
-    unresolved: z.array(z.object({
-      ruleId: z.string(),
-      reason: z.string(),
-    })),
+    unresolved: z.array(
+      z.object({
+        ruleId: z.string(),
+        reason: z.string(),
+      }),
+    ),
     resolvedSourceRules: z.array(ProfileInspectorResolvedSourceRuleSchema),
   }),
   projection: z.object({
-    readMode: z.enum(['projection', 'legacy', 'empty']),
+    readMode: z.enum(['projection', 'empty']),
     currentRun: ProfileInspectorProjectionRunSchema.nullable(),
     latestRun: ProfileInspectorProjectionRunSchema.nullable(),
     counts: ProfileInspectorFactCountsSchema,
@@ -460,8 +463,8 @@ export const ProfileCapabilityAnalyticsSchema = z.object({
       )
       .max(5),
   }),
-  /** 当前 profile 实际读取模式；legacy 表示该视图依赖投影但暂走 sdd_bridge，前端据此降级为空态。 */
-  readMode: z.enum(['projection', 'legacy', 'empty']).optional(),
+  /** 当前 profile 实际读取模式。 */
+  readMode: z.enum(['projection', 'empty']).optional(),
 });
 export type ProfileCapabilityAnalytics = z.infer<typeof ProfileCapabilityAnalyticsSchema>;
 
@@ -701,81 +704,80 @@ export type ProfileUserActivityResponse = z.infer<typeof ProfileUserActivityResp
 
 // ── 知识库分析（knowledge，产品文案叫「知识库」）─────────────────────────────
 
-export const ProfileKnowledgeCoverageQuerySchema = TimeRangeQuerySchema;
-export type ProfileKnowledgeCoverageQuery = z.infer<typeof ProfileKnowledgeCoverageQuerySchema>;
-
-export const ProfileKnowledgeCoverageRepoSchema = z.object({
+export const ProfileKnowledgeSourceSummarySchema = z.object({
   sourceNamespace: z.string(),
   label: z.string(),
-  totalDocs: z.number(),
-  recalledDocs: z.number(),
-  coverageRate: z.number(),
-  recalls: z.number(),
-  deadDocs: z.number(),
-  newUnreadDocs: z.number(),
+  accessedDocs: z.number(),
+  accessCount: z.number(),
   distinctUsers: z.number(),
 });
-export type ProfileKnowledgeCoverageRepo = z.infer<typeof ProfileKnowledgeCoverageRepoSchema>;
+export type ProfileKnowledgeSourceSummary = z.infer<typeof ProfileKnowledgeSourceSummarySchema>;
 
-export const ProfileKnowledgeCoverageDomainSchema = z.object({
+export const ProfileKnowledgePathDimensionSummarySchema = z.object({
   sourceNamespace: z.string(),
-  domain: z.string(),
-  totalDocs: z.number(),
-  recalledDocs: z.number(),
-  recalls: z.number(),
-  deadDocs: z.number(),
-  newUnreadDocs: z.number(),
+  pathSegment: z.string(),
+  accessedDocs: z.number(),
+  accessCount: z.number(),
   distinctUsers: z.number(),
-  lastRecallAt: ISODateTimeSchema.nullable(),
+  lastAccessAt: ISODateTimeSchema.nullable(),
 });
-export type ProfileKnowledgeCoverageDomain = z.infer<
-  typeof ProfileKnowledgeCoverageDomainSchema
+export type ProfileKnowledgePathDimensionSummary = z.infer<
+  typeof ProfileKnowledgePathDimensionSummarySchema
 >;
 
-export const ProfileKnowledgeCoverageResponseSchema = z.object({
-  scan: z.object({
-    configured: z.boolean(),
-    repos: z.array(
-      z.object({
-        sourceNamespace: z.string(),
-        label: z.string(),
-        gitRef: z.string().nullable(),
-        scannedAt: ISODateTimeSchema,
-      }),
-    ),
-  }),
+export const ProfileKnowledgeOverviewResponseSchema = z.object({
   totals: z.object({
-    totalDocs: z.number(),
-    recalledDocs: z.number(),
-    coverageRate: z.number(),
-    recalls: z.number(),
-    coldDocs: z.number(),
-    deadDocs: z.number(),
-    newUnreadDocs: z.number(),
-    orphanPaths: z.number(),
+    accessedDocs: z.number(),
+    accessCount: z.number(),
+    distinctUsers: z.number(),
   }),
-  repos: z.array(ProfileKnowledgeCoverageRepoSchema),
-  domains: z.array(ProfileKnowledgeCoverageDomainSchema),
+  sources: z.array(ProfileKnowledgeSourceSummarySchema),
+  pathDimensions: z.array(ProfileKnowledgePathDimensionSummarySchema),
 });
-export type ProfileKnowledgeCoverageResponse = z.infer<
-  typeof ProfileKnowledgeCoverageResponseSchema
+export type ProfileKnowledgeOverviewResponse = z.infer<
+  typeof ProfileKnowledgeOverviewResponseSchema
 >;
 
 export const ProfileKnowledgeTimelineQuerySchema = TimeRangeQuerySchema.extend({
   range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
   granularity: z.enum(['day', 'hour']).optional(),
+  sourceNamespace: z.string().trim().min(1).max(512).optional(),
+  pathSegment: z
+    .string()
+    .trim()
+    .min(1)
+    .max(512)
+    .regex(/^[^/\\]+$/)
+    .optional(),
 });
 export type ProfileKnowledgeTimelineQuery = z.infer<typeof ProfileKnowledgeTimelineQuerySchema>;
 
-export const ProfileKnowledgeTimelinePointSchema = z.object({
+export const ProfileKnowledgeTimelineBucketSchema = z.object({
   t: ISODateTimeSchema,
-  group: z.string().nullable(),
-  count: z.number(),
+  accessCount: z.number().int().nonnegative(),
 });
-export type ProfileKnowledgeTimelinePoint = z.infer<typeof ProfileKnowledgeTimelinePointSchema>;
+export type ProfileKnowledgeTimelineBucket = z.infer<typeof ProfileKnowledgeTimelineBucketSchema>;
+
+export const ProfileKnowledgeTimelineDimensionPointSchema = z.object({
+  t: ISODateTimeSchema,
+  accessCount: z.number().int().nonnegative(),
+});
+export type ProfileKnowledgeTimelineDimensionPoint = z.infer<
+  typeof ProfileKnowledgeTimelineDimensionPointSchema
+>;
+
+export const ProfileKnowledgeTimelineDimensionSchema = z.object({
+  segment: z.string().min(1),
+  accessCount: z.number().int().nonnegative(),
+  points: z.array(ProfileKnowledgeTimelineDimensionPointSchema),
+});
+export type ProfileKnowledgeTimelineDimension = z.infer<
+  typeof ProfileKnowledgeTimelineDimensionSchema
+>;
 
 export const ProfileKnowledgeTimelineResponseSchema = z.object({
-  points: z.array(ProfileKnowledgeTimelinePointSchema),
+  buckets: z.array(ProfileKnowledgeTimelineBucketSchema),
+  dimensions: z.array(ProfileKnowledgeTimelineDimensionSchema),
 });
 export type ProfileKnowledgeTimelineResponse = z.infer<
   typeof ProfileKnowledgeTimelineResponseSchema
@@ -791,7 +793,7 @@ export const ProfileKnowledgeListQuerySchema = TimeRangeQuerySchema.extend({
 });
 export type ProfileKnowledgeListQuery = z.infer<typeof ProfileKnowledgeListQuerySchema>;
 
-export const ProfileKnowledgeRecallItemSchema = z.object({
+export const ProfileKnowledgeAccessItemSchema = z.object({
   id: IdSchema,
   toolCallId: IdSchema.nullable(),
   interactionId: IdSchema.nullable(),
@@ -802,29 +804,24 @@ export const ProfileKnowledgeRecallItemSchema = z.object({
   actionType: z.string(),
   rawLocator: z.string().nullable(),
   knowledgeRelativePath: z.string().nullable(),
-  knowledgeDomain: z.string().nullable(),
-  knowledgeAxis: z.string().nullable(),
-  knowledgeSystem: z.string().nullable(),
   eventSequence: z.number().nullable(),
   eventTime: ISODateTimeSchema.nullable(),
 });
-export type ProfileKnowledgeRecallItem = z.infer<typeof ProfileKnowledgeRecallItemSchema>;
+export type ProfileKnowledgeAccessItem = z.infer<typeof ProfileKnowledgeAccessItemSchema>;
 
-export const ProfileKnowledgeRecallListResponseSchema = z.object({
-  items: z.array(ProfileKnowledgeRecallItemSchema),
+export const ProfileKnowledgeAccessListResponseSchema = z.object({
+  items: z.array(ProfileKnowledgeAccessItemSchema),
   total: z.number(),
 });
-export type ProfileKnowledgeRecallListResponse = z.infer<
-  typeof ProfileKnowledgeRecallListResponseSchema
+export type ProfileKnowledgeAccessListResponse = z.infer<
+  typeof ProfileKnowledgeAccessListResponseSchema
 >;
 
 export const ProfileKnowledgeDeliveryUnitRankingItemSchema = z.object({
   deliveryUnitId: IdSchema,
   unitSlug: z.string().nullable(),
   businessDomain: z.string().nullable(),
-  totalRecalls: z.number(),
-  distinctDomains: z.number(),
-  distinctSystems: z.number(),
+  accessCount: z.number(),
   userCount: z.number(),
 });
 export type ProfileKnowledgeDeliveryUnitRankingItem = z.infer<
@@ -833,7 +830,14 @@ export type ProfileKnowledgeDeliveryUnitRankingItem = z.infer<
 
 export const ProfileKnowledgeDeliveryUnitRankingQuerySchema = TimeRangeQuerySchema.extend({
   range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('7d'),
-  wikiDomain: z.string().optional(),
+  sourceNamespace: z.string().trim().min(1).max(512).optional(),
+  pathSegment: z
+    .string()
+    .trim()
+    .min(1)
+    .max(512)
+    .regex(/^[^/\\]+$/)
+    .optional(),
   userId: IdSchema.optional(),
 });
 export type ProfileKnowledgeDeliveryUnitRankingQuery = z.infer<
@@ -848,35 +852,36 @@ export type ProfileKnowledgeDeliveryUnitRankingResponse = z.infer<
   typeof ProfileKnowledgeDeliveryUnitRankingResponseSchema
 >;
 
-export const ProfileKnowledgeDomainDocSchema = z.object({
+export const ProfileKnowledgePathDimensionDocSchema = z.object({
   relativePath: z.string(),
-  recallCount: z.number(),
+  accessCount: z.number(),
   distinctUsers: z.number(),
-  lastRecallAt: ISODateTimeSchema.nullable(),
-  status: z.enum(['hot', 'cold', 'dead', 'new']),
-  addedAt: ISODateTimeSchema.nullable(),
+  lastAccessAt: ISODateTimeSchema.nullable(),
+  firstAccessAt: ISODateTimeSchema.nullable(),
 });
-export type ProfileKnowledgeDomainDoc = z.infer<typeof ProfileKnowledgeDomainDocSchema>;
+export type ProfileKnowledgePathDimensionDoc = z.infer<
+  typeof ProfileKnowledgePathDimensionDocSchema
+>;
 
-export const ProfileKnowledgeDomainDocsResponseSchema = z.object({
+export const ProfileKnowledgePathDimensionDocsResponseSchema = z.object({
   sourceNamespace: z.string(),
-  domain: z.string(),
-  items: z.array(ProfileKnowledgeDomainDocSchema),
+  pathSegment: z.string(),
+  items: z.array(ProfileKnowledgePathDimensionDocSchema),
 });
-export type ProfileKnowledgeDomainDocsResponse = z.infer<
-  typeof ProfileKnowledgeDomainDocsResponseSchema
+export type ProfileKnowledgePathDimensionDocsResponse = z.infer<
+  typeof ProfileKnowledgePathDimensionDocsResponseSchema
 >;
 
 export const ProfileKnowledgeDocDetailResponseSchema = z.object({
   sourceNamespace: z.string(),
   relativePath: z.string(),
-  trend: z.array(z.object({ t: ISODateTimeSchema, count: z.number() })),
+  trend: z.array(z.object({ t: ISODateTimeSchema, accessCount: z.number() })),
   readers: z.array(
     z.object({
       userId: IdSchema,
       userName: z.string().nullable(),
-      recallCount: z.number(),
-      lastRecallAt: ISODateTimeSchema.nullable(),
+      accessCount: z.number(),
+      lastAccessAt: ISODateTimeSchema.nullable(),
     }),
   ),
   sourceDeliveryUnits: z.array(
@@ -884,7 +889,7 @@ export const ProfileKnowledgeDocDetailResponseSchema = z.object({
       deliveryUnitId: IdSchema,
       unitSlug: z.string().nullable(),
       businessDomain: z.string().nullable(),
-      recallCount: z.number(),
+      accessCount: z.number(),
     }),
   ),
 });

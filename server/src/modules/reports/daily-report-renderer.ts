@@ -28,14 +28,18 @@ export function renderMarkdown(m: DailyReportMetrics): string {
   lines.push('## 核心数据');
   lines.push(`- 活跃用户：${m.kpis.activeUsers.current} 人${formatDelta(m.kpis.activeUsers)}`);
   lines.push(`- Skill 调用：${m.kpis.skillUsages.current} 次${formatDelta(m.kpis.skillUsages)}`);
-  lines.push(`- 覆盖需求：${m.kpis.coveredWorkItems.current} 个${formatDelta(m.kpis.coveredWorkItems)}`);
-  lines.push(`- 文档产出：${m.kpis.documentOutputs.current} 篇${formatDelta(m.kpis.documentOutputs)}`);
+  lines.push(
+    `- 覆盖需求：${m.kpis.coveredWorkItems.current} 个${formatDelta(m.kpis.coveredWorkItems)}`,
+  );
+  lines.push(
+    `- 文档产出：${m.kpis.documentOutputs.current} 篇${formatDelta(m.kpis.documentOutputs)}`,
+  );
   lines.push(
     `- 代码落地：改动 ${m.codeImpact.codeWriteCount} 次，读取 ${m.codeImpact.codeReadCount} 次，涉及 ${m.codeImpact.touchedFileCount} 个代码文件、${m.codeImpact.contributorCount} 位用户`,
   );
   if (m.kpis.wikiRecalls.current > 0) {
     lines.push(
-      `- Wiki 召回：${m.kpis.wikiRecalls.current} 次，覆盖 ${m.knowledge.distinctFileCount} 个文件、${m.knowledge.distinctDomainCount} 个业务域`,
+      `- Wiki 访问：${m.kpis.wikiRecalls.current} 次，覆盖 ${m.knowledge.distinctFileCount} 个文件、${m.knowledge.distinctPathDimensionCount} 个路径维度`,
     );
   }
   lines.push('');
