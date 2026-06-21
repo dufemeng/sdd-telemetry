@@ -15,6 +15,14 @@ _Avoid_: Data source, storage
 The documentation or knowledge base that agents read to understand business and engineering context.
 _Avoid_: Wiki path, docs folder
 
+**Knowledge Access Fact**:
+A profile-scoped fact that an agent attempted to read, grep, or glob a resource from a Knowledge Source. It keeps the source namespace, relative locator, interaction, tool call, outcome evidence, and event time without materializing repository-specific directory levels.
+_Avoid_: Wiki recall row, axis record
+
+**Path Dimension**:
+Any directory segment derived at query time from a Knowledge Access Fact's relative locator. Path Dimensions are overlapping labels, not a partition of total accesses, so their counts must not be stacked or summed as the access total.
+_Avoid_: Axis, fixed domain/system level
+
 **Process Document Source**:
 The documents that represent demand, proposal, design, task, review, or other workflow artifacts.
 _Avoid_: Requirements repo, artifact folder

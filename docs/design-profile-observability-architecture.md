@@ -156,7 +156,7 @@ Dashboard / Monitor / Alert / Evaluation
 中文解释：
 
 | 层级 | 职责 | 第一期落地 |
-| --- | --- | --- |
+| ---------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | raw events | 保存原始证据，不理解业务工作流 | 复用 `otel_raw_payloads`、`otel_log_events` |
 | canonical facts | 平台通用事实语言，不绑定 profile | 复用 `sdd_interactions`、`sdd_interaction_tool_calls`，新增最小 source reference |
 | profile projection | 用 profile 规则把事实投影成需求、能力、artifact、知识召回、代码活动 | 新增 `profile_*` 派生表 |
@@ -206,14 +206,14 @@ interaction
 中文定义：
 
 | 概念 | 中文含义 | 当前 SDD 对应物 |
-| --- | --- | --- |
+| --------------------- | ------------------------------------------------------- | --------------------------------------------------- |
 | interaction | 一轮用户对话，含 prompt/response/session/user | `sdd_interactions` |
 | capability invocation | 一次能力调用，可以是 skill、command、MCP tool、subagent | `sdd_skill_usages` |
 | evidence event | 真实观测到的证据事件，如读写文件、MCP 读写在线文档 | `otel_log_events` / tool call |
 | source reference | 被读写资源的统一引用，本地路径或在线文档 URL/docId | 当前分散在 tool input / wiki recall / artifact path |
 | delivery unit | 通用架构里的交付单元，产品页面仍可叫“需求” | `sdd_work_items` |
 | artifact | 过程文档类产出 | `sdd_work_item_artifacts` |
-| knowledge recall | 知识库读取 | `sdd_wiki_recalls` |
+| knowledge access      | 知识库读取事实                                          | `source_references`（profile 投影）                 |
 | code change | 代码读写/实施信号 | 现有日报和用户页的 code impact |
 
 ### 6.1 需求 vs delivery unit
@@ -325,7 +325,7 @@ type ProfileCapabilityManifest = {
 第一期能力边界：
 
 | 能力 | 第一期要求 |
-| --- | --- |
+| ---------------- | -------------------------------------------------- |
 | capabilityUsage | 必须 |
 | deliveryUnits | 必须 |
 | artifacts | 必须 |
@@ -373,7 +373,7 @@ sourceRules: [
     fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
     relativeRoot: 'plan',
     includeGlobs: ['**/*.md'],
-    actions: ['write', 'update']
+    actions: ['write', 'update'],
   },
   {
     ruleId: 'e2e-knowledge-docs',
@@ -386,9 +386,9 @@ sourceRules: [
     fallbackBaseEnv: 'E2E_MONOREPO_ROOT',
     relativeRoot: 'docs',
     includeGlobs: ['**/*.md'],
-    actions: ['read']
-  }
-]
+    actions: ['read'],
+  },
+];
 ```
 
 `fallbackBaseEnv + relativeRoot` 只是部署便利机制。通用 matcher / projection 只能消费解析后的 root，不能在实现中硬编码 端到端 Monorepo profile 目录后缀。
@@ -475,7 +475,7 @@ actions: read
 对四个动作分别确认：
 
 | 动作 | 必须确认 |
-| --- | --- |
+| ------------------- | --------------------------------------------------------------------------------------------- |
 | 知识库 read | URL/hash 是否在 tool input 或结构化 tool result 中；是否命中知识库 urlPrefix |
 | 非知识库 read | 同 MCP 下 locator 是否不会命中知识库或过程文档规则 |
 | requirements create | 新文档的稳定 locator 在哪里：tool input、tool result、body_json、body_text 还是 response 文本 |
@@ -536,7 +536,7 @@ operator(inputFacts, profileConfig) => projectedFacts
 第一期需要沉淀的算子：
 
 | 算子 | 输入 | 输出 |
-| --- | --- | --- |
+| ----------------------------------- | --------------------------------------- | ----------------------------------- |
 | `extractSourceReferences` | tool calls / events | 本地路径或在线文档 source reference |
 | `matchSourceByPathGlob` | source reference + path rules | matched source |
 | `matchSourceByUrlPrefix` | source reference + URL rules | matched source |
@@ -618,7 +618,7 @@ for (const profile of profiles) {
 核心字段：
 
 | 字段 | 说明 |
-| --- | --- |
+| -------------------- | ------------------------------ |
 | `id` | 主键 |
 | `reference_key` | 幂等 key |
 | `interaction_id` | 关联 interaction |
@@ -684,7 +684,7 @@ profile_code_activities
 记录每次投影运行。第一期只实现全量投影，增量和回填只是字段预留：
 
 | 字段 | 说明 |
-| --- | --- |
+| ----------------------------- | ---------------------------------------------------------- |
 | `profile_id` | profile |
 | `run_type` | full / incremental / backfill；第一期只实现 full，其余预留 |
 | `status` | running / completed / failed |
@@ -698,7 +698,7 @@ profile_code_activities
 对应当前 `sdd_skill_usages` 的通用版本：
 
 | 字段 | 说明 |
-| --- | --- |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `profile_id` | profile |
 | `projection_run_id` | 来源 projection run |
 | `usage_key` | 幂等 key |
@@ -719,7 +719,7 @@ profile_code_activities
 对应当前 `sdd_work_items` 的通用版本，页面仍可叫“需求”：
 
 | 字段 | 说明 |
-| --- | --- |
+| ------------------------------------------------------------------- | ----------------------------------------------------- |
 | `profile_id` | profile |
 | `projection_run_id` | 来源 projection run |
 | `delivery_unit_key` | 幂等 key |
@@ -737,7 +737,7 @@ profile_code_activities
 对应当前 `sdd_work_item_artifacts`：
 
 | 字段 | 说明 |
-| --- | --- |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `profile_id` | profile |
 | `projection_run_id` | 来源 projection run |
 | `artifact_key` | 幂等 key |
@@ -761,30 +761,34 @@ profile_code_activities
 
 #### profile_knowledge_recalls
 
-对应当前 `sdd_wiki_recalls`：
+知识访问事实的 profile 投影。来源是 `source_references` 与 `profile_source_matches`，不再从
+`sdd_wiki_recalls` 复制，也不解析或物化知识库目录层级：
 
 | 字段 | 说明 |
-| --- | --- |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
 | `profile_id` | profile |
 | `projection_run_id` | 来源 projection run |
 | `recall_key` | 幂等 key |
-| `source_reference_id` | 知识库 source |
+| `source_reference_key` / `source_reference_id`                                 | 知识访问事实及其稳定身份                                                   |
 | `tool_call_id` / `interaction_id` / `capability_usage_id` / `delivery_unit_id` | 链路 |
 | `user_id` / `session_id` / `prompt_id` | 上下文 |
 | `action_type` | read / grep / glob 等 |
 | `knowledge_locator` | URL/path/docId |
-| `knowledge_domain` / `knowledge_axis` / `knowledge_system` | 可选解析 |
 | `event_time` | 时间 |
-| `matched_rule_id` / `confidence` / `evidence_json` / `rule_version` | 证据 |
+| `matched_rule_id` / `confidence` / `evidence_json` / `rule_version`            | 证据；`evidence_json` 保存 `sourceNamespace`、`relativeLocator` 等来源信息 |
 
-第一期只统计 read knowledge。读取 requirements 不纳入；写 wiki 不纳入。
+知识访问只统计 read-class（read / grep / glob）。读取 requirements 不纳入；写知识库不纳入。
+
+知识库目录结构不是数据库 contract。看板需要的任意目录段维度，统一在查询时从
+`relativeLocator` 即时计算：一次知识访问只计一次总量；同一次访问可以命中多个重叠路径段，
+这些路径段的计数不能堆叠或相加为访问总量。禁止重新引入 `domain / axis / system` 固定层级字段。
 
 #### profile_code_activities
 
 第一期轻量代码实施能力：
 
 | 字段 | 说明 |
-| --- | --- |
+| ------------------------------------------------------------------- | -------------------------------------- |
 | `profile_id` | profile |
 | `projection_run_id` | 来源 projection run |
 | `activity_key` | 幂等 key |
@@ -920,7 +924,7 @@ GET /api/profiles/:profileId/demands/:demandId/artifacts/:artifactId/timeline
 ### 11.6 知识库分析
 
 ```text
-GET /api/profiles/:profileId/knowledge/coverage
+GET /api/profiles/:profileId/knowledge/overview
 GET /api/profiles/:profileId/knowledge/docs
 GET /api/profiles/:profileId/knowledge/content
 GET /api/profiles/:profileId/knowledge/doc-detail
@@ -1064,17 +1068,10 @@ profile 规则：
 
 所有差异必须能通过 `matchedRuleId / evidenceJson / profileVersion` 解释。
 
-### 13.3 读源切换
+### 13.3 唯一读源
 
-对账通过后，第一阶段应把总览和四大看板读源切到 profile contract，但保留旧读源回退。
-
-建议开关：
-
-```text
-PROFILE_DASHBOARD_READ_SOURCE=legacy_sdd | profile_projection
-```
-
-开发环境默认 `profile_projection`；生产演示前可保留回退。
+总览和各看板只读取 current profile projection。不存在 current run 时返回 typed empty 或
+`PROFILE_DATA_NOT_READY`；不再提供 `PROFILE_DASHBOARD_READ_SOURCE`，也不回退旧 SDD 聚合。
 
 ## 14. 代码实施环节设计
 
@@ -1130,7 +1127,7 @@ sourceRules: [
     relativeRoot: 'frontend_repo',
     repoKind: 'frontend',
     includeGlobs: ['**/*'],
-    actions: ['read', 'write', 'update']
+    actions: ['read', 'write', 'update'],
   },
   {
     ruleId: 'e2e-backend-code',
@@ -1144,9 +1141,9 @@ sourceRules: [
     relativeRoot: 'backend_repo',
     repoKind: 'backend',
     includeGlobs: ['**/*'],
-    actions: ['read', 'write', 'update']
-  }
-]
+    actions: ['read', 'write', 'update'],
+  },
+];
 ```
 
 ## 15. 页面演进

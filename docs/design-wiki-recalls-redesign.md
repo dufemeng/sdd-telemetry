@@ -1,6 +1,6 @@
 # 知识库分析重构设计（知识资产视角 + 三业务线 + 覆盖率/死知识）
 
-状态：待评审
+状态：已废弃（覆盖率/filesystem scan/domain 方案已删除；当前口径见 `docs/api-contract.md`）
 日期：2026-06-01
 可视化示意：`docs/design-wiki-recalls-redesign.html`（暗色终端风，含下钻抽屉 + 内容 Modal 交互；`#drawer` / `#modal` 锚点可深链到打开态）
 关联代码：`web/src/pages/sdd/wiki-recalls/*`、`server/src/modules/sdd/*`、`server/src/modules/sdd/wiki-content.ts`、`worker/src/jobs/wiki-path.ts`、`packages/api/src/contracts/sdd.contract.ts`

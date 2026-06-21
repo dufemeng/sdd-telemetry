@@ -308,7 +308,7 @@ profile_current_projection_runs
 发布规则：
 
 - adapter 写入一个新的 `profile_projection_runs`。
-- 所有 profile_* 明细写入该 run。
+- 所有 profile\_\* 明细写入该 run。
 - 成功后同一事务：
   - `profile_projection_runs.status = completed`
   - `profile_current_projection_runs.current_projection_run_id = newRunId`
@@ -556,12 +556,12 @@ clean batch completed
 
 ### sdd-default 也要进入统一投影维护
 
-虽然 sdd-default 目前可以回退读 legacy SDD 表，但作为 profile 它也应该由 `SddBridgeProjectionAdapter` 自动维护 `profile_*`。
+`sdd-default` 和其他 profile 一样由统一投影维护 `profile_*`。
 
 最终目标：
 
-- 所有 profile 的页面都优先读 `profile_projection`。
-- `legacy_sdd` 只作为兼容回退，不作为主路径。
+- 所有 profile 页面只读 current profile projection。
+- current run 不存在时返回未就绪，不回退旧 SDD 聚合。
 
 ### 失败隔离
 

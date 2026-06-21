@@ -1,6 +1,6 @@
 # 知识库详情页设计（主语=知识资产 · 业务域深下钻 · 文档为脊柱 · 谁喂养谁消费）
 
-状态：已实施
+状态：已废弃（2026-06-21 起不再作为实现依据；当前口径见 `docs/api-contract.md` 的 profile knowledge API）
 日期：2026-06-02
 产出方式：`/office-hours`（intrapreneurship 口径；脊柱/深度/入口三问已定 A/A/A，范围档定 B 理想版）
 关联代码：`web/src/pages/sdd/wiki-recalls/*`、`server/src/modules/sdd/{wiki-coverage,sdd-query.repository,sdd-query.service,sdd.controller}.ts`、`packages/api/src/contracts/sdd.contract.ts`

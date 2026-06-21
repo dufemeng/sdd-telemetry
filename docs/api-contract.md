@@ -75,7 +75,7 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
 Dashboard 用户通过签名 `HttpOnly` cookie `sdd_session` 维持登录态。cookie 默认有效期为 7 天，生产环境使用 `Secure; SameSite=Lax`。用户角色：
 
 | 角色 | 权限 |
-| --- | --- |
+| ------------- | -------------------------------------------------------- |
 | `viewer` | 访问 dashboard 只读查询 |
 | `super_admin` | `viewer` 权限，以及成员管理、语义映射写入和 `/api/ops/*` |
 
@@ -713,7 +713,9 @@ schema_parse_failed
 
 ```json
 {
-  "user": { /* SddUserItem，字段同 6.15，但不受 LIMIT 200 限制 */ },
+  "user": {
+    /* SddUserItem，字段同 6.15，但不受 LIMIT 200 限制 */
+  },
   "summary": {
     "workItemCount": 5,
     "artifactCount": 3,
@@ -761,6 +763,7 @@ schema_parse_failed
 需求详情，包括相关 semantic、usage、artifact、error 摘要。
 
 新增字段（需求维度 summary）：
+
 - `turnCount` — 关联该需求的不重复 interaction 数
 - `sessionCount` — 跨越的 session 数
 - `contributorCount` — 参与的用户数
@@ -834,302 +837,65 @@ export const ReportUserSettingsRequestSchema = z.object({
 
 ### 6.21 GET /api/sdd/wiki-recalls/content/:toolCallId
 
-兼容接口。知识库分析页面的新读路径是 `/api/profiles/:profileId/knowledge/*`；`/api/sdd/wiki-recalls/*` 保留给 legacy SDD 调用方。
+按 `toolCallId` 打开一次知识访问对应的当前文档内容。该端点只服务交互明细中的正文查看；累计聚合、覆盖率、domain/axis/system 查询端点均已删除。
 
-按 `tool_call_id` 取该 wiki 召回对应知识库文档内容。后端从 `sdd_wiki_recalls` 取「仓库名 + 仓库内相对路径」，重映射到服务器 `KNOWLEDGE_BASE_ROOT` 后只读读取（越权守卫 + 大小上限）。**采集机绝对路径不可直接用**，只取仓库名与相对路径重拼。弱依赖：读不到按 `reason` 分级降级，不报错。
+Response：`SddWikiRecallContentSchema`。
 
-仅 `action_type='read'` 的召回返回内容；`KNOWLEDGE_BASE_ROOT`（容器内默认 `/knowledge`）与大小上限 `WIKI_CONTENT_MAX_BYTES`（默认 512KB）由服务端配置，未配置即返回 `not_configured` 降级。
+### 6.22 GET /api/sdd/wiki-recalls/content/by-path
 
-Response：
-
-```ts
-export const SddWikiRecallContentSchema = z.object({
-  found: z.boolean(),
-  reason: z.enum([
-    'ok', // 读到
-    'recall_not_found', // 该 tool_call_id 无召回记录
-    'not_readable_action', // glob/grep，无单一文件
-    'not_configured', // 未配置 KNOWLEDGE_BASE_ROOT
-    'repo_missing', // 知识库仓库未 clone
-    'file_missing', // 文件不存在
-    'not_a_file', // 路径非常规文件
-  ]),
-  repoName: z.string().nullable(),
-  relativePath: z.string().nullable(),
-  rawPath: z.string().nullable(), // 采集机原始路径，仅展示/复制用
-  isMarkdown: z.boolean(),
-  content: z.string().nullable(), // 超过大小上限时按 truncated 截断
-  truncated: z.boolean(),
-});
-```
-
-### 6.22 GET /api/sdd/wiki-recalls/coverage
-
-知识库资产覆盖率快照。服务端扫描 `KNOWLEDGE_BASE_ROOT` 下三个知识库目录，与 `sdd_wiki_recalls` 做交叉比对，返回按 repo / domain / 文档级别的覆盖统计。
-
-Query：无。
-
-Response：
-
-```ts
-export const WikiCoverageResponseSchema = z.object({
-  scan: z.object({
-    configured: z.boolean(),
-    repos: z.array(z.object({
-      repo: z.string(),
-      label: z.string(),
-      gitRef: z.string().nullable(),
-      scannedAt: z.string(),
-    })),
-  }),
-  totals: z.object({
-    totalDocs: z.number(),
-    recalledDocs: z.number(),
-    coverageRate: z.number(),
-    recalls: z.number(),
-    coldDocs: z.number(),
-    deadDocs: z.number(),
-    newUnreadDocs: z.number(),
-    orphanPaths: z.number(),
-  }),
-  repos: z.array(z.object({
-    repo: z.string(),
-    label: z.string(),
-    totalDocs: z.number(),
-    recalledDocs: z.number(),
-    coverageRate: z.number(),
-    recalls: z.number(),
-    deadDocs: z.number(),
-    newUnreadDocs: z.number(),
-    distinctUsers: z.number(), // 该知识库独立去重人数（非逐文档累加）
-  })),
-  domains: z.array(z.object({
-    repo: z.string(),
-    domain: z.string(),
-    totalDocs: z.number(),
-    recalledDocs: z.number(),
-    recalls: z.number(),
-    deadDocs: z.number(),
-    newUnreadDocs: z.number(),
-    distinctUsers: z.number(), // 该领域独立去重人数
-    lastRecallAt: z.string().nullable(),
-  })),
-});
-```
-
-说明：
-
-1. `configured` 为 `false` 时 `KNOWLEDGE_BASE_ROOT` 未设置，前端展示降级占位。
-2. `deadDocs`：mtime 超过 `deadKnowledgeGraceDays`（默认 30）且召回数为 0 的文档。
-3. `newUnreadDocs`：mtime 在 `deadKnowledgeGraceDays`（默认 30 天）内且召回数为 0 的文档。
-4. `distinctUsers` 来自独立的 `COUNT(DISTINCT user_id)` SQL 查询，按 domain 和 repo 分别聚合，**不是**逐文档 distinctUsers 的算术和。
-5. 扫描结果缓存在进程内存，TTL 由 `scanCacheTtlMs`（默认 600s / 10 分钟）控制。
-
-### 6.23 GET /api/sdd/wiki-recalls/docs
-
-单领域文档清单。返回指定 repo + domain 下所有文档的召回统计和状态标签。
-
-Query：
-
-```text
-repo    string (trade | loan | wealth)
-domain  string (如 cashier、portfolio)
-```
-
-Response：
-
-```ts
-export const WikiDomainDocsResponseSchema = z.object({
-  repo: z.string(),
-  domain: z.string(),
-  items: z.array(z.object({
-    relativePath: z.string(),
-    recallCount: z.number(),
-    distinctUsers: z.number(),
-    lastRecallAt: z.string().nullable(),
-    lastToolCallId: z.string().nullable(),
-    status: z.enum(['hot', 'cold', 'dead', 'new']),
-    addedAt: z.string().nullable(),
-  })),
-});
-```
-
-说明：
-
-1. `status` 按阈值分类：`hot`（≥10 次）、`cold`（1-9 次）、`dead`（0 次 + mtime 超宽限期，默认 >30 天）、`new`（0 次 + mtime 在宽限期内，默认 ≤30 天）。
-2. `distinctUsers` 是该文档级别的 `COUNT(DISTINCT user_id)`，不含跨文档累加。
-
-### 6.24 GET /api/sdd/wiki-recalls/content/by-path
-
-按 repo + relativePath 直接读取知识库文档当前版本。不依赖 `sdd_wiki_recalls` 记录，适用于无召回历史的新文档或沉睡文档查看。
-
-Query：
-
-```text
-repo          string (trade | loan | wealth)
-relativePath  string (URL-encoded)
-```
-
-Response：与 6.20 相同的 `SddWikiRecallContentSchema`。
-
-说明：与 6.20 的区别在于入口——6.20 以 `toolCallId` 从 DB 查路径再读文件，6.23 直接以路径读文件。6.23 返回的始终是「当前挂载版本」，前端显示版本提示。
-
-### 6.25 GET /api/sdd/wiki-recalls/doc-detail
-
-按 `(repo, relativePath)` 反查单篇文档的召回明细：趋势、读者榜、来源需求。全部现有表只读聚合，零迁移。
-
-Query：
-
-```text
-repo          string (trade | loan | wealth)
-relativePath  string (URL-encoded)
-```
-
-Response：`WikiDocDetailResponseSchema`
-
-```ts
-export const WikiDocDetailResponseSchema = z.object({
-  repo: z.string(),
-  relativePath: z.string(),
-  trend: z.array(z.object({ t: ISODateTimeSchema, count: z.number() })),
-  readers: z.array(z.object({
-    userId: IdSchema,
-    userName: z.string().nullable(),
-    recallCount: z.number(),
-    lastRecallAt: ISODateTimeSchema.nullable(),
-  })),
-  sourceWorkItems: z.array(z.object({
-    workItemId: IdSchema,
-    workItemSlug: z.string(),
-    businessDomain: z.string().nullable(),
-    recallCount: z.number(),
-  })),
-});
-```
-
-说明：
-- `sdd_wiki_recalls` 无 repo 列，按 `wiki_relative_path` 精确匹配（路径含 `domain-*` 前缀天然区分库内路径）。
-- 根目录文档（`wiki_domain IS NULL`，如 `SUMMARY.md`）同样按路径精确匹配，不受 domain 影响。
-- `readers` 来自 `GROUP BY user_id` JOIN `sdd_users`；`sourceWorkItems` 来自 `GROUP BY COALESCE(wr.work_item_id, su.work_item_id)` JOIN `sdd_work_items`。
-- 无召回的文档返回空数组，不报错。
-
-### 6.26 timeline 扩展参数 wikiDomain
-
-`GET /api/sdd/wiki-recalls/timeline` 新增可选 query 参数：
-
-```text
-wikiDomain  string (可选，URL-encoded)
-```
-
-- 不传 = 原行为（全量，向后兼容）。
-- 传普通域名（如 `cashier`）→ 追加 `AND wiki_domain = ?`。
-- 传 `（根目录）` → 追加 `AND wiki_domain IS NULL`（复用 `ROOT_DOMAIN_LABEL` 特判）。
+按 `repo + relativePath` 打开当前文档内容。知识库分析页的统计数据只走 `/api/profiles/:profileId/knowledge/*`。
 
 ## 7. profile API
 
 Profile API 是前端看板的统一读接口。URL 中的 `profileId` 选择当前 profile；响应字段使用统一领域名，前端可按 profile presentation 映射成 SDD 文案。
 
-### 7.1 GET /api/profiles/:profileId/knowledge/docs
+### 7.1 GET /api/profiles/:profileId/knowledge/overview
 
-单领域知识文档清单。用于知识库分析领域下钻页，替代页面侧对 `/api/sdd/wiki-recalls/docs` 的直接调用。
+返回知识访问事实概览。来源空间取 `evidence_json.sourceNamespace`；路径维度取相对路径中的全部目录段并在查询时计算，不读取物化的 domain/axis/system。同一文档可以属于多个路径维度。
+
+Response：`ProfileKnowledgeOverviewResponseSchema`，核心字段为 `totals`、`sources[]` 和 `pathDimensions[]`。
+
+### 7.2 GET /api/profiles/:profileId/knowledge/timeline
+
+返回真实访问总量和独立路径维度。每条访问只计入一个 `buckets[].accessCount`；同一访问可以命中多个目录段维度，因此 `dimensions[]` 不能相加作为总量。
+
+Query：
+
+```text
+range            24h | 7d | 30d | 90d | all
+granularity      day | hour (optional)
+sourceNamespace  string (optional)
+pathSegment      string (optional, exact directory segment)
+```
+
+Response：`{ buckets: Array<{ t, accessCount }>, dimensions: Array<{ segment, accessCount, points }> }`。
+
+### 7.3 GET /api/profiles/:profileId/knowledge/docs
+
+返回指定来源空间中，相对路径包含指定目录段的实际访问文档。
 
 Query：
 
 ```text
 sourceNamespace  string
-domain           string
+pathSegment      string
 ```
 
-Response：`ProfileKnowledgeDomainDocsResponseSchema`
+Response：`ProfileKnowledgePathDimensionDocsResponseSchema`。
 
-```ts
-{
-  sourceNamespace: string,
-  domain: string,
-  items: Array<{
-    relativePath: string,
-    recallCount: number,
-    distinctUsers: number,
-    lastRecallAt: string | null,
-    status: 'hot' | 'cold' | 'dead' | 'new',
-    addedAt: string | null,
-  }>,
-}
-```
+### 7.4 GET /api/profiles/:profileId/knowledge/doc-detail
 
-### 7.2 GET /api/profiles/:profileId/knowledge/doc-detail
+按 `sourceNamespace + relativePath` 返回文档趋势、读者和来源交付单元。Response：`ProfileKnowledgeDocDetailResponseSchema`。
 
-按 `(sourceNamespace, relativePath)` 返回单篇知识文档的趋势、读者和来源交付单元。
+### 7.5 GET /api/profiles/:profileId/knowledge/content/by-path
 
-Query：
+按 `sourceNamespace + relativePath` 读取知识文档当前内容。Response：`ProfileKnowledgeContentSchema`。
 
-```text
-sourceNamespace  string
-relativePath     string (URL-encoded)
-```
+### 7.6 GET /api/profiles/:profileId/knowledge/content/:toolCallId
 
-Response：`ProfileKnowledgeDocDetailResponseSchema`
+按知识访问的 `toolCallId` 读取对应文档内容。仅可读动作返回内容，其他动作按 `reason` 降级。Response：`ProfileKnowledgeContentSchema`。
 
-```ts
-{
-  sourceNamespace: string,
-  relativePath: string,
-  trend: Array<{ t: string, count: number }>,
-  readers: Array<{
-    userId: string,
-    userName: string | null,
-    recallCount: number,
-    lastRecallAt: string | null,
-  }>,
-  sourceDeliveryUnits: Array<{
-    deliveryUnitId: string,
-    unitSlug: string | null,
-    businessDomain: string | null,
-    recallCount: number,
-  }>,
-}
-```
-
-### 7.3 GET /api/profiles/:profileId/knowledge/content/by-path
-
-按 `sourceNamespace + relativePath` 读取知识文档当前内容。legacy SDD 读知识库扫描目录；source-backed profile 从当前投影的 source reference 解析本地文件。
-
-Query：
-
-```text
-sourceNamespace  string
-relativePath     string (URL-encoded)
-```
-
-Response：`ProfileKnowledgeContentSchema`
-
-### 7.4 GET /api/profiles/:profileId/knowledge/content/:toolCallId
-
-按知识召回的 `toolCallId` 读取对应文档内容。仅可读动作返回内容，其他动作按 `reason` 降级。
-
-Response：`ProfileKnowledgeContentSchema`
-
-```ts
-{
-  found: boolean,
-  reason:
-    | 'ok'
-    | 'recall_not_found'
-    | 'not_readable_action'
-    | 'not_configured'
-    | 'repo_missing'
-    | 'file_missing'
-    | 'not_a_file',
-  sourceNamespace: string | null,
-  relativePath: string | null,
-  rawPath: string | null,
-  isMarkdown: boolean,
-  content: string | null,
-  truncated: boolean,
-}
-```
-
-### 7.5 GET /api/profiles/:profileId/errors/overview
+### 7.7 GET /api/profiles/:profileId/errors/overview
 
 Profile 异常分析概览。只读取当前 profile 的 current projection run，不回退 legacy `/api/sdd/errors`。
 
@@ -1178,7 +944,7 @@ Response：`ProfileErrorOverviewResponseSchema`
 }
 ```
 
-### 7.6 GET /api/profiles/:profileId/errors
+### 7.8 GET /api/profiles/:profileId/errors
 
 Profile 异常明细列表，服务异常分类页和单事件详情页的表格入口。
 
@@ -1201,7 +967,7 @@ pageSize        number default 50 max 200
 
 Response：`ProfileErrorListResponseSchema`
 
-### 7.7 GET /api/profiles/:profileId/errors/:errorEventId
+### 7.9 GET /api/profiles/:profileId/errors/:errorEventId
 
 Profile 异常详情。返回列表字段，加上 `sessionId`、`promptId`、`errorMessageHash`、`stackPreview` 和 `evidence`。
 

@@ -1,6 +1,6 @@
 # 实施任务：知识库详情页（主语=知识资产 · 业务域深下钻 · 文档为脊柱）
 
-状态：待执行
+状态：已废弃（domain/axis/system 与 filesystem scan 机制已删除，不再执行本任务清单）
 日期：2026-06-02
 设计依据（**唯一事实源，先读**）：`docs/design-wiki-domain-detail-page.md`
 可视化示意（交互/布局/动效以此为准）：`docs/design-wiki-domain-detail-page.html`

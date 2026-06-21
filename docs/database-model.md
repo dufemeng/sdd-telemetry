@@ -52,7 +52,7 @@ SDD 业务层
 Dashboard 登录成员表，与遥测维度表 `sdd_users` 严格分离。密码保存 Node `scrypt` 版本化散列，不保存明文。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| ----------------- | --------------- | ---------------- | ------------------------------------------- |
 | `id` | BIGINT UNSIGNED | PK | 登录成员主键 |
 | `username` | VARCHAR(64) | NOT NULL, UNIQUE | 登录名 |
 | `display_name` | VARCHAR(64) | NOT NULL | 页面显示名 |
@@ -278,7 +278,7 @@ sha256(
 一次 prompt / response 交互的元数据。
 
 | 字段                    | 类型              | 约束               | 说明                                         |
-| ----------------------- | ----------------- | ------------------ | -------------------------------------------- |
+| ----------------------- | ----------------- | ------------------ | --------------------------------------- |
 | `id`                    | BIGINT UNSIGNED   | PK                 | 主键                                         |
 | `interaction_key`       | CHAR(64)          | NOT NULL, UNIQUE   | 稳定交互 key                                 |
 | `user_id`               | BIGINT UNSIGNED   | NULL, INDEX        | 用户                                         |
@@ -491,7 +491,7 @@ event_id 存在：
 每次 artifact 写入事件的派生记录，用于「文档生成时间线」下钻。worker 在 `upsertWorkItems` 里派生 artifact 后顺手写入，不改变 artifact 本身的去重/upsert 语义。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| ----------------- | --------------- | ---------------- | --------------------------------------------------- |
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `write_key` | CHAR(64) | NOT NULL, UNIQUE | 稳定写入 key，sha256(event_id + ':' + artifact_key) |
 | `artifact_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_item_artifacts.id` |
@@ -521,7 +521,7 @@ event_id 存在：
 **归因窗口**：一篇文档的讨论 turn = 同 `session_id`、`started_at` 落在 `[控制它的 skill 运行激活 turn started_at, 该文档写入 event_time)`、且本身不是写入节点的 interactions。多文档 session 用各自 skill 段的窗口切分；无 skill 锚点的写入不产生讨论 turn（退回纯写入节点）。worker 在 `upsertWorkItems` 写入 artifact 后前向补全，历史数据用 `backfill-artifact-turns.ts` 回填。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| ------------------- | --------------- | ---------------- | -------------------------------------------------------------- |
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `turn_key` | CHAR(64) | NOT NULL, UNIQUE | 幂等 key，sha256('turn:' + artifact_id + ':' + interaction_id) |
 | `artifact_id` | BIGINT UNSIGNED | NOT NULL, INDEX | 关联 `sdd_work_item_artifacts.id` |
@@ -552,7 +552,7 @@ Profile 配置主表与版本表。`published_version_id` 表示管理员最新�
 `db:seed` 只 bootstrap 缺失的内置 profile，不覆盖已有 DB published 配置；内置 TS profile 只是 fallback/template，不再是运行时唯一真相。
 
 | 表 | 关键字段 | 说明 |
-| --- | --- | --- |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | `profile_configs` | `profile_id`, `status`, `projection_mode`, `origin`, `published_version_id`, `serving_version_id`, `draft_version_id` | profile 生命周期与版本指针 |
 | `profile_config_versions` | `profile_id`, `version_no`, `version_status`, `config_json`, `definition_hash`, `published_at` | 完整配置快照；published 版本不可变 |
 | `profile_config_events` | `profile_id`, `profile_config_version_id`, `event_type`, `actor_user_id`, `event_json` | draft/publish/disable 等审计事件 |
@@ -562,7 +562,7 @@ Profile 配置主表与版本表。`published_version_id` 表示管理员最新�
 工具调用中抽取出的 profile 无关 source 事实。`source_batch_id` 记录首次抽取来源 batch，用于 clean batch 后自动标记 dirty profile。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| -------------------- | --------------- | ---------------- | ------------------------------------------ |
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `reference_key` | CHAR(64) | NOT NULL, UNIQUE | source fact 幂等 key |
 | `source_batch_id` | BIGINT UNSIGNED | NULL, INDEX | 来源 `otel_ingest_batches.id` |
@@ -579,7 +579,7 @@ Profile 配置主表与版本表。`published_version_id` 表示管理员最新�
 source-backed profile 的匹配物化表。投影时从本表 join `source_references` 读取事实字段；配置 hash 变化或 dirty 投影前按 `(profile_id, profile_config_version_id)` 重匹配 target version。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| --------------------------- | --------------- | ----------------------------------------------------------------------------- | ------------------------------ |
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `profile_id` | VARCHAR(191) | NOT NULL, UNIQUE(profile_id, profile_config_version_id, source_reference_key) | Profile ID |
 | `profile_config_version_id` | BIGINT UNSIGNED | NOT NULL | 匹配所属配置版本 |
@@ -602,7 +602,7 @@ source-backed profile 的匹配物化表。投影时从本表 join `source_refer
 Profile 自动投影 job 表，同时承担 CLI 和常驻 worker 的并发互斥。`dirty_seq` 是单调计数器，用于避免 DATETIME 同毫秒比较误清 dirty。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| -------------------------------- | --------------- | ------------------ | ------------------------------------------- |
 | `profile_id` | VARCHAR(191) | PK | Profile ID |
 | `target_config_version_id` | BIGINT UNSIGNED | NULL | 当前 dirty/running job 要投影的目标配置版本 |
 | `status` | VARCHAR(32) | NOT NULL, INDEX | idle / dirty / running / failed |
@@ -624,7 +624,7 @@ Profile 自动投影 job 表，同时承担 CLI 和常驻 worker 的并发互斥
 Profile 异常看板的 current-run 明细表。来源来自清洗后的 `sdd_interaction_tool_calls` 与 `sdd_errors`，但只有能被当前 profile 强归因的失败才写入：工具失败依赖同 tool_call 的 `profile_source_matches` 或同 interaction 的当前 run facts；模型/API 异常只接受同 interaction 已进入当前 profile facts。
 
 | 字段 | 类型 | 约束 | 说明 |
-| --- | --- | --- | --- |
+| --------------------- | --------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `id` | BIGINT UNSIGNED | PK | 主键 |
 | `profile_id` | VARCHAR(191) | NOT NULL, INDEX | Profile ID |
 | `projection_run_id` | BIGINT UNSIGNED | NOT NULL, UNIQUE(projection_run_id, error_key) | current-run 隔离 |
@@ -651,6 +651,16 @@ Profile 异常看板的 current-run 明细表。来源来自清洗后的 `sdd_in
 | `evidence_json` | JSON | NULL | 匹配证据 |
 | `rule_version` | VARCHAR(32) | NOT NULL | 异常投影规则版本 |
 | `last_error` | LONGTEXT | NULL | 最近失败信息 |
+
+### 7.5 知识访问事实与路径维度
+
+`sdd_wiki_recalls` 是清洗层知识访问事实，`profile_knowledge_recalls` 是 current-run profile 投影。两表只保留访问主体、来源引用、原始 locator、相对路径证据和事件关联，不保存知识库内部 taxonomy。
+
+- `sdd_wiki_recalls` 的 `wiki_domain` / `wiki_axis` / `wiki_system` 已由迁移 `1780000017000` 删除。
+- `profile_knowledge_recalls` 的 `knowledge_domain` / `knowledge_axis` / `knowledge_system` 已由迁移 `1780000016000` 删除。
+- 来源空间取 profile 匹配证据中的 `sourceNamespace`；相对路径取 `relativeLocator`。
+- 路径维度在查询时从相对路径的全部目录段即时计算；同一访问可命中多个维度，但访问总量只计一次。目录结构变化不触发 schema、配置或重投影变更。
+- 一个访问事实只计入一次总访问量；同一事实可以命中多个路径段维度，维度计数不可相加为总量。
 
 ## 8. Retention
 

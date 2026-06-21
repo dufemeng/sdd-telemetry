@@ -3,6 +3,7 @@
 > 本文档对应路由 `http://localhost:5173/reports/daily/2026-05-31`（举例日期 `2026-05-31`）。
 > 它是该页所有字段语义、清洗链路、底层数据库表、可直接复制的校验 SQL 的**唯一权威来源**。
 > 代码入口：
+>
 > - 前端：`web/src/pages/reports/daily/DailyReportsPage.tsx`、`DailyReportDocument.tsx`
 > - 服务端生成：`server/src/modules/reports/daily-report.service.ts`、`daily-report.repository.ts`
 > - Contract：`packages/api/src/contracts/reports.contract.ts`
@@ -24,7 +25,7 @@ Claude Code → /api/ingest/otlp-logs → otel_raw_payloads → worker 清洗 �
 ## 1. 时间口径（必须先理解）
 
 | 概念 | 值（以 2026-05-31 为例） |
-| --- | --- |
+| ----------------------------------- | ----------------------------------------------------------------- |
 | 时区 | 固定 `Asia/Shanghai` |
 | 当期窗口 `[periodStart, periodEnd)` | `2026-05-31T00:00:00.000+08:00` ~ `2026-06-01T00:00:00.000+08:00` |
 | 前日窗口（用于 delta） | `2026-05-30T00:00:00.000+08:00` ~ `2026-05-31T00:00:00.000+08:00` |
@@ -39,12 +40,12 @@ Claude Code → /api/ingest/otlp-logs → otel_raw_payloads → worker 清洗 �
 ## 2. 涉及的数据库表
 
 | 表 | 角色 | 关键字段 |
-| --- | --- | --- |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `sdd_skill_usages` | 一次 SDD skill 调用 | `id, user_id, work_item_id, raw_skill_name, event_time, status` |
 | `sdd_work_items` | 需求维度 | `id, work_item_slug, business_domain` |
 | `sdd_work_item_artifacts` | 需求下的过程文档 | `id, work_item_id, artifact_type, artifact_relative_path` |
 | `sdd_work_item_artifact_writes` | 每次文档写入事件 | `id, artifact_id, work_item_id, event_time` |
-| `sdd_wiki_recalls` | Wiki 知识召回事件 | `id, skill_usage_id, work_item_id, wiki_relative_path, wiki_domain, event_time` |
+| `sdd_wiki_recalls`              | Wiki 知识访问事件                | `id, skill_usage_id, work_item_id, wiki_relative_path, event_time`                                |
 | `sdd_interaction_tool_calls` | 会话内工具调用，用于代码落地统计 | `interaction_id, skill_usage_id, tool_name, tool_input_preview` |
 | `sdd_daily_reports` | 日报成品（页面直接读这张表） | `id, report_date, status, metrics_json, markdown_text, generated_at, generated_by, error_message` |
 | `ingest_outbox` | 清洗 outbox | `status ∈ {pending, failed_terminal, ...}` |
@@ -55,6 +56,7 @@ Claude Code → /api/ingest/otlp-logs → otel_raw_payloads → worker 清洗 �
 > 校验时把 `@date_start` / `@date_end` / `@prev_start` / `@prev_end` 替换为 1 节里给出的 ISO 字符串，或在 MySQL 里直接用本地时区字符串（`'2026-05-31 00:00:00'`），但要确保 `event_time` 列存储是 UTC（看部署配置，下文 SQL 一律用 ISO 安全）。
 
 ### 3.1 顶部头部
+
 - **`reportDate`**：URL 里的日期，来自 `sdd_daily_reports.report_date`。
 - **`generatedAt`**：`sdd_daily_reports.generated_at`，ISO 字符串。
 - **`headline`**：服务端在生成时根据各 KPI 用 `renderHeadline(metrics)` 模板拼出，**不是 SQL 算出来**。
@@ -131,7 +133,7 @@ WHERE event_time >= '2026-05-31T00:00:00.000+08:00'
 ### 3.3 §1 采用规模 `metrics.adoption`
 
 | 字段 | 语义 | 同 KPI |
-| --- | --- | --- |
+| --------------------------- | ------------------------ | --------------------------------------- |
 | `adoption.activeUsers` | 当期活跃用户数 | = `kpis.activeUsers.current` |
 | `adoption.skillUsages` | 当期 skill 调用次数 | = `kpis.skillUsages.current` |
 | `adoption.coveredWorkItems` | 当期覆盖需求数 | = `kpis.coveredWorkItems.current` |
@@ -172,6 +174,7 @@ GROUP BY stage;
 `previousDelta` 字段 = 当期数 − 同口径前日数。前日口径跑一次上面 SQL 把窗口换成前日即可。
 
 每行的 `status` 字段判定：
+
 - `cnt == 0` → `watch`
 - `delta > 0` → `growing`
 - 否则 → `healthy`
@@ -206,6 +209,7 @@ SELECT COUNT(*) AS full_chain_count FROM (
 #### d) `chain.summary`
 
 模板拼出的中文一句话，**非 SQL**。规则（`buildChainSummary`）：
+
 - 若四阶段都为 0：`昨日未观测到链路覆盖。`
 - 否则列出有数据的阶段 + 必要时附 `其中 N 个需求进入 3+ 阶段全链路。`
 
@@ -216,7 +220,7 @@ SELECT COUNT(*) AS full_chain_count FROM (
 - **每个字段都是子查询在 `sdd_work_items` 行上展开**，所有阶段/文档/写入/参与人/Wiki 召回都不限定当期时间窗口（只有写入数、参与人数、Wiki 召回数、usage 数四项才限制当期）。
 
 | 输出字段 | 来源 | 时间窗口 |
-| --- | --- | --- |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
 | `workItemId` / `title` / `businessDomain` | `sdd_work_items.id / work_item_title / business_domain`（title 为空则取 `work_item_slug`） | 不限 |
 | `stageCodes` | `sdd_work_item_artifacts.artifact_type` 去重（`codereview` → `review`） | 不限 |
 | `documentCount` | `COUNT(DISTINCT sdd_work_item_artifacts.id)` | 不限 |
@@ -281,7 +285,7 @@ LIMIT 5;
 - 路径不在当前用户的 `requirements_root_path` / `wiki_root_path` 下，也不命中 `bk-fe-requirements-*`、`bk-fe-knowledge-*`、`bksdd-wiki`
 
 | 字段 | 语义 |
-| --- | --- |
+| ------------------- | ---------------------------------------------------------------------- |
 | `codeWriteCount` | 当期 SDD 相关会话里的业务代码写入工具调用数，含 `Write/Edit/MultiEdit` |
 | `codeReadCount` | 当期 SDD 相关会话里的业务代码读取/检索工具调用数，含 `Read/Grep/Glob` |
 | `touchedFileCount` | 当期涉及的不同代码文件数；目录级 `path` 不计入文件数 |
@@ -316,37 +320,39 @@ LIMIT 50;
 ### 3.7 §5 知识库使用 `metrics.knowledge`
 
 | 字段 | 语义 | 校验 SQL |
-| --- | --- | --- |
+| ------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `wikiRecallCount` | 当期 `sdd_wiki_recalls` 总行数 | `SELECT COUNT(*) FROM sdd_wiki_recalls WHERE event_time >= '2026-05-31T00:00:00.000+08:00' AND event_time < '2026-06-01T00:00:00.000+08:00';` |
 | `distinctFileCount` | 当期不同 `wiki_relative_path` 数（NULL 不计） | `SELECT COUNT(DISTINCT wiki_relative_path) FROM sdd_wiki_recalls WHERE event_time >= '...' AND event_time < '...' AND wiki_relative_path IS NOT NULL;` |
-| `distinctDomainCount` | 当期不同 `wiki_domain` 数（NULL 不计） | `SELECT COUNT(DISTINCT wiki_domain) FROM sdd_wiki_recalls WHERE event_time >= '...' AND event_time < '...' AND wiki_domain IS NOT NULL;` |
-| `topDomains[]` | Top 5 业务域（按召回次数倒序） | 见下 |
+| `distinctPathDimensionCount` | 当期相对路径全部目录段的去重数 | 先按 `wiki_relative_path` 聚合访问数，再用 `extractPathSegments` 即时展开并去重 |
+| `topPathDimensions[]` | Top 5 路径维度（按访问次数倒序） | 同上；一个访问可计入多个目录段维度 |
 | `summary` | 模板拼出的中文一句话 | 非SQL |
 
-`topDomains` 校验 SQL（limit 5）：
+路径维度的基础数据校验 SQL：
 
 ```sql
-SELECT wiki_domain AS domain, COUNT(*) AS count
+SELECT wiki_relative_path, COUNT(*) AS count
 FROM sdd_wiki_recalls
 WHERE event_time >= '2026-05-31T00:00:00.000+08:00'
   AND event_time <  '2026-06-01T00:00:00.000+08:00'
-  AND wiki_domain IS NOT NULL
-GROUP BY wiki_domain
-ORDER BY count DESC
-LIMIT 5;
+  AND wiki_relative_path IS NOT NULL
+  AND wiki_relative_path <> ''
+GROUP BY wiki_relative_path;
 ```
+
+服务端对每行 `wiki_relative_path` 调用 `extractPathSegments`，按目录段累加 `count`，再按访问次数排序取 Top 5。文件名不作为路径维度。
 
 ### 3.8 数据提示 `metrics.dataHealth`
 
 页面只在 `warnings.length > 0` 时显示。三个底层计数：
 
 | 字段 | 语义 | 校验 SQL |
-| --- | --- | --- |
+| -------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `outboxPendingCount` | `ingest_outbox` 中 `status='pending'` 的任务数（**全表**，不限时间） | `SELECT COUNT(*) FROM ingest_outbox WHERE status = 'pending';` |
 | `outboxFailedCount` | `ingest_outbox` 中终态失败任务数（**全表**） | `SELECT COUNT(*) FROM ingest_outbox WHERE status = 'failed_terminal';` |
 | `failedBatchCount` | 当期 `otel_ingest_batches` 里终态失败的批次数 | `SELECT COUNT(*) FROM otel_ingest_batches WHERE status = 'failed_terminal' AND received_at >= '2026-05-31T00:00:00.000+08:00' AND received_at < '2026-06-01T00:00:00.000+08:00';` |
 
 `warnings[]` 是模板拼的中文短句，规则：
+
 - `outboxPending > 0` → `数据提示：当前仍有 N 个清洗任务 pending，本日报可能低估部分使用量。`
 - `outboxFailed > 0` → `数据提示：当前有 N 个终态失败的清洗任务，部分数据可能缺失。`
 - `failedBatch > 0` → `数据提示：昨日有 N 个采集批次失败。`
@@ -354,7 +360,7 @@ LIMIT 5;
 ### 3.9 页脚 `methodology`
 
 | 字段 | 取值 |
-| --- | --- |
+| ----------------- | ------------------------------------------------------------------ |
 | `queryVersion` | 写死 `daily-report-query-v2`（`DailyReportService.QUERY_VERSION`） |
 | `templateVersion` | 写死 `daily-report-v2`（`DailyReportService.TEMPLATE_VERSION`） |
 | `generatedBy` | `schedule` / `manual` / `regenerate` 三选一，来自最后一次生成 |
@@ -385,6 +391,7 @@ LIMIT 5;
 4. **页面读取**：前端走 `GET /api/reports/daily/:date` → 直接 `SELECT * FROM sdd_daily_reports WHERE report_date = ?` → 返回 `metrics_json` 反序列化结果。
 
 所以**校验顺序**：
+
 1. 先确认 `sdd_daily_reports` 里 `2026-05-31` 那行 `status='generated'` 且 `generated_at` 是预期的；
 2. 再用 §3 各 SQL 直接打派生层对比 `metrics_json` 里的数字；
 3. 如果对不上，先看 `ingest_outbox` 里有没有 `pending` / `failed_terminal`，再看 `otel_ingest_batches` 当期有没有失败批次——日报里的 `dataHealth.warnings` 已经在做这件事。
@@ -441,7 +448,7 @@ curl -X POST http://localhost:4318/api/reports/daily/2026-05-31/regenerate \
 ## 6. 字段到代码反查表
 
 | 页面区块 | Contract 字段 | 服务端组装位置 | Repository SQL |
-| --- | --- | --- | --- |
+| ---------------- | --------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | 头部 | `reportDate, generatedAt, headline` | `daily-report.service.ts:123` `renderHeadline` | `findByDate` |
 | KPI 4 卡 | `kpis.activeUsers/skillUsages/coveredWorkItems/documentOutputs` | `daily-report.service.ts:78-83` | `countDistinctUsers / countSkillUsages / countCoveredWorkItems / countDocumentOutputs` |
 | §1 采用 | `adoption.*` | `:85-90` | 同上 |
@@ -450,7 +457,7 @@ curl -X POST http://localhost:4318/api/reports/daily/2026-05-31/regenerate \
 | §2 多阶段 | `chain.multiStageWorkItemCount` | `:94` | `countMultiStageWorkItems` |
 | §3 标杆 | `benchmarks[]` | `:97` + `buildBenchmarks` | `listBenchmarks` |
 | §4 代码落地 | `codeImpact.*` | `summarizeCodeImpactRows` | `listCodeImpactRows` |
-| §5 知识 | `knowledge.*` | `:98-104` | `countWikiRecalls / countWikiDistinctFiles / countWikiDistinctDomains / topWikiDomains` |
+| §5 知识 | `knowledge.*` | `:98-104` | `countWikiRecalls / countWikiDistinctFiles / listWikiPathAccessCounts` |
 | 数据提示 | `dataHealth.*` | `:110-115` + `buildWarnings` | `countOutboxPending / countOutboxFailed / countFailedBatches` |
 | 页脚 | `methodology.*` | `:116-120`（常量） | — |
 
