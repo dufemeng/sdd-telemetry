@@ -12,6 +12,7 @@ export function createMysqlPool(): Pool {
     user: process.env.MYSQL_USER ?? 'sdd-telemetry',
     password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
     database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
+    charset: 'utf8mb4',
     waitForConnections: true,
     connectionLimit: Number(process.env.MYSQL_POOL_SIZE ?? 5),
     timezone: 'Z',

@@ -36,6 +36,7 @@ export function createAppDataSource(): DataSource {
     username: process.env.MYSQL_USER ?? 'sdd-telemetry',
     password: process.env.MYSQL_PASSWORD ?? 'sdd-telemetry',
     database: process.env.MYSQL_DATABASE ?? 'sdd-telemetry',
+    charset: 'utf8mb4',
     timezone: 'Z',
     synchronize: false,
     logging: false,
