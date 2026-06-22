@@ -27,6 +27,7 @@ const SkillDetailPage = lazy(() => import('./pages/sdd/skills/SkillDetailPage'))
 const InteractionsPage = lazy(() => import('./pages/sdd/interactions/InteractionsPage'));
 const UsersPage = lazy(() => import('./pages/sdd/users/UsersPage'));
 const UserProfilePage = lazy(() => import('./pages/sdd/users/UserProfilePage'));
+const UserActivityPage = lazy(() => import('./pages/sdd/users/UserActivityPage'));
 const WorkItemsPage = lazy(() => import('./pages/sdd/work-items/WorkItemsPage'));
 const WorkItemDetailPage = lazy(() => import('./pages/sdd/work-items/WorkItemDetailPage'));
 const WikiRecallsPage = lazy(() => import('./pages/sdd/wiki-recalls/WikiRecallsPage'));
@@ -107,6 +108,11 @@ export const router = createBrowserRouter([
           {
             path: 'sdd/users/:id',
             element: wrap(UserProfilePage),
+            errorElement: <RouteError />,
+          },
+          {
+            path: 'sdd/users/:id/activity',
+            element: wrap(UserActivityPage),
             errorElement: <RouteError />,
           },
           {
