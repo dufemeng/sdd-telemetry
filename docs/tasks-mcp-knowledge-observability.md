@@ -10,33 +10,26 @@
 > 网络/MCP 类失败 ROI 低、可不修(见 `design-users-analysis-redesign.md` 的归因决策)。
 > MCP 一旦接入,以下从 P1 开始按序处理。
 
-## 实测更新(2026-06-22):失败归因不是上游死路,是平台侧可修
+## 实测结论(2026-06-22 复测,确定性):失败细分归因是上游限制,接受现状
 
-本机用真实遥测跑了一次知识读取测试(1 成功 `SUMMARY.md` + 1 死链),结合 Claude Code
-官方监控文档,**修正之前"上游脱敏、不可修"的结论**:
+先在本机用真实遥测跑了 1 成功(`SUMMARY.md`)+ 1 死链,又**在真实交互式 Claude Code 会话**里
+复测了一次死链读取(`RETEST-ENOENT-PROBE.md`)。结合 raw payload 与会话 transcript,结论确定:
 
-**实测现象**:死链读取确实进了 `knowledge_read_failed`(顶层归类正确),但
-`error_type=TelemetrySafeError`、无真实报错消息 → 命不中任何 reasonGroup → 落到「其他知识库异常」。
+- **失败工具调用上报的 `error_type = TelemetrySafeError`**(交互式会话与 agent 环境一致,**不是 agent artifact**)。
+  这版 Claude Code 把工具错误类型脱敏了;官方文档描述的 `Error:ENOENT`/`ShellError` 在这版**未出现**。
+- **没有可用的结构化错误消息**:真实报错文本是 "File does not exist…"(连 `ENOENT`/`no such file` 都不是),
+  但它**只存在于 `OTEL_LOG_RAW_API_BODIES` 的整段对话 body 里**,不在 `tool_result` 的任何结构化属性上。
+- 所以结构化层面,知识读取失败只能拿到 `error_type=TelemetrySafeError`,**命不中任何 reasonGroup → 落「其他知识库异常」**。
 
-**但官方文档(`code.claude.com/docs/en/monitoring-usage`)说明信号本应可用**:
-- `claude_code.tool_result` 的 `error_type` 正常是**类别串**,如 `Error:ENOENT` / `ShellError`;
-- 开 `OTEL_LOG_TOOL_DETAILS=1`(本机已开)后还带 `error` **完整报错消息**。
+**决定(选项 1):接受现状。** 平台对知识读取失败的天花板 =「成功 / 失败 + 其他知识库异常」,不做死链/权限/网络细分。
+> 纠错:本文件早前一版据官方文档写过"平台侧可修(对齐 `Error:ENOENT` + 采集 error 消息)",
+> 已被实测推翻——**以实测为准,当前是上游限制**。
 
-**所以真正的差距在平台侧 + 配置,不在上游**:
-1. 清洗只取了 `error_type`(`cleaning-worker.ts:546`),**没采集 `error` 完整消息**
-   → `messageIncludes` 没有真实文本可匹配。
-2. reasonGroup 的 `matchErrorTypes` 是**精确相等**匹配(`classifyFailureReason` 用
-   `matchErrorTypes.includes(errorType)`),但配的是裸 `ENOENT`,Claude Code 发的是
-   `Error:ENOENT` → **永远匹配不上**。需兼容 `Error:ENOENT`/`ShellError` 格式(或匹配改为包含/归一化)。
-3. `messageIncludes` 关键词不全:连 "File does not exist" 都没覆盖。
+**同一约束波及 MCP**:下方 P2 的 `mcp_read_failed`/`network_or_timeout` 在当前 CC 遥测下同样命不中,先别做。
 
-**待解疑点**:本次实测拿到的是 `TelemetrySafeError` 而非文档所述的 `Error:ENOENT`——疑似
-agent/SDK 环境的 Read 工具路径与交互式 Claude Code 不同。**需用一次真实交互式 Claude Code
-会话复测**,确认真实场景下 `error_type` 到底是 `Error:ENOENT` 还是 `TelemetrySafeError`,
-再决定 #1/#2/#3 的具体改法。
-
-**优先级**:采集 error 消息 + reasonGroup 匹配是 MCP 失败归因的**同一套底座**,
-应在接 MCP 前先修通,否则 MCP 的 `mcp_read_failed`/`network` 也一样命不中。
+**复测触发(唯一值得回头修的条件)**:升级 Claude Code 后,用同样方法(读一个不存在的 wiki)复测;
+若那时 `error_type` 变成 `Error:ENOENT`(且带结构化 `error` 消息),再做"清洗采集 error 消息 +
+reasonGroup 兼容 `Error:ENOENT`/`ShellError` + 补 `messageIncludes` 关键词"那套。
 
 ## P1 — 前置(不做则 MCP 知识读取根本不进看板)
 
