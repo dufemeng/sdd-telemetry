@@ -849,6 +849,18 @@ Response：`SddWikiRecallContentSchema`。
 
 Profile API 是前端看板的统一读接口。URL 中的 `profileId` 选择当前 profile；响应字段使用统一领域名，前端可按 profile presentation 映射成 SDD 文案。
 
+### 7.0 GET /api/profiles/:profileId/users/:userId/activity
+
+返回该用户的合并活动时间线（技能调用 / 知识访问 / 产物写入 / 代码活动 / 讨论），按 interaction 折叠、按时间倒序。
+
+Query：`range`（24h/7d/30d/90d/all，默认 30d）、`limit`（1-500，默认 200）。
+
+Response：`ProfileUserActivityResponseSchema`：
+
+- `items[]`：折叠后的活动项。后端会拉取最多 `limit * 10`（上限 1000）条原始事实再折叠，因此一个高密度 interaction 可能挤掉更早的活动。
+- `totalInteractions`：该用户在当前投影 + 时间范围内涉及的去重 interaction 总数（独立计数，不等于 items 长度，不受 limit 影响）。
+- `truncated`：`true` 表示 `items` 不足 `totalInteractions`（被 limit 或 1000 条原始上限截断），前端需提示「仅加载最近 N 条」。
+
 ### 7.1 GET /api/profiles/:profileId/interactions/:interactionId/snapshot
 
 返回一次 interaction 的执行快照，用于在用户活动时间线中核对本次 skill 执行的客观证据。`profileId` 决定知识访问、读取失败和 fallback 的当前投影口径；interaction、skill usage 与 tool call 来自共享事件层。
@@ -858,11 +870,12 @@ Profile API 是前端看板的统一读接口。URL 中的 `profileId` 选择当
 - `interaction`：执行状态、模型、时间、prompt 和 response。
 - `skills[]`：本次观测到的 skill 名称、语义和版本。
 - `knowledge.accesses[]`：成功归入当前 profile 的知识访问，保留来源空间、相对路径和工具调用顺序。
-- `knowledge.failures[]`：当前 profile 中归类为 `knowledge_read_failed` 的失败证据，可用于发现死链接或读取错误。
+- `knowledge.failures[]`：当前 profile 中归类为 `knowledge_read_failed` 的失败证据，可用于发现死链接或读取错误。每条失败按 profile 的 `knowledge_read_failed` reasonGroups 在查询时算出 `reasonCode/reasonLabel/reasonDescription`（如 `file_missing` → 「文件不存在」），原始 `errorType`、`messagePreview` 作为次要证据保留。
 - `fallbacks[]`：命中当前 profile 中 `surfaceRole=fallback` 规则的能力调用。
 - `artifacts[]`：本次 interaction 关联的产物写入事实，包括类型、路径、写入方式和内容预览。
+- `apiErrors[]`：本次 interaction 中归类为 `model_or_api_failed` 的模型/API 层异常（网络、模型超时、API 错误等），与知识读取失败区分展示。
 - `toolCalls[]`：完整工具调用时间线；`knowledgeStatus` 只标记该调用是否关联成功知识访问或知识读取失败。
-- `summary`：上述证据数组的客观计数。
+- `summary`：上述证据数组的客观计数（含 `apiErrorCount`）。
 
 接口不判断业务路径或产物语义是否正确，也不返回“验证通过”结论。通过 `toolCallId` 打开的知识正文来自当前文件内容，不能视为执行当时的历史快照。
 
