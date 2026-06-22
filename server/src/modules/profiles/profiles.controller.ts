@@ -19,6 +19,7 @@ import {
   ProfileErrorListResponseSchema,
   ProfileErrorOverviewQuerySchema,
   ProfileErrorOverviewResponseSchema,
+  ProfileExecutionSnapshotSchema,
   ProfileKnowledgeContentSchema,
   ProfileKnowledgeOverviewResponseSchema,
   ProfileKnowledgeDeliveryUnitRankingQuerySchema,
@@ -46,6 +47,7 @@ import {
   type ProfileDemandDetail,
   type ProfileErrorDetail,
   type ProfileErrorOverviewResponse,
+  type ProfileExecutionSnapshot,
   type ProfileKnowledgeContent,
   type ProfileKnowledgeDocDetailResponse,
   type ProfileKnowledgePathDimensionDocsResponse,
@@ -239,6 +241,17 @@ export class ProfilesController {
       query,
     );
     return ok(parseWithSchema(ProfileUserActivityResponseSchema, data));
+  }
+
+  @Get('/:profileId/interactions/:interactionId/snapshot')
+  async executionSnapshot() {
+    const profileId = this.ctx.params.profileId as string;
+    const interactionId = this.ctx.params.interactionId as string;
+    const data: ProfileExecutionSnapshot = await this.profilesService.getExecutionSnapshot(
+      profileId,
+      interactionId,
+    );
+    return ok(parseWithSchema(ProfileExecutionSnapshotSchema, data));
   }
 
   @Get('/:profileId/knowledge/overview')

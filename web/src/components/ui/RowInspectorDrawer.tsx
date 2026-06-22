@@ -49,9 +49,9 @@ interface RowInspectorDrawerProps {
 }
 
 const DRAWER_WIDTH: Record<RowInspectorSize, string> = {
-  md: 'min(560px, calc(100vw - 240px))',
-  lg: 'min(720px, calc(100vw - 240px))',
-  xl: 'min(880px, calc(100vw - 240px))',
+  md: 'min(560px, 100vw)',
+  lg: 'min(720px, 100vw)',
+  xl: 'min(880px, 100vw)',
 };
 const SHELL_SIDEBAR_WIDTH = 240;
 const SHELL_TOPBAR_HEIGHT = 48;
@@ -92,7 +92,7 @@ export function RowInspectorDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             onClick={() => onOpenChange(false)}
-            className="z-40 backdrop-blur-sm"
+            className="z-40"
             style={{
               position: 'fixed',
               top: SHELL_TOPBAR_HEIGHT,
@@ -109,7 +109,7 @@ export function RowInspectorDrawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-            className="z-50 flex flex-col shadow-2xl"
+            className="z-50 flex flex-col"
             style={{
               position: 'fixed',
               top: SHELL_TOPBAR_HEIGHT,
@@ -214,10 +214,7 @@ function DrawerHeader({
           <ActionButton key={action.label} action={action} />
         ))}
         {rawText ? (
-          <IconButton
-            title={copied ? '已复制！' : '复制整行 JSON'}
-            onClick={() => copy(rawText)}
-          >
+          <IconButton title={copied ? '已复制！' : '复制整行 JSON'} onClick={() => copy(rawText)}>
             {copied ? <Check size={16} /> : <Copy size={16} />}
           </IconButton>
         ) : null}

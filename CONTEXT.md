@@ -19,6 +19,10 @@ _Avoid_: Wiki path, docs folder
 A profile-scoped fact that an agent attempted to read, grep, or glob a resource from a Knowledge Source. It keeps the source namespace, relative locator, interaction, tool call, outcome evidence, and event time without materializing repository-specific directory levels.
 _Avoid_: Wiki recall row, axis record
 
+**Execution Snapshot**:
+An interaction-scoped read model that orders the observed skill version, Knowledge Access Facts, knowledge read failures, configured fallback usages, artifact writes, and tool calls for one execution. It presents evidence for human verification and does not decide whether a business path or artifact is correct.
+_Avoid_: Verification result, execution score, separate validation dashboard
+
 **Path Dimension**:
 Any directory segment derived at query time from a Knowledge Access Fact's relative locator. Path Dimensions are overlapping labels, not a partition of total accesses, so their counts must not be stacked or summed as the access total.
 _Avoid_: Axis, fixed domain/system level

@@ -11,6 +11,7 @@ import type {
   ProfileErrorDetail,
   ProfileErrorListResponse,
   ProfileErrorOverviewResponse,
+  ProfileExecutionSnapshot,
   ProfileKnowledgeOverviewResponse,
   ProfileKnowledgeDeliveryUnitRankingResponse,
   ProfileKnowledgeAccessListResponse,
@@ -73,6 +74,18 @@ export function useProfileDemandDetail(profileId: string, demandId: string | nul
       requestData<ProfileDemandDetail>(`/api/profiles/${profileId}/demands/${demandId}`),
     staleTime: 30_000,
     enabled: Boolean(profileId) && Boolean(demandId),
+  });
+}
+
+export function useProfileExecutionSnapshot(profileId: string, interactionId: string | null) {
+  return useQuery({
+    queryKey: ['profile-execution-snapshot', profileId, interactionId],
+    queryFn: () =>
+      requestData<ProfileExecutionSnapshot>(
+        `/api/profiles/${profileId}/interactions/${interactionId}/snapshot`,
+      ),
+    enabled: Boolean(profileId) && Boolean(interactionId),
+    staleTime: 0,
   });
 }
 
@@ -313,6 +326,7 @@ export function useProfileUserDetail(profileId: string, userId: string | null) {
     queryKey: ['profile-user-detail', profileId, userId],
     queryFn: () => requestData<ProfileUserDetail>(`/api/profiles/${profileId}/users/${userId}`),
     staleTime: 30_000,
+    refetchOnMount: 'always',
     enabled: Boolean(profileId) && Boolean(userId),
   });
 }
@@ -337,6 +351,7 @@ export function useProfileUserActivity(
         `/api/profiles/${profileId}/users/${userId}/activity${qs.toString() ? `?${qs}` : ''}`,
       ),
     staleTime: 30_000,
+    refetchOnMount: 'always',
     enabled: Boolean(profileId) && Boolean(userId),
   });
 }

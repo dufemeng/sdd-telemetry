@@ -18,6 +18,7 @@ import type {
   ProfileErrorItem,
   ProfileErrorOverviewQuery,
   ProfileErrorOverviewResponse,
+  ProfileExecutionSnapshot,
   ProfileKnowledgeOverviewResponse,
   ProfileKnowledgeContent,
   ProfileKnowledgeDeliveryUnitRankingQuery,
@@ -444,6 +445,33 @@ export class ProfilesService {
       return { items };
     }
     return { items: [] };
+  }
+
+  async getExecutionSnapshot(
+    profileId: string,
+    interactionId: string,
+  ): Promise<ProfileExecutionSnapshot> {
+    const config = await this.requireProfile(profileId);
+    const read = await this.resolveReadMode(profileId);
+    if (read.mode !== 'projection') {
+      throw new ApiHttpError(
+        404,
+        'PROFILE_DATA_NOT_READY',
+        `profile data is not ready: ${profileId}`,
+      );
+    }
+
+    const fallbackRuleIds = config.capabilityRules
+      .filter((rule) => rule.surfaceRole === 'fallback')
+      .map((rule) => rule.ruleId);
+    const snapshot = await this.profileProjectionRepository.getExecutionSnapshot(
+      profileId,
+      read.runId,
+      interactionId,
+      fallbackRuleIds,
+    );
+    if (snapshot) return snapshot;
+    throw new ApiHttpError(404, 'INTERACTION_NOT_FOUND', `interaction not found: ${interactionId}`);
   }
 
   async getKnowledgeOverview(profileId: string): Promise<ProfileKnowledgeOverviewResponse> {

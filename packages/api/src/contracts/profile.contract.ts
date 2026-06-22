@@ -702,6 +702,119 @@ export const ProfileUserActivityResponseSchema = z.object({
 });
 export type ProfileUserActivityResponse = z.infer<typeof ProfileUserActivityResponseSchema>;
 
+// ── 单次执行快照（按 interaction 串联客观证据）──────────────────────────────
+
+export const ProfileExecutionInteractionSchema = z.object({
+  id: IdSchema,
+  status: z.string(),
+  userId: IdSchema.nullable(),
+  sessionId: z.string().nullable(),
+  promptId: z.string().nullable(),
+  commandName: z.string().nullable(),
+  model: z.string().nullable(),
+  skillName: z.string().nullable(),
+  startedAt: ISODateTimeSchema.nullable(),
+  completedAt: ISODateTimeSchema.nullable(),
+  durationMs: z.number().nullable(),
+  promptText: z.string().nullable(),
+  responseText: z.string().nullable(),
+});
+export type ProfileExecutionInteraction = z.infer<typeof ProfileExecutionInteractionSchema>;
+
+export const ProfileExecutionSkillSchema = z.object({
+  id: IdSchema,
+  rawSkillName: z.string(),
+  semanticCode: z.string().nullable(),
+  displayName: z.string().nullable(),
+  status: z.string(),
+  observedVersion: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionSkill = z.infer<typeof ProfileExecutionSkillSchema>;
+
+export const ProfileExecutionKnowledgeAccessSchema = z.object({
+  id: IdSchema,
+  toolCallId: IdSchema.nullable(),
+  sequence: z.number().nullable(),
+  actionType: z.string(),
+  sourceNamespace: z.string(),
+  relativePath: z.string(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionKnowledgeAccess = z.infer<typeof ProfileExecutionKnowledgeAccessSchema>;
+
+export const ProfileExecutionKnowledgeFailureSchema = z.object({
+  id: IdSchema,
+  toolCallId: IdSchema.nullable(),
+  sequence: z.number().nullable(),
+  toolName: z.string().nullable(),
+  errorType: z.string().nullable(),
+  messagePreview: z.string().nullable(),
+  inputPreview: z.string().nullable(),
+  locator: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionKnowledgeFailure = z.infer<
+  typeof ProfileExecutionKnowledgeFailureSchema
+>;
+
+export const ProfileExecutionFallbackSchema = z.object({
+  capabilityUsageId: IdSchema,
+  capabilityCode: z.string().nullable(),
+  displayName: z.string().nullable(),
+  rawCapabilityName: z.string().nullable(),
+  matchedRuleId: z.string(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionFallback = z.infer<typeof ProfileExecutionFallbackSchema>;
+
+export const ProfileExecutionArtifactSchema = z.object({
+  writeId: IdSchema,
+  artifactId: IdSchema,
+  artifactType: z.string(),
+  artifactLocator: z.string().nullable(),
+  writeKind: z.string().nullable(),
+  contentPreview: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionArtifact = z.infer<typeof ProfileExecutionArtifactSchema>;
+
+export const ProfileExecutionToolCallSchema = z.object({
+  id: IdSchema,
+  toolUseId: z.string(),
+  skillUsageId: IdSchema.nullable(),
+  toolName: z.string(),
+  sequence: z.number(),
+  decision: z.string().nullable(),
+  success: z.boolean().nullable(),
+  durationMs: z.number().nullable(),
+  resultSizeBytes: z.number().nullable(),
+  errorType: z.string().nullable(),
+  toolInputPreview: z.string().nullable(),
+  knowledgeStatus: z.enum(['accessed', 'failed']).nullable(),
+});
+export type ProfileExecutionToolCall = z.infer<typeof ProfileExecutionToolCallSchema>;
+
+export const ProfileExecutionSnapshotSchema = z.object({
+  interaction: ProfileExecutionInteractionSchema,
+  skills: z.array(ProfileExecutionSkillSchema),
+  knowledge: z.object({
+    accesses: z.array(ProfileExecutionKnowledgeAccessSchema),
+    failures: z.array(ProfileExecutionKnowledgeFailureSchema),
+  }),
+  fallbacks: z.array(ProfileExecutionFallbackSchema),
+  artifacts: z.array(ProfileExecutionArtifactSchema),
+  toolCalls: z.array(ProfileExecutionToolCallSchema),
+  summary: z.object({
+    knowledgeAccessCount: z.number().int().nonnegative(),
+    knowledgeFailureCount: z.number().int().nonnegative(),
+    fallbackCount: z.number().int().nonnegative(),
+    artifactWriteCount: z.number().int().nonnegative(),
+    toolCallCount: z.number().int().nonnegative(),
+  }),
+});
+export type ProfileExecutionSnapshot = z.infer<typeof ProfileExecutionSnapshotSchema>;
+
 // ── 知识库分析（knowledge，产品文案叫「知识库」）─────────────────────────────
 
 export const ProfileKnowledgeSourceSummarySchema = z.object({

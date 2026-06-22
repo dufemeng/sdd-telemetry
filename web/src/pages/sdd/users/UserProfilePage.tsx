@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Zap } from 'lucide-react';
+import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Play, Zap } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
-import { useProfilePresentationModel, useProfileUserActivity, useProfileUserDetail } from '@/pages/profiles/useProfiles';
+import {
+  useProfilePresentationModel,
+  useProfileUserActivity,
+  useProfileUserDetail,
+} from '@/pages/profiles/useProfiles';
 import { UserWorkItemList } from './components/UserWorkItemList';
 import { UserActivityTimeline } from './components/UserActivityTimeline';
 import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
@@ -42,7 +46,9 @@ function StatusBadge({ status, isNew }: { status: 'live' | 'cold' | 'churn'; isN
   const { cls, label } = map[status];
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={`inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap ${cls}`}>
+      <span
+        className={`inline-flex items-center h-[20px] px-2 rounded-full text-[11px] font-medium whitespace-nowrap ${cls}`}
+      >
         {label}
       </span>
       {isNew ? (
@@ -75,6 +81,8 @@ export default function UserProfilePage() {
     limit: 200,
   });
   const activityNodes = activityQuery.data?.items ?? [];
+  const latestInteractionId =
+    activityNodes.find((node) => node.interactionId)?.interactionId ?? null;
 
   if (profileQuery.isLoading) {
     return <div className="p-4 text-[13px] text-[var(--color-muted)]">加载中…</div>;
@@ -83,7 +91,9 @@ export default function UserProfilePage() {
     return (
       <div className="p-4 text-[13px] text-[var(--color-muted)]">
         用户不存在。
-        <Link to="/sdd/users" className="ml-2 text-[var(--color-primary)] hover:underline">返回列表</Link>
+        <Link to="/sdd/users" className="ml-2 text-[var(--color-primary)] hover:underline">
+          返回列表
+        </Link>
       </div>
     );
   }
@@ -95,12 +105,11 @@ export default function UserProfilePage() {
     : null;
 
   const selectedTitle = selectedWorkItemId
-    ? workItems.find((wi) => wi.deliveryUnitId === selectedWorkItemId)?.title ?? '选中需求'
+    ? (workItems.find((wi) => wi.deliveryUnitId === selectedWorkItemId)?.title ?? '选中需求')
     : null;
 
   return (
     <div className="grid gap-3">
-
       {/* Header */}
       <section className="flex flex-col gap-3 p-[14px] rounded-[6px]" style={CARD_STYLE}>
         <div className="flex items-center justify-between">
@@ -110,7 +119,10 @@ export default function UserProfilePage() {
           >
             <ArrowLeft size={14} /> 用户分析
           </button>
-          <span className="text-[10px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+          <span
+            className="text-[10px] text-[var(--color-muted)]"
+            style={{ fontFamily: 'var(--font-mono)' }}
+          >
             ID {user.id}
           </span>
         </div>
@@ -123,28 +135,52 @@ export default function UserProfilePage() {
               </h2>
               <StatusBadge status={user.status} isNew={user.isNew} />
               {joinDays !== null ? (
-                <span className="text-[12px] text-[var(--color-muted)]" style={{ fontFamily: 'var(--font-mono)' }}>
+                <span
+                  className="text-[12px] text-[var(--color-muted)]"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
                   接入 {joinDays} 天
                 </span>
               ) : null}
-              <span className="text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+              <span
+                className="text-[12px] text-[var(--color-secondary)]"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
                 {user.capabilityUsageCount} 次 skill
               </span>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
-              <span><GitBranch size={11} className="inline mr-[3px]" />需求 {summary.deliveryUnitCount}</span>
-              <span><Layers size={11} className="inline mr-[3px]" />文档 {summary.artifactCount}</span>
-              <span><MessageSquare size={11} className="inline mr-[3px]" />{formatInteger(summary.turnCount)} 轮对话</span>
+            <div
+              className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--color-secondary)]"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              <span>
+                <GitBranch size={11} className="inline mr-[3px]" />
+                需求 {summary.deliveryUnitCount}
+              </span>
+              <span>
+                <Layers size={11} className="inline mr-[3px]" />
+                文档 {summary.artifactCount}
+              </span>
+              <span>
+                <MessageSquare size={11} className="inline mr-[3px]" />
+                {formatInteger(summary.turnCount)} 轮对话
+              </span>
               <span>跨 {formatInteger(summary.sessionCount)} session</span>
-              <span><BookOpen size={11} className="inline mr-[3px]" />知识库 {summary.knowledgeRecallCount} 次</span>
-              <span><Zap size={11} className="inline mr-[3px]" />{summary.codeWriteCount} 次编码</span>
+              <span>
+                <BookOpen size={11} className="inline mr-[3px]" />
+                知识库 {summary.knowledgeRecallCount} 次
+              </span>
+              <span>
+                <Zap size={11} className="inline mr-[3px]" />
+                {summary.codeWriteCount} 次编码
+              </span>
             </div>
           </div>
         </div>
       </section>
 
       {/* Two-column body */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: '300px 1fr' }}>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
           <UserWorkItemList
             workItems={workItems}
@@ -155,22 +191,35 @@ export default function UserProfilePage() {
         </section>
 
         <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
-          <div className="px-3 py-[8px] flex items-center justify-between" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <div
+            className="px-3 py-[8px] flex items-center justify-between"
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
             <span className="text-[12px] font-semibold text-[#f5f5f5]">
               {selectedTitle ? `互动记录 · ${selectedTitle}` : '互动记录'}
             </span>
+            <button
+              type="button"
+              disabled={!latestInteractionId || activityQuery.isLoading}
+              onClick={() => {
+                if (latestInteractionId) setOpenInteractionId(latestInteractionId);
+              }}
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[4px] border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-secondary)] hover:bg-[var(--color-hover)] hover:text-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Play size={12} />
+              最近一次执行
+            </button>
           </div>
-          <UserActivityTimeline
-            nodes={activityNodes}
-            onOpenInteraction={setOpenInteractionId}
-          />
+          <UserActivityTimeline nodes={activityNodes} onOpenInteraction={setOpenInteractionId} />
         </section>
       </div>
 
       <InteractionDetailDrawer
         interactionId={openInteractionId}
         open={Boolean(openInteractionId)}
-        onOpenChange={(open) => { if (!open) setOpenInteractionId(null); }}
+        onOpenChange={(open) => {
+          if (!open) setOpenInteractionId(null);
+        }}
       />
     </div>
   );

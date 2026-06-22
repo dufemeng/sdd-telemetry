@@ -74,9 +74,9 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
 
 Dashboard 用户通过签名 `HttpOnly` cookie `sdd_session` 维持登录态。cookie 默认有效期为 7 天，生产环境使用 `Secure; SameSite=Lax`。用户角色：
 
-| 角色 | 权限 |
+| 角色          | 权限                                                     |
 | ------------- | -------------------------------------------------------- |
-| `viewer` | 访问 dashboard 只读查询 |
+| `viewer`      | 访问 dashboard 只读查询                                  |
 | `super_admin` | `viewer` 权限，以及成员管理、语义映射写入和 `/api/ops/*` |
 
 公开端点：
@@ -617,7 +617,7 @@ pairingMethod: z.enum(['prompt_id', 'anchored_by_user_prompt']).optional(),
 
 ### 6.12 GET /api/sdd/interactions/:interactionId
 
-单条交互详情，用于 Row Inspector 抽屉查看整行数据和完整 prompt / response。
+共享事件层的单条原始交互详情。执行验证入口统一使用 `7.1` 的 profile execution snapshot；本接口保留给原始层观测和 API 排障，不包含 profile 知识、fallback 或产物证据。
 
 Response：
 
@@ -727,9 +727,9 @@ schema_parse_failed
   },
   "maturity": {
     "stages": [
-      { "stage": "proposal",   "firstReachedAt": "2026-04-22T..." },
-      { "stage": "design",     "firstReachedAt": "2026-04-23T..." },
-      { "stage": "task",       "firstReachedAt": null },
+      { "stage": "proposal", "firstReachedAt": "2026-04-22T..." },
+      { "stage": "design", "firstReachedAt": "2026-04-23T..." },
+      { "stage": "task", "firstReachedAt": null },
       { "stage": "codereview", "firstReachedAt": null }
     ],
     "completionRate": 0.5,
@@ -849,13 +849,32 @@ Response：`SddWikiRecallContentSchema`。
 
 Profile API 是前端看板的统一读接口。URL 中的 `profileId` 选择当前 profile；响应字段使用统一领域名，前端可按 profile presentation 映射成 SDD 文案。
 
-### 7.1 GET /api/profiles/:profileId/knowledge/overview
+### 7.1 GET /api/profiles/:profileId/interactions/:interactionId/snapshot
+
+返回一次 interaction 的执行快照，用于在用户活动时间线中核对本次 skill 执行的客观证据。`profileId` 决定知识访问、读取失败和 fallback 的当前投影口径；interaction、skill usage 与 tool call 来自共享事件层。
+
+响应按 interaction 串联：
+
+- `interaction`：执行状态、模型、时间、prompt 和 response。
+- `skills[]`：本次观测到的 skill 名称、语义和版本。
+- `knowledge.accesses[]`：成功归入当前 profile 的知识访问，保留来源空间、相对路径和工具调用顺序。
+- `knowledge.failures[]`：当前 profile 中归类为 `knowledge_read_failed` 的失败证据，可用于发现死链接或读取错误。
+- `fallbacks[]`：命中当前 profile 中 `surfaceRole=fallback` 规则的能力调用。
+- `artifacts[]`：本次 interaction 关联的产物写入事实，包括类型、路径、写入方式和内容预览。
+- `toolCalls[]`：完整工具调用时间线；`knowledgeStatus` 只标记该调用是否关联成功知识访问或知识读取失败。
+- `summary`：上述证据数组的客观计数。
+
+接口不判断业务路径或产物语义是否正确，也不返回“验证通过”结论。通过 `toolCallId` 打开的知识正文来自当前文件内容，不能视为执行当时的历史快照。
+
+Response：`ProfileExecutionSnapshotSchema`。
+
+### 7.2 GET /api/profiles/:profileId/knowledge/overview
 
 返回知识访问事实概览。来源空间取 `evidence_json.sourceNamespace`；路径维度取相对路径中的全部目录段并在查询时计算，不读取物化的 domain/axis/system。同一文档可以属于多个路径维度。
 
 Response：`ProfileKnowledgeOverviewResponseSchema`，核心字段为 `totals`、`sources[]` 和 `pathDimensions[]`。
 
-### 7.2 GET /api/profiles/:profileId/knowledge/timeline
+### 7.3 GET /api/profiles/:profileId/knowledge/timeline
 
 返回真实访问总量和独立路径维度。每条访问只计入一个 `buckets[].accessCount`；同一访问可以命中多个目录段维度，因此 `dimensions[]` 不能相加作为总量。
 
@@ -870,7 +889,7 @@ pathSegment      string (optional, exact directory segment)
 
 Response：`{ buckets: Array<{ t, accessCount }>, dimensions: Array<{ segment, accessCount, points }> }`。
 
-### 7.3 GET /api/profiles/:profileId/knowledge/docs
+### 7.4 GET /api/profiles/:profileId/knowledge/docs
 
 返回指定来源空间中，相对路径包含指定目录段的实际访问文档。
 
@@ -883,19 +902,19 @@ pathSegment      string
 
 Response：`ProfileKnowledgePathDimensionDocsResponseSchema`。
 
-### 7.4 GET /api/profiles/:profileId/knowledge/doc-detail
+### 7.5 GET /api/profiles/:profileId/knowledge/doc-detail
 
 按 `sourceNamespace + relativePath` 返回文档趋势、读者和来源交付单元。Response：`ProfileKnowledgeDocDetailResponseSchema`。
 
-### 7.5 GET /api/profiles/:profileId/knowledge/content/by-path
+### 7.6 GET /api/profiles/:profileId/knowledge/content/by-path
 
 按 `sourceNamespace + relativePath` 读取知识文档当前内容。Response：`ProfileKnowledgeContentSchema`。
 
-### 7.6 GET /api/profiles/:profileId/knowledge/content/:toolCallId
+### 7.7 GET /api/profiles/:profileId/knowledge/content/:toolCallId
 
 按知识访问的 `toolCallId` 读取对应文档内容。仅可读动作返回内容，其他动作按 `reason` 降级。Response：`ProfileKnowledgeContentSchema`。
 
-### 7.7 GET /api/profiles/:profileId/errors/overview
+### 7.8 GET /api/profiles/:profileId/errors/overview
 
 Profile 异常分析概览。只读取当前 profile 的 current projection run，不回退 legacy `/api/sdd/errors`。
 
@@ -944,7 +963,7 @@ Response：`ProfileErrorOverviewResponseSchema`
 }
 ```
 
-### 7.8 GET /api/profiles/:profileId/errors
+### 7.9 GET /api/profiles/:profileId/errors
 
 Profile 异常明细列表，服务异常分类页和单事件详情页的表格入口。
 
@@ -967,7 +986,7 @@ pageSize        number default 50 max 200
 
 Response：`ProfileErrorListResponseSchema`
 
-### 7.9 GET /api/profiles/:profileId/errors/:errorEventId
+### 7.10 GET /api/profiles/:profileId/errors/:errorEventId
 
 Profile 异常详情。返回列表字段，加上 `sessionId`、`promptId`、`errorMessageHash`、`stackPreview` 和 `evidence`。
 

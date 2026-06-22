@@ -19,6 +19,7 @@ import type {
   ProfileErrorOverviewResponse,
   ProfileErrorReasonGroup,
   ProfileErrorRule,
+  ProfileExecutionSnapshot,
   ProfileKnowledgePathDimensionSummary,
   ProfileKnowledgeSourceSummary,
   ProfileKnowledgeOverviewResponse,
@@ -1596,6 +1597,208 @@ export class ProfileProjectionRepository {
     return collapseProfileUserActivityItems(items, options.limit);
   }
 
+  async getExecutionSnapshot(
+    profileId: string,
+    runId: number,
+    interactionId: string,
+    fallbackRuleIds: string[],
+  ): Promise<ProfileExecutionSnapshot | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const fallbackRowsPromise =
+      fallbackRuleIds.length > 0
+        ? (dataSource.query(
+            `SELECT cu.id, cu.capability_code, cu.display_name, cu.raw_capability_name,
+                    cu.matched_rule_id, cu.event_time
+             FROM profile_capability_usages cu
+             WHERE cu.profile_id = ?
+               AND cu.projection_run_id = ?
+               AND cu.interaction_id = ?
+               AND cu.matched_rule_id IN (${fallbackRuleIds.map(() => '?').join(',')})
+             ORDER BY cu.event_time ASC, cu.id ASC`,
+            [profileId, runId, interactionId, ...fallbackRuleIds],
+          ) as Promise<Array<Record<string, unknown>>>)
+        : Promise.resolve([] as Array<Record<string, unknown>>);
+
+    const [
+      interactionRows,
+      skillRows,
+      accessRows,
+      failureRows,
+      fallbackRows,
+      artifactRows,
+      toolCallRows,
+    ] = await Promise.all([
+      dataSource.query(
+        `SELECT i.id, i.status, i.user_id, i.session_id, i.prompt_id, i.command_name,
+                i.model, i.skill_name, i.started_at, i.completed_at, i.duration_ms,
+                t.prompt_text, t.response_text
+         FROM sdd_interactions i
+         LEFT JOIN sdd_interaction_texts t ON t.interaction_id = i.id
+         WHERE i.id = ?
+         LIMIT 1`,
+        [interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT su.id, su.raw_skill_name, ss.semantic_code, ss.display_name,
+                su.status, su.observed_version, su.event_time
+         FROM sdd_skill_usages su
+         LEFT JOIN sdd_skill_semantics ss ON ss.id = su.semantic_id
+         WHERE su.interaction_id = ?
+         ORDER BY su.event_time ASC, su.id ASC`,
+        [interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT kr.id, kr.tool_call_id, tc.sequence, kr.action_type,
+                kr.source_namespace, kr.relative_path, kr.event_time
+         FROM profile_knowledge_recalls kr
+         LEFT JOIN sdd_interaction_tool_calls tc ON tc.id = kr.tool_call_id
+         WHERE kr.profile_id = ? AND kr.projection_run_id = ? AND kr.interaction_id = ?
+         ORDER BY tc.sequence IS NULL, tc.sequence ASC, kr.event_time ASC, kr.id ASC`,
+        [profileId, runId, interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT e.id, e.tool_call_id, tc.sequence, e.tool_name, e.error_type,
+                e.message_preview, e.input_preview, e.locator, e.event_time
+         FROM profile_error_events e
+         LEFT JOIN sdd_interaction_tool_calls tc ON tc.id = e.tool_call_id
+         WHERE e.profile_id = ?
+           AND e.projection_run_id = ?
+           AND e.interaction_id = ?
+           AND e.category = 'knowledge_read_failed'
+         ORDER BY tc.sequence IS NULL, tc.sequence ASC, e.event_time ASC, e.id ASC`,
+        [profileId, runId, interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      fallbackRowsPromise,
+      dataSource.query(
+        `SELECT w.id AS write_id, a.id AS artifact_id, a.artifact_type,
+                a.artifact_locator, w.write_kind, w.content_preview, w.event_time
+         FROM profile_artifact_writes w
+         JOIN profile_artifacts a
+           ON a.id = w.artifact_id AND a.projection_run_id = w.projection_run_id
+         WHERE w.profile_id = ? AND w.projection_run_id = ? AND w.interaction_id = ?
+         ORDER BY w.event_time ASC, w.id ASC`,
+        [profileId, runId, interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT tc.id, tc.tool_use_id, tc.skill_usage_id, tc.tool_name, tc.sequence,
+                tc.decision, tc.success, tc.duration_ms, tc.result_size_bytes,
+                tc.error_type, tc.tool_input_preview
+         FROM sdd_interaction_tool_calls tc
+         WHERE tc.interaction_id = ?
+         ORDER BY tc.sequence ASC, tc.id ASC`,
+        [interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+    ]);
+
+    const interactionRow = interactionRows[0];
+    if (!interactionRow) return null;
+
+    const accesses = accessRows.map((row) => ({
+      id: toStringId(row.id),
+      toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
+      sequence: row.sequence == null ? null : toNumber(row.sequence),
+      actionType: String(row.action_type ?? ''),
+      sourceNamespace: String(row.source_namespace ?? ''),
+      relativePath: String(row.relative_path ?? ''),
+      eventTime: toIsoDate(row.event_time),
+    }));
+    const failures = failureRows.map((row) => ({
+      id: toStringId(row.id),
+      toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
+      sequence: row.sequence == null ? null : toNumber(row.sequence),
+      toolName: (row.tool_name as string | null) ?? null,
+      errorType: (row.error_type as string | null) ?? null,
+      messagePreview: (row.message_preview as string | null) ?? null,
+      inputPreview: (row.input_preview as string | null) ?? null,
+      locator: (row.locator as string | null) ?? null,
+      eventTime: toIsoDate(row.event_time),
+    }));
+    const accessedToolCallIds = new Set(
+      accesses.flatMap((item) => (item.toolCallId ? [item.toolCallId] : [])),
+    );
+    const failedToolCallIds = new Set(
+      failures.flatMap((item) => (item.toolCallId ? [item.toolCallId] : [])),
+    );
+
+    const fallbacks = fallbackRows.map((row) => ({
+      capabilityUsageId: toStringId(row.id),
+      capabilityCode: (row.capability_code as string | null) ?? null,
+      displayName: (row.display_name as string | null) ?? null,
+      rawCapabilityName: (row.raw_capability_name as string | null) ?? null,
+      matchedRuleId: String(row.matched_rule_id ?? ''),
+      eventTime: toIsoDate(row.event_time),
+    }));
+    const artifacts = artifactRows.map((row) => ({
+      writeId: toStringId(row.write_id),
+      artifactId: toStringId(row.artifact_id),
+      artifactType: String(row.artifact_type ?? ''),
+      artifactLocator: (row.artifact_locator as string | null) ?? null,
+      writeKind: (row.write_kind as string | null) ?? null,
+      contentPreview: (row.content_preview as string | null) ?? null,
+      eventTime: toIsoDate(row.event_time),
+    }));
+    const toolCalls = toolCallRows.map((row) => {
+      const id = toStringId(row.id);
+      return {
+        id,
+        toolUseId: String(row.tool_use_id ?? ''),
+        skillUsageId: row.skill_usage_id == null ? null : toStringId(row.skill_usage_id),
+        toolName: String(row.tool_name ?? ''),
+        sequence: toNumber(row.sequence),
+        decision: (row.decision as string | null) ?? null,
+        success: toNullableBoolean(row.success),
+        durationMs: row.duration_ms == null ? null : toNumber(row.duration_ms),
+        resultSizeBytes: row.result_size_bytes == null ? null : toNumber(row.result_size_bytes),
+        errorType: (row.error_type as string | null) ?? null,
+        toolInputPreview: (row.tool_input_preview as string | null) ?? null,
+        knowledgeStatus: failedToolCallIds.has(id)
+          ? ('failed' as const)
+          : accessedToolCallIds.has(id)
+            ? ('accessed' as const)
+            : null,
+      };
+    });
+
+    return {
+      interaction: {
+        id: toStringId(interactionRow.id),
+        status: String(interactionRow.status ?? ''),
+        userId: interactionRow.user_id == null ? null : toStringId(interactionRow.user_id),
+        sessionId: (interactionRow.session_id as string | null) ?? null,
+        promptId: (interactionRow.prompt_id as string | null) ?? null,
+        commandName: (interactionRow.command_name as string | null) ?? null,
+        model: (interactionRow.model as string | null) ?? null,
+        skillName: (interactionRow.skill_name as string | null) ?? null,
+        startedAt: toIsoDate(interactionRow.started_at),
+        completedAt: toIsoDate(interactionRow.completed_at),
+        durationMs:
+          interactionRow.duration_ms == null ? null : toNumber(interactionRow.duration_ms),
+        promptText: (interactionRow.prompt_text as string | null) ?? null,
+        responseText: (interactionRow.response_text as string | null) ?? null,
+      },
+      skills: skillRows.map((row) => ({
+        id: toStringId(row.id),
+        rawSkillName: String(row.raw_skill_name ?? ''),
+        semanticCode: (row.semantic_code as string | null) ?? null,
+        displayName: (row.display_name as string | null) ?? null,
+        status: String(row.status ?? ''),
+        observedVersion: (row.observed_version as string | null) ?? null,
+        eventTime: toIsoDate(row.event_time),
+      })),
+      knowledge: { accesses, failures },
+      fallbacks,
+      artifacts,
+      toolCalls,
+      summary: {
+        knowledgeAccessCount: accesses.length,
+        knowledgeFailureCount: failures.length,
+        fallbackCount: fallbacks.length,
+        artifactWriteCount: artifacts.length,
+        toolCallCount: toolCalls.length,
+      },
+    };
+  }
+
   private async getUserSummary(
     runId: number,
     userId: string,
@@ -2093,6 +2296,13 @@ export class ProfileProjectionRepository {
       total: rows.length,
     };
   }
+}
+
+function toNullableBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null;
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === false || value === 0 || value === '0') return false;
+  return null;
 }
 
 function toProjectionRun(row: Record<string, unknown>): ProfileInspectorProjectionRun {
