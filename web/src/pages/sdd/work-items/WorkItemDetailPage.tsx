@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ArrowLeft, GitBranch } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
 import { useProfileDemandDetail, useProfileArtifactTimeline } from '@/pages/profiles/useProfiles';
@@ -7,13 +7,14 @@ import { ArtifactList } from './components/ArtifactList';
 import { ArtifactWriteTimeline } from './components/ArtifactWriteTimeline';
 import { InteractionDetailDrawer } from '@/components/sdd/InteractionDetailDrawer';
 import { formatInteger } from '@/lib/format';
+import { useBackNavigate } from '@/lib/useBackNavigate';
 
 const CARD_STYLE = { border: '1px solid var(--color-border)', background: 'var(--color-surface)' };
 
 export default function WorkItemDetailPage() {
   const { id = '' } = useParams();
   const { profileId } = useShellContext();
-  const navigate = useNavigate();
+  const goBack = useBackNavigate('/sdd/work-items');
   const detailQuery = useProfileDemandDetail(profileId, id || null);
   const detail = detailQuery.data;
 
@@ -38,8 +39,11 @@ export default function WorkItemDetailPage() {
   return (
     <div className="grid gap-3">
       <section className="flex flex-col gap-2 p-[14px] rounded-[6px]" style={CARD_STYLE}>
-        <button onClick={() => navigate('/sdd/work-items')} className="self-start inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]">
-          <ArrowLeft size={14} /> 产出分析
+        <button
+          onClick={goBack}
+          className="self-start inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
+        >
+          <ArrowLeft size={14} /> 返回
         </button>
         <div className="flex items-center gap-2">
           <GitBranch size={18} style={{ color: 'var(--color-primary)' }} />

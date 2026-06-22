@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen } from 'lucide-react';
 import { PathDimensionDetailHeader } from './components/PathDimensionDetailHeader';
 import { PathDimensionDocList } from './components/PathDimensionDocList';
@@ -7,10 +7,11 @@ import { DocRecallDetail } from './components/DocRecallDetail';
 import { useWikiRecallPathDimensionDocs } from './useWikiRecalls';
 import { CARD_STYLE, REPO_LABEL } from './styles';
 import { formatInteger } from '@/lib/format';
+import { useBackNavigate } from '@/lib/useBackNavigate';
 
 export default function WikiPathDimensionDetailPage() {
   const params = useParams();
-  const navigate = useNavigate();
+  const goBack = useBackNavigate('/sdd/wiki-recalls');
   const sourceNamespace = params.sourceNamespace ? decodeURIComponent(params.sourceNamespace) : '';
   const pathSegment = params.pathSegment ? decodeURIComponent(params.pathSegment) : '';
 
@@ -37,10 +38,10 @@ export default function WikiPathDimensionDetailPage() {
         style={CARD_STYLE}
       >
         <button
-          onClick={() => navigate('/sdd/wiki-recalls')}
+          onClick={goBack}
           className="inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
         >
-          <ArrowLeft size={14} /> 知识库分析
+          <ArrowLeft size={14} /> 返回
         </button>
         <span className="text-[var(--color-border)]">/</span>
         <span className="text-[12px] text-[var(--color-secondary)]">

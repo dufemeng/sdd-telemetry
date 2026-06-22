@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDateTime, formatInteger, truncateId } from '@/lib/format';
 import { timeRangeToFromIso } from '@/lib/timeRange';
+import { useBackNavigate } from '@/lib/useBackNavigate';
 import {
   useProfileCapabilityUsageSummary,
   useProfileCapabilityUsages,
@@ -33,6 +34,7 @@ const MUTED_PANEL_STYLE = {
 
 export default function SkillDetailPage() {
   const navigate = useNavigate();
+  const goBack = useBackNavigate('/sdd/skills');
   const [searchParams] = useSearchParams();
   const { profileId, timeRange } = useShellContext();
   const presentation = useProfilePresentationModel(profileId);
@@ -83,10 +85,10 @@ export default function SkillDetailPage() {
       <header className="rounded-[6px] p-[14px]" style={PANEL_STYLE}>
         <button
           type="button"
-          onClick={() => navigate('/sdd/skills')}
+          onClick={goBack}
           className="mb-3 inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
         >
-          <ArrowLeft size={14} /> {presentation.labels.capabilityPlural}分析
+          <ArrowLeft size={14} /> 返回
         </button>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

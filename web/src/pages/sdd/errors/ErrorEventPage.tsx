@@ -15,9 +15,11 @@ import {
   buildErrorCategoryPath,
   errorCategoryLabel,
 } from './errorMeta';
+import { useBackNavigate } from '@/lib/useBackNavigate';
 
 export default function ErrorEventPage() {
   const navigate = useNavigate();
+  const goBack = useBackNavigate('/sdd/errors');
   const { eventId = '' } = useParams();
   const { profileId, timeRange } = useShellContext();
   const detailQuery = useProfileErrorDetail(profileId, eventId || null);
@@ -144,10 +146,10 @@ export default function ErrorEventPage() {
 
             <button
               type="button"
-              onClick={() => navigate('/sdd/errors')}
+              onClick={goBack}
               className="inline-flex h-8 w-full items-center justify-center gap-2 rounded-[4px] border border-[var(--color-border)] bg-[#141414] text-[12px] text-[var(--color-secondary)] hover:text-[#f5f5f5]"
             >
-              <TriangleAlert size={14} /> 返回异常分析
+              <TriangleAlert size={14} /> 返回
             </button>
           </aside>
         </section>

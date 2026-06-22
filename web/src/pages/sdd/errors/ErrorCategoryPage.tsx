@@ -17,6 +17,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useProfileErrorOverview, useProfileErrors } from '@/pages/profiles/useProfiles';
 import { formatDateTime, formatInteger, formatRelativeTime, lastTwoPathSegments, truncate } from '@/lib/format';
 import { timeRangeToFromIso } from '@/lib/timeRange';
+import { useBackNavigate } from '@/lib/useBackNavigate';
 import {
   ERROR_CATEGORY_DESCRIPTIONS,
   ERROR_CATEGORY_ICONS,
@@ -44,6 +45,7 @@ export default function ErrorCategoryPage() {
 
 function ErrorCategoryContent({ category }: { category: ProfileErrorCategoryContract }) {
   const navigate = useNavigate();
+  const goBack = useBackNavigate('/sdd/errors');
   const [searchParams, setSearchParams] = useSearchParams();
   const { profileId, timeRange } = useShellContext();
   const fromIso = useMemo(() => timeRangeToFromIso(timeRange), [timeRange]);
@@ -91,10 +93,10 @@ function ErrorCategoryContent({ category }: { category: ProfileErrorCategoryCont
           <div className="mb-3 flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => navigate('/sdd/errors')}
+              onClick={goBack}
               className="inline-flex items-center gap-1 text-[12px] text-[var(--color-muted)] hover:text-[var(--color-secondary)]"
             >
-              <ArrowLeft size={14} /> 异常分析
+              <ArrowLeft size={14} /> 返回
             </button>
             <span className="text-[11px] text-[var(--color-muted)]">{timeRange}</span>
           </div>
