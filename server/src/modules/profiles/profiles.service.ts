@@ -33,6 +33,7 @@ import type {
   ProfileInspectorResolvedSourceRule,
   ProfileSummary,
   ProfileUserActivityItem,
+  ProfileUserActivityResponse,
   ProfileUserActivityQuery,
   ProfileUserDetail,
   ProfileUserItem,
@@ -427,24 +428,22 @@ export class ProfilesService {
     profileId: string,
     userId: string,
     query: ProfileUserActivityQuery,
-  ): Promise<{ items: ProfileUserActivityItem[] }> {
+  ): Promise<ProfileUserActivityResponse> {
     const read = await this.resolveReadMode(profileId);
     const since = rangeToSinceDate(query.range);
 
     if (read.mode === 'projection') {
-      const items = await this.profileProjectionRepository.listUserActivity(
+      return this.profileProjectionRepository.listUserActivity(
         profileId,
         read.runId,
         userId,
         {
-          deliveryUnitId: query.deliveryUnitId ?? null,
           rangeSinceDate: since,
           limit: query.limit,
         },
       );
-      return { items };
     }
-    return { items: [] };
+    return { items: [], totalInteractions: 0, truncated: false };
   }
 
   async getExecutionSnapshot(
@@ -464,11 +463,16 @@ export class ProfilesService {
     const fallbackRuleIds = config.capabilityRules
       .filter((rule) => rule.surfaceRole === 'fallback')
       .map((rule) => rule.ruleId);
+    const knowledgeRule = config.errorRules.find(
+      (rule) => rule.category === 'knowledge_read_failed',
+    );
+    const knowledgeReasonGroups = knowledgeRule?.reasonGroups ?? [];
     const snapshot = await this.profileProjectionRepository.getExecutionSnapshot(
       profileId,
       read.runId,
       interactionId,
       fallbackRuleIds,
+      knowledgeReasonGroups,
     );
     if (snapshot) return snapshot;
     throw new ApiHttpError(404, 'INTERACTION_NOT_FOUND', `interaction not found: ${interactionId}`);

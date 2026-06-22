@@ -89,7 +89,6 @@ interface KnowledgeFilterOptions {
 }
 
 interface UserActivityOptions {
-  deliveryUnitId?: string | null;
   rangeSinceDate?: Date | null;
   limit: number;
 }
@@ -1458,7 +1457,7 @@ export class ProfileProjectionRepository {
     runId: number,
     userId: string,
     options: UserActivityOptions,
-  ): Promise<ProfileUserActivityItem[]> {
+  ): Promise<{ items: ProfileUserActivityItem[]; totalInteractions: number; truncated: boolean }> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const paramsFor = (alias: string): { clause: string; params: unknown[] } => {
       const clauses = [
@@ -1467,10 +1466,6 @@ export class ProfileProjectionRepository {
         `${alias}.user_id = ?`,
       ];
       const params: unknown[] = [profileId, runId, userId];
-      if (options.deliveryUnitId) {
-        clauses.push(`${alias}.delivery_unit_id = ?`);
-        params.push(options.deliveryUnitId);
-      }
       if (options.rangeSinceDate) {
         clauses.push(`${alias}.event_time >= ?`);
         params.push(options.rangeSinceDate);
@@ -1484,8 +1479,8 @@ export class ProfileProjectionRepository {
     const turns = paramsFor('t');
     const code = paramsFor('ca');
     const rawLimit = expandProfileUserActivityFetchLimit(options.limit);
-    const rows = (await dataSource.query(
-      `SELECT * FROM (
+    const rowsPromise = dataSource.query(
+        `SELECT * FROM (
         SELECT CONCAT('capability-', cu.id) AS id, 'capability' AS kind,
                cu.event_time, cu.interaction_id, cu.delivery_unit_id,
                NULL AS artifact_id, cu.id AS capability_usage_id,
@@ -1573,7 +1568,28 @@ export class ProfileProjectionRepository {
         ...code.params,
         rawLimit,
       ],
-    )) as Array<Record<string, unknown>>;
+    ) as Promise<Array<Record<string, unknown>>>;
+    const totalPromise = dataSource.query(
+      `SELECT COUNT(DISTINCT interaction_id) AS total FROM (
+        SELECT cu.interaction_id FROM profile_capability_usages cu WHERE ${capability.clause} AND cu.interaction_id IS NOT NULL
+        UNION
+        SELECT kr.interaction_id FROM profile_knowledge_recalls kr WHERE ${knowledge.clause} AND kr.interaction_id IS NOT NULL
+        UNION
+        SELECT w.interaction_id FROM profile_artifact_writes w WHERE ${writes.clause} AND w.interaction_id IS NOT NULL
+        UNION
+        SELECT t.interaction_id FROM profile_artifact_turns t WHERE ${turns.clause} AND t.interaction_id IS NOT NULL
+        UNION
+        SELECT ca.interaction_id FROM profile_code_activities ca WHERE ${code.clause} AND ca.interaction_id IS NOT NULL
+      ) ids`,
+      [
+        ...capability.params,
+        ...knowledge.params,
+        ...writes.params,
+        ...turns.params,
+        ...code.params,
+      ],
+    ) as Promise<Array<Record<string, unknown>>>;
+    const [rows, totalRows] = await Promise.all([rowsPromise, totalPromise]);
 
     const items = rows.map(
       (row): ProfileUserActivityFactItem => ({
@@ -1594,7 +1610,13 @@ export class ProfileProjectionRepository {
         promptText: (row.prompt_text as string | null) ?? null,
       }),
     );
-    return collapseProfileUserActivityItems(items, options.limit);
+    const collapsed = collapseProfileUserActivityItems(items, options.limit);
+    const totalInteractions = toNumber(totalRows[0]?.total);
+    return {
+      items: collapsed,
+      totalInteractions,
+      truncated: totalInteractions > collapsed.length,
+    };
   }
 
   async getExecutionSnapshot(
@@ -1602,6 +1624,7 @@ export class ProfileProjectionRepository {
     runId: number,
     interactionId: string,
     fallbackRuleIds: string[],
+    knowledgeReasonGroups: ProfileErrorReasonGroup[],
   ): Promise<ProfileExecutionSnapshot | null> {
     const dataSource = await this.mysqlDataSourceManager.getDataSource();
     const fallbackRowsPromise =
@@ -1626,7 +1649,9 @@ export class ProfileProjectionRepository {
       failureRows,
       fallbackRows,
       artifactRows,
+      apiErrorRows,
       toolCallRows,
+      runRows,
     ] = await Promise.all([
       dataSource.query(
         `SELECT i.id, i.status, i.user_id, i.session_id, i.prompt_id, i.command_name,
@@ -1680,6 +1705,16 @@ export class ProfileProjectionRepository {
         [profileId, runId, interactionId],
       ) as Promise<Array<Record<string, unknown>>>,
       dataSource.query(
+        `SELECT e.id, e.error_type, e.message_preview, e.event_time
+         FROM profile_error_events e
+         WHERE e.profile_id = ?
+           AND e.projection_run_id = ?
+           AND e.interaction_id = ?
+           AND e.category = 'model_or_api_failed'
+         ORDER BY e.event_time ASC, e.id ASC`,
+        [profileId, runId, interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
         `SELECT tc.id, tc.tool_use_id, tc.skill_usage_id, tc.tool_name, tc.sequence,
                 tc.decision, tc.success, tc.duration_ms, tc.result_size_bytes,
                 tc.error_type, tc.tool_input_preview
@@ -1687,6 +1722,10 @@ export class ProfileProjectionRepository {
          WHERE tc.interaction_id = ?
          ORDER BY tc.sequence ASC, tc.id ASC`,
         [interactionId],
+      ) as Promise<Array<Record<string, unknown>>>,
+      dataSource.query(
+        `SELECT completed_at FROM profile_projection_runs WHERE id = ? LIMIT 1`,
+        [runId],
       ) as Promise<Array<Record<string, unknown>>>,
     ]);
 
@@ -1702,17 +1741,34 @@ export class ProfileProjectionRepository {
       relativePath: String(row.relative_path ?? ''),
       eventTime: toIsoDate(row.event_time),
     }));
-    const failures = failureRows.map((row) => ({
-      id: toStringId(row.id),
-      toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
-      sequence: row.sequence == null ? null : toNumber(row.sequence),
-      toolName: (row.tool_name as string | null) ?? null,
-      errorType: (row.error_type as string | null) ?? null,
-      messagePreview: (row.message_preview as string | null) ?? null,
-      inputPreview: (row.input_preview as string | null) ?? null,
-      locator: (row.locator as string | null) ?? null,
-      eventTime: toIsoDate(row.event_time),
-    }));
+    const failures = failureRows.map((row) => {
+      const errorType = (row.error_type as string | null) ?? null;
+      const toolName = (row.tool_name as string | null) ?? null;
+      const messagePreview = (row.message_preview as string | null) ?? null;
+      const inputPreview = (row.input_preview as string | null) ?? null;
+      const locator = (row.locator as string | null) ?? null;
+      const reason = classifyFailureReason(knowledgeReasonGroups, {
+        errorType,
+        toolName,
+        messagePreview,
+        inputPreview,
+        locator,
+      });
+      return {
+        id: toStringId(row.id),
+        toolCallId: row.tool_call_id == null ? null : toStringId(row.tool_call_id),
+        sequence: row.sequence == null ? null : toNumber(row.sequence),
+        toolName,
+        errorType,
+        reasonCode: reason?.reasonCode ?? null,
+        reasonLabel: reason?.displayName ?? null,
+        reasonDescription: reason?.description ?? null,
+        messagePreview,
+        inputPreview,
+        locator,
+        eventTime: toIsoDate(row.event_time),
+      };
+    });
     const accessedToolCallIds = new Set(
       accesses.flatMap((item) => (item.toolCallId ? [item.toolCallId] : [])),
     );
@@ -1788,12 +1844,30 @@ export class ProfileProjectionRepository {
       knowledge: { accesses, failures },
       fallbacks,
       artifacts,
+      apiErrors: apiErrorRows.map((row) => ({
+        id: toStringId(row.id),
+        errorType: (row.error_type as string | null) ?? null,
+        messagePreview: (row.message_preview as string | null) ?? null,
+        eventTime: toIsoDate(row.event_time),
+      })),
       toolCalls,
+      projection: (() => {
+        const runCompletedAt = runRows[0]?.completed_at;
+        const runCompletedMs =
+          runCompletedAt == null ? null : new Date(runCompletedAt as string).getTime();
+        const interactionStartedMs = interactionRow.started_at == null
+          ? null
+          : new Date(interactionRow.started_at as string).getTime();
+        // 投影 run 完成时间缺、或 interaction 在 run 完成之后才开始的 → 投影尚未覆盖
+        const ready = runCompletedMs != null && (interactionStartedMs == null || interactionStartedMs <= runCompletedMs);
+        return { ready, servingRunCompletedAt: toIsoDate(runCompletedAt) };
+      })(),
       summary: {
         knowledgeAccessCount: accesses.length,
         knowledgeFailureCount: failures.length,
         fallbackCount: fallbacks.length,
         artifactWriteCount: artifacts.length,
+        apiErrorCount: apiErrorRows.length,
         toolCallCount: toolCalls.length,
       },
     };
@@ -2526,6 +2600,70 @@ function buildReasonWhere(reason: ProfileErrorReasonGroup): {
 /** 转义 LIKE 字面量里的 \ % _,配合默认 \ 转义符使用(只用于 glob→LIKE 翻译,* 不在此转义)。 */
 function escapeLikeLiteral(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * 内存版归因匹配：给定单条 failure 的字段，按 reasonGroups 配置算出归因。
+ * 规则与 buildReasonWhere 一致：matchErrorTypes / matchToolNames(glob) /
+ * messageIncludes / locatorIncludes / inputIncludes 任一命中即归因；
+ * 非按配置顺序优先，兜底 reason(isFallback) 命中「不匹配任何非兜底原因」。
+ */
+function classifyFailureReason(
+  reasonGroups: ProfileErrorReasonGroup[] | null | undefined,
+  fields: {
+    errorType: string | null;
+    toolName: string | null;
+    messagePreview: string | null;
+    inputPreview: string | null;
+    locator: string | null;
+  },
+): { reasonCode: string; displayName: string; description: string | null } | null {
+  if (!reasonGroups || reasonGroups.length === 0) return null;
+  const nonFallback = reasonGroups.filter((reason) => !reason.isFallback);
+  const matchOne = (reason: ProfileErrorReasonGroup): boolean => {
+    if (reason.matchErrorTypes?.length && fields.errorType) {
+      if (reason.matchErrorTypes.includes(fields.errorType)) return true;
+    }
+    for (const toolName of reason.matchToolNames ?? []) {
+      if (!fields.toolName) continue;
+      if (toolName.includes('*')) {
+        const re = new RegExp(
+          '^' + toolName.replaceAll(/[.+^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*') + '$',
+        );
+        if (re.test(fields.toolName)) return true;
+      } else if (toolName === fields.toolName) {
+        return true;
+      }
+    }
+    for (const value of reason.locatorIncludes ?? []) {
+      if (fields.locator && fields.locator.includes(value)) return true;
+    }
+    for (const value of reason.messageIncludes ?? []) {
+      if (fields.messagePreview && fields.messagePreview.includes(value)) return true;
+    }
+    for (const value of reason.inputIncludes ?? []) {
+      if (fields.inputPreview && fields.inputPreview.includes(value)) return true;
+    }
+    return false;
+  };
+  for (const reason of nonFallback) {
+    if (matchOne(reason)) {
+      return {
+        reasonCode: reason.reasonCode,
+        displayName: reason.displayName,
+        description: reason.description ?? null,
+      };
+    }
+  }
+  const fallback = reasonGroups.find((reason) => reason.isFallback);
+  if (fallback) {
+    return {
+      reasonCode: fallback.reasonCode,
+      displayName: fallback.displayName,
+      description: fallback.description ?? null,
+    };
+  }
+  return null;
 }
 
 function addErrorListFilters(

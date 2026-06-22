@@ -335,19 +335,17 @@ export function useProfileUserActivity(
   profileId: string,
   userId: string | null,
   params: {
-    deliveryUnitId?: string | null;
     range?: string;
     limit?: number;
   },
 ) {
   const qs = new URLSearchParams();
-  if (params.deliveryUnitId) qs.set('deliveryUnitId', params.deliveryUnitId);
   if (params.range) qs.set('range', params.range);
   if (params.limit) qs.set('limit', String(params.limit));
   return useQuery({
     queryKey: ['profile-user-activity', profileId, userId, params],
     queryFn: () =>
-      requestData<{ items: ProfileUserActivityItem[] }>(
+      requestData<{ items: ProfileUserActivityItem[]; totalInteractions: number; truncated: boolean }>(
         `/api/profiles/${profileId}/users/${userId}/activity${qs.toString() ? `?${qs}` : ''}`,
       ),
     staleTime: 30_000,

@@ -4,12 +4,14 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  CloudOff,
   FileText,
   GitBranch,
   TerminalSquare,
   Wrench,
 } from 'lucide-react';
 import type {
+  ProfileExecutionApiError,
   ProfileExecutionArtifact,
   ProfileExecutionFallback,
   ProfileExecutionKnowledgeAccess,
@@ -91,6 +93,8 @@ export function InteractionDetailDrawer({
   );
 }
 
+const PENDING_PROJECTION_TEXT = '投影未就绪,稍后刷新才会出现';
+
 function ExecutionSnapshotContent({
   snapshot,
   onOpenWikiDoc,
@@ -99,16 +103,27 @@ function ExecutionSnapshotContent({
   onOpenWikiDoc: (toolCallId: string) => void;
 }) {
   const skills = snapshot.skills;
+  const projectionReady = snapshot.projection.ready;
   return (
     <div className="space-y-5">
       <ExecutionSummary snapshot={snapshot} />
+      {!projectionReady ? (
+        <div className="flex items-start gap-2 rounded-[6px] border border-[var(--color-warn-border, var(--color-border))] bg-[var(--color-warn-bg)] px-3 py-2.5 text-[12px] text-[var(--color-warn-text)]">
+          <AlertTriangle size={14} className="mt-[2px] shrink-0" />
+          <span>
+            投影尚未覆盖本次执行（serving run 完成于该 interaction 开始之前）。知识访问、产物、降级等证据稍后刷新才会出现；当前「未观测到」不代表真的没有。
+          </span>
+        </div>
+      ) : null}
       <KnowledgeEvidenceSection
         accesses={snapshot.knowledge.accesses}
         failures={snapshot.knowledge.failures}
         onOpenWikiDoc={onOpenWikiDoc}
+        projectionReady={projectionReady}
       />
-      <FallbackSection fallbacks={snapshot.fallbacks} />
-      <ArtifactSection artifacts={snapshot.artifacts} />
+      <FallbackSection fallbacks={snapshot.fallbacks} projectionReady={projectionReady} />
+      <ApiErrorSection errors={snapshot.apiErrors} projectionReady={projectionReady} />
+      <ArtifactSection artifacts={snapshot.artifacts} projectionReady={projectionReady} />
       <ToolCallsSection calls={snapshot.toolCalls} onOpenWikiDoc={onOpenWikiDoc} />
       <details className="group border-t border-[var(--color-border)] pt-3">
         <summary className="flex cursor-pointer list-none items-center gap-2 text-[12px] font-semibold text-[var(--color-secondary)] hover:text-[#f5f5f5]">
@@ -138,6 +153,7 @@ function ExecutionSummary({ snapshot }: { snapshot: ProfileExecutionSnapshot }) 
     { label: '读取失败', value: snapshot.summary.knowledgeFailureCount, tone: 'bad' as const },
     { label: '降级', value: snapshot.summary.fallbackCount, tone: 'warn' as const },
     { label: '产物写入', value: snapshot.summary.artifactWriteCount, tone: 'neutral' as const },
+    { label: '模型/API 异常', value: snapshot.summary.apiErrorCount, tone: 'bad' as const },
     { label: '工具调用', value: snapshot.summary.toolCallCount, tone: 'neutral' as const },
   ];
 
@@ -158,7 +174,7 @@ function ExecutionSummary({ snapshot }: { snapshot: ProfileExecutionSnapshot }) 
           <span className="text-[10px] text-[var(--color-muted)]">未关联 skill usage</span>
         ) : null}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         {metrics.map((metric) => (
           <SummaryMetric key={metric.label} {...metric} />
         ))}
@@ -196,10 +212,12 @@ function KnowledgeEvidenceSection({
   accesses,
   failures,
   onOpenWikiDoc,
+  projectionReady,
 }: {
   accesses: ProfileExecutionKnowledgeAccess[];
   failures: ProfileExecutionKnowledgeFailure[];
   onOpenWikiDoc: (toolCallId: string) => void;
+  projectionReady: boolean;
 }) {
   const evidence: KnowledgeEvidence[] = [
     ...accesses.map((value) => ({ kind: 'access' as const, value })),
@@ -217,7 +235,9 @@ function KnowledgeEvidenceSection({
       meta={`${accesses.length} 成功 · ${failures.length} 失败`}
     >
       {evidence.length === 0 ? (
-        <EmptyEvidence text="本次执行未观测到知识访问或读取失败" />
+        <EmptyEvidence
+          text={projectionReady ? '本次执行未观测到知识访问或读取失败' : PENDING_PROJECTION_TEXT}
+        />
       ) : (
         <div className="divide-y divide-[var(--color-border)]">
           {evidence.map((item) =>
@@ -276,19 +296,24 @@ function KnowledgeAccessRow({
 
 function KnowledgeFailureRow({ failure }: { failure: ProfileExecutionKnowledgeFailure }) {
   const locator = failure.locator ?? failure.inputPreview ?? '未记录失败路径';
+  const reasonLabel = failure.reasonLabel ?? '知识库读取失败';
   return (
     <div className="flex items-start gap-2 bg-[var(--color-bad-bg)] px-3 py-2.5">
       <AlertTriangle size={14} className="mt-[2px] shrink-0 text-[var(--color-bad-text)]" />
       <Sequence value={failure.sequence} />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <span className="font-medium text-[var(--color-bad-text)]">读取失败</span>
-          <span className="font-mono text-[var(--color-secondary)]">
-            {failure.errorType ?? failure.toolName ?? 'unknown'}
-          </span>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="font-semibold text-[var(--color-bad-text)]">{reasonLabel}</span>
+          {failure.reasonDescription ? (
+            <span className="text-[10px] text-[var(--color-muted)]">{failure.reasonDescription}</span>
+          ) : null}
         </div>
         <div className="mt-1 break-all font-mono text-[11px] leading-[17px] text-[#f5f5f5]">
           {locator}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--color-muted)]">
+          {failure.errorType ? <span className="font-mono">error: {failure.errorType}</span> : null}
+          {failure.toolName ? <span className="font-mono">tool: {failure.toolName}</span> : null}
         </div>
         {failure.messagePreview ? (
           <div className="mt-1 text-[10px] leading-[16px] text-[var(--color-bad-text)]">
@@ -300,7 +325,13 @@ function KnowledgeFailureRow({ failure }: { failure: ProfileExecutionKnowledgeFa
   );
 }
 
-function FallbackSection({ fallbacks }: { fallbacks: ProfileExecutionFallback[] }) {
+function FallbackSection({
+  fallbacks,
+  projectionReady,
+}: {
+  fallbacks: ProfileExecutionFallback[];
+  projectionReady: boolean;
+}) {
   return (
     <EvidenceSection
       icon={<GitBranch size={16} />}
@@ -308,7 +339,9 @@ function FallbackSection({ fallbacks }: { fallbacks: ProfileExecutionFallback[] 
       meta={fallbacks.length > 0 ? `${fallbacks.length} 次` : '未检测到'}
     >
       {fallbacks.length === 0 ? (
-        <EmptyEvidence text="本次执行未命中 profile fallback rule" />
+        <EmptyEvidence
+          text={projectionReady ? '本次执行未命中 profile fallback rule' : PENDING_PROJECTION_TEXT}
+        />
       ) : (
         <div className="divide-y divide-[var(--color-border)]">
           {fallbacks.map((fallback) => (
@@ -339,11 +372,69 @@ function FallbackSection({ fallbacks }: { fallbacks: ProfileExecutionFallback[] 
   );
 }
 
-function ArtifactSection({ artifacts }: { artifacts: ProfileExecutionArtifact[] }) {
+function ApiErrorSection({
+  errors,
+  projectionReady,
+}: {
+  errors: ProfileExecutionApiError[];
+  projectionReady: boolean;
+}) {
+  return (
+    <EvidenceSection
+      icon={<CloudOff size={16} />}
+      title="模型/API 异常"
+      meta={errors.length > 0 ? `${errors.length} 次` : '未检测到'}
+    >
+      {errors.length === 0 ? (
+        <EmptyEvidence
+          text={
+            projectionReady ? '本次执行未观测到模型调用或 API 层异常' : PENDING_PROJECTION_TEXT
+          }
+        />
+      ) : (
+        <div className="divide-y divide-[var(--color-border)]">
+          {errors.map((err) => (
+            <div
+              key={err.id}
+              className="flex items-start gap-2 bg-[var(--color-bad-bg)] px-3 py-2.5"
+            >
+              <AlertTriangle size={14} className="mt-[2px] shrink-0 text-[var(--color-bad-text)]" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold text-[var(--color-bad-text)]">
+                  {err.errorType ?? '模型/API 异常'}
+                </div>
+                {err.messagePreview ? (
+                  <div className="mt-1 break-all text-[10px] leading-[16px] text-[var(--color-secondary)]">
+                    {truncate(err.messagePreview, 260)}
+                  </div>
+                ) : null}
+                {err.eventTime ? (
+                  <div className="mt-1 font-mono text-[10px] text-[var(--color-muted)]">
+                    {formatDateTime(err.eventTime)}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </EvidenceSection>
+  );
+}
+
+function ArtifactSection({
+  artifacts,
+  projectionReady,
+}: {
+  artifacts: ProfileExecutionArtifact[];
+  projectionReady: boolean;
+}) {
   return (
     <EvidenceSection icon={<FileText size={16} />} title="产物写入" meta={`${artifacts.length} 条`}>
       {artifacts.length === 0 ? (
-        <EmptyEvidence text="本次 interaction 未观测到产物写入" />
+        <EmptyEvidence
+          text={projectionReady ? '本次 interaction 未观测到产物写入' : PENDING_PROJECTION_TEXT}
+        />
       ) : (
         <div className="divide-y divide-[var(--color-border)]">
           {artifacts.map((artifact) => (

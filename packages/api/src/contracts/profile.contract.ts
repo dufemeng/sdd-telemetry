@@ -663,7 +663,6 @@ export const ProfileUserDetailSchema = z.object({
 export type ProfileUserDetail = z.infer<typeof ProfileUserDetailSchema>;
 
 export const ProfileUserActivityQuerySchema = z.object({
-  deliveryUnitId: IdSchema.optional(),
   range: z.enum(['24h', '7d', '30d', '90d', 'all']).default('30d'),
   limit: z.coerce.number().int().min(1).max(500).default(200),
 });
@@ -699,6 +698,8 @@ export type ProfileUserActivityItem = z.infer<typeof ProfileUserActivityItemSche
 
 export const ProfileUserActivityResponseSchema = z.object({
   items: z.array(ProfileUserActivityItemSchema),
+  totalInteractions: z.number().int().nonnegative(),
+  truncated: z.boolean(),
 });
 export type ProfileUserActivityResponse = z.infer<typeof ProfileUserActivityResponseSchema>;
 
@@ -749,6 +750,9 @@ export const ProfileExecutionKnowledgeFailureSchema = z.object({
   sequence: z.number().nullable(),
   toolName: z.string().nullable(),
   errorType: z.string().nullable(),
+  reasonCode: z.string().nullable(),
+  reasonLabel: z.string().nullable(),
+  reasonDescription: z.string().nullable(),
   messagePreview: z.string().nullable(),
   inputPreview: z.string().nullable(),
   locator: z.string().nullable(),
@@ -795,6 +799,14 @@ export const ProfileExecutionToolCallSchema = z.object({
 });
 export type ProfileExecutionToolCall = z.infer<typeof ProfileExecutionToolCallSchema>;
 
+export const ProfileExecutionApiErrorSchema = z.object({
+  id: IdSchema,
+  errorType: z.string().nullable(),
+  messagePreview: z.string().nullable(),
+  eventTime: ISODateTimeSchema.nullable(),
+});
+export type ProfileExecutionApiError = z.infer<typeof ProfileExecutionApiErrorSchema>;
+
 export const ProfileExecutionSnapshotSchema = z.object({
   interaction: ProfileExecutionInteractionSchema,
   skills: z.array(ProfileExecutionSkillSchema),
@@ -804,12 +816,18 @@ export const ProfileExecutionSnapshotSchema = z.object({
   }),
   fallbacks: z.array(ProfileExecutionFallbackSchema),
   artifacts: z.array(ProfileExecutionArtifactSchema),
+  apiErrors: z.array(ProfileExecutionApiErrorSchema),
   toolCalls: z.array(ProfileExecutionToolCallSchema),
+  projection: z.object({
+    ready: z.boolean(),
+    servingRunCompletedAt: ISODateTimeSchema.nullable(),
+  }),
   summary: z.object({
     knowledgeAccessCount: z.number().int().nonnegative(),
     knowledgeFailureCount: z.number().int().nonnegative(),
     fallbackCount: z.number().int().nonnegative(),
     artifactWriteCount: z.number().int().nonnegative(),
+    apiErrorCount: z.number().int().nonnegative(),
     toolCallCount: z.number().int().nonnegative(),
   }),
 });

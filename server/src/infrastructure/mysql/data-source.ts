@@ -26,6 +26,7 @@ import { CreateProfileErrorEvents1780000015000 } from './migrations/178000001500
 import { DropProfileKnowledgeDimensions1780000016000 } from './migrations/1780000016000-drop-profile-knowledge-dimensions';
 import { DropSddWikiDimensions1780000017000 } from './migrations/1780000017000-drop-sdd-wiki-dimensions';
 import { AddProfileKnowledgeLocation1780000018000 } from './migrations/1780000018000-add-profile-knowledge-location';
+import { AddProfileArtifactWritesInteractionIndex1780000019000 } from './migrations/1780000019000-add-profile-artifact-writes-interaction-index';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -68,6 +69,7 @@ export function createAppDataSource(): DataSource {
       DropProfileKnowledgeDimensions1780000016000,
       DropSddWikiDimensions1780000017000,
       AddProfileKnowledgeLocation1780000018000,
+      AddProfileArtifactWritesInteractionIndex1780000019000,
     ],
   });
 }

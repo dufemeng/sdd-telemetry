@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Play, Zap } from 'lucide-react';
+import { ArrowRight, ArrowLeft, GitBranch, Layers, BookOpen, MessageSquare, Play, Zap } from 'lucide-react';
 import { useShellContext } from '@/components/layout/useShellContext';
 import {
   useProfilePresentationModel,
@@ -68,19 +68,14 @@ export default function UserProfilePage() {
   const profileQuery = useProfileUserDetail(profileId, userId || null);
   const profile = profileQuery.data;
 
-  const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
   const [openInteractionId, setOpenInteractionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setSelectedWorkItemId(null);
-  }, [userId]);
-
   const activityQuery = useProfileUserActivity(profileId, userId || null, {
-    deliveryUnitId: selectedWorkItemId,
-    range: '30d',
+    range: 'all',
     limit: 200,
   });
   const activityNodes = activityQuery.data?.items ?? [];
+  const totalInteractions = activityQuery.data?.totalInteractions ?? activityNodes.length;
   const latestInteractionId =
     activityNodes.find((node) => node.interactionId)?.interactionId ?? null;
 
@@ -102,10 +97,6 @@ export default function UserProfilePage() {
   const workItems = deliveryUnits;
   const joinDays = user.firstSeenAt
     ? Math.floor((Date.now() - new Date(user.firstSeenAt).getTime()) / DAY_MS)
-    : null;
-
-  const selectedTitle = selectedWorkItemId
-    ? (workItems.find((wi) => wi.deliveryUnitId === selectedWorkItemId)?.title ?? '选中需求')
     : null;
 
   return (
@@ -179,40 +170,51 @@ export default function UserProfilePage() {
         </div>
       </section>
 
-      {/* Two-column body */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
-          <UserWorkItemList
-            workItems={workItems}
-            selectedId={selectedWorkItemId}
-            onSelect={setSelectedWorkItemId}
-            stages={presentation.stages.artifactStages}
-          />
-        </section>
-
-        <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
-          <div
-            className="px-3 py-[8px] flex items-center justify-between"
-            style={{ borderBottom: '1px solid var(--color-border)' }}
+      {/* 互动记录：用户维度独立执行史，不从属交付单元。
+          本页只展示最近 10 条预览 + 「最近一次执行」入口；完整记录在 /sdd/users/:id/activity。 */}
+      <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
+        <div
+          className="px-3 py-[8px] flex items-center justify-between gap-2"
+          style={{ borderBottom: '1px solid var(--color-border)' }}
+        >
+          <span className="text-[12px] font-semibold text-[#f5f5f5]">
+            互动记录
+            <span className="text-[var(--color-muted)] font-normal">（{totalInteractions}）</span>
+          </span>
+          <button
+            type="button"
+            disabled={!latestInteractionId || activityQuery.isLoading}
+            onClick={() => {
+              if (latestInteractionId) setOpenInteractionId(latestInteractionId);
+            }}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[4px] border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-secondary)] hover:bg-[var(--color-hover)] hover:text-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <span className="text-[12px] font-semibold text-[#f5f5f5]">
-              {selectedTitle ? `互动记录 · ${selectedTitle}` : '互动记录'}
-            </span>
-            <button
-              type="button"
-              disabled={!latestInteractionId || activityQuery.isLoading}
-              onClick={() => {
-                if (latestInteractionId) setOpenInteractionId(latestInteractionId);
-              }}
-              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[4px] border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-secondary)] hover:bg-[var(--color-hover)] hover:text-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Play size={12} />
-              最近一次执行
-            </button>
-          </div>
-          <UserActivityTimeline nodes={activityNodes} onOpenInteraction={setOpenInteractionId} />
-        </section>
-      </div>
+            <Play size={12} />
+            最近一次执行
+          </button>
+        </div>
+        <UserActivityTimeline
+          nodes={activityNodes.slice(0, 10)}
+          onOpenInteraction={setOpenInteractionId}
+        />
+        {totalInteractions > 10 ? (
+          <Link
+            to={`/sdd/users/${userId}/activity`}
+            className="flex items-center justify-center gap-1.5 px-3 py-[10px] text-[12px] text-[var(--color-secondary)] hover:bg-[var(--color-hover)] hover:text-[#f5f5f5]"
+            style={{ borderTop: '1px solid var(--color-border)' }}
+          >
+            查看完整记录（共 {totalInteractions} 条）<ArrowRight size={13} />
+          </Link>
+        ) : null}
+      </section>
+
+      {/* 关联交付单元：用户的另一组关联信息，纯导航，不筛选互动记录 */}
+      <section className="rounded-[6px] overflow-hidden" style={CARD_STYLE}>
+        <UserWorkItemList
+          workItems={workItems}
+          stages={presentation.stages.artifactStages}
+        />
+      </section>
 
       <InteractionDetailDrawer
         interactionId={openInteractionId}

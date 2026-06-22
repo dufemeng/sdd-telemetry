@@ -55,6 +55,7 @@ import {
   type ProfileOverview,
   type ProfileSummary,
   type ProfileUserActivityItem,
+  type ProfileUserActivityResponse,
   type ProfileUserDetail,
 } from '@sdd-telemetry/api';
 import { ok } from '../../common/response/api-response';
@@ -235,7 +236,7 @@ export class ProfilesController {
     const profileId = this.ctx.params.profileId as string;
     const userId = this.ctx.params.userId as string;
     const query = parseWithSchema(ProfileUserActivityQuerySchema, this.ctx.query);
-    const data: { items: ProfileUserActivityItem[] } = await this.profilesService.listUserActivity(
+    const data: ProfileUserActivityResponse = await this.profilesService.listUserActivity(
       profileId,
       userId,
       query,
