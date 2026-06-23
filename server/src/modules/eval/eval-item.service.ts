@@ -84,6 +84,7 @@ export class EvalItemService {
     upgradedCount: number;
     skippedNoPromptCount: number;
     skippedOversizeCount: number;
+    skippedNoArtifactTypeCount: number;
     skippedDeletedCount: number;
   }> {
     // 用 serving config 校验 evaluation 开启; target skill 解析优先用 projection run 引用的 version。
@@ -97,6 +98,7 @@ export class EvalItemService {
     const scannedCount = { value: 0 };
     const skippedNoPrompt = { value: 0 };
     const skippedOversize = { value: 0 };
+    const skippedNoArtifactType = { value: 0 };
     const groups = new Map<string, CapabilityTextRow[]>();
 
     let afterCuId: string | undefined;
@@ -115,6 +117,12 @@ export class EvalItemService {
       if (lastRow) afterCuId = lastRow.cuId;
       for (const row of rows) {
         scannedCount.value += 1;
+        // 只收能映射到产物类型(design/proposal/tasks)的能力,避免把 codereview/code/help 等
+        // 无 rubric 的能力混进评测集(mapArtifactType 对它们返回 null)。
+        if (mapArtifactType(row.capabilityCode) === null) {
+          skippedNoArtifactType.value += 1;
+          continue;
+        }
         const text = row.promptText;
         if (!text || text.trim().length === 0) {
           skippedNoPrompt.value += 1;
@@ -152,6 +160,7 @@ export class EvalItemService {
       upgradedCount: outcome.upgraded,
       skippedNoPromptCount: skippedNoPrompt.value,
       skippedOversizeCount: skippedOversize.value,
+      skippedNoArtifactTypeCount: skippedNoArtifactType.value,
       skippedDeletedCount: outcome.skippedDeleted,
     };
   }

@@ -48,6 +48,7 @@ export function EvalImportDialog({ profileId, onClose }: { profileId: string; on
               <span>升级 {result.upgradedCount}</span>
               <span>空正文跳过 {result.skippedNoPromptCount}</span>
               <span>超长跳过 {result.skippedOversizeCount}</span>
+              <span>无产物类型跳过 {result.skippedNoArtifactTypeCount}</span>
               <span>已删除跳过 {result.skippedDeletedCount}</span>
             </div>
           ) : null}

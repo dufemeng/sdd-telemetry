@@ -121,6 +121,7 @@ export const EvalImportFromLogsResponseSchema = z.object({
   upgradedCount: z.number().int().nonnegative(),
   skippedNoPromptCount: z.number().int().nonnegative(),
   skippedOversizeCount: z.number().int().nonnegative(),
+  skippedNoArtifactTypeCount: z.number().int().nonnegative(),
   skippedDeletedCount: z.number().int().nonnegative(),
 });
 export type EvalImportFromLogsResponse = z.infer<typeof EvalImportFromLogsResponseSchema>;

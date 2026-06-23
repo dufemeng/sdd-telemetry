@@ -78,7 +78,6 @@ describe('EvalItemService.importFromLogs', () => {
     expect(capturedCandidates[0].targetSkill).toBe('bk-fe-design');
     expect(capturedCandidates[0].targetArtifactType).toBe('design');
   });
-
   it('skips empty prompt (skippedNoPrompt) without creating candidate', async () => {
     const rows: CapabilityTextRow[] = [
       { cuId: '1', interactionId: null, promptId: null, capabilityCode: 'design', rawCapabilityName: null, eventTime: null, promptText: null },
@@ -104,7 +103,7 @@ describe('EvalItemService.importFromLogs', () => {
     expect(result.candidateCount).toBe(1);
   });
 
-  it('satisfies scanned = accepted + skippedNoPrompt + skippedOversize; candidate = inserted+refreshed+upgraded+skippedDeleted', async () => {
+  it('satisfies scanned = accepted + skippedNoPrompt + skippedOversize + skippedNoArtifactType; candidate = inserted+refreshed+upgraded+skippedDeleted', async () => {
     const rows: CapabilityTextRow[] = [
       { cuId: '1', interactionId: null, promptId: null, capabilityCode: 'design', rawCapabilityName: null, eventTime: null, promptText: null },
       { cuId: '2', interactionId: '12', promptId: 'p', capabilityCode: 'design', rawCapabilityName: 'bk-fe-design', eventTime: null, promptText: 'a' },
@@ -112,7 +111,7 @@ describe('EvalItemService.importFromLogs', () => {
     const { service } = createService({ capabilityRows: rows });
     const r = await service.importFromLogs({ profileId: 'sdd-default' });
     const accepted = r.insertedCount + r.refreshedCount + r.upgradedCount;
-    expect(r.scannedCount).toBe(accepted + r.skippedNoPromptCount + r.skippedOversizeCount);
+    expect(r.scannedCount).toBe(accepted + r.skippedNoPromptCount + r.skippedOversizeCount + r.skippedNoArtifactTypeCount);
     expect(r.candidateCount).toBe(r.insertedCount + r.refreshedCount + r.upgradedCount + r.skippedDeletedCount);
   });
 
