@@ -34,6 +34,7 @@ const expectedTables = [
   'profile_artifact_turns',
   'profile_knowledge_recalls',
   'profile_code_activities',
+  'eval_items',
 ];
 
 const expectedUniqueIndexes = [
@@ -64,6 +65,7 @@ const expectedUniqueIndexes = [
   'uk_profile_artifact_turns_run_key',
   'uk_profile_knowledge_recalls_run_key',
   'uk_profile_code_activities_run_key',
+  'uk_eval_items_item_key',
 ];
 
 const expectedColumns: Record<string, string[]> = {
@@ -166,6 +168,22 @@ const expectedColumns: Record<string, string[]> = {
     'capability_source',
     'trigger_source',
     'delivery_unit_id',
+  ],
+  eval_items: [
+    'item_key',
+    'profile_id',
+    'source',
+    'origin_interaction_id',
+    'origin_projection_run_id',
+    'origin_capability_code',
+    'origin_raw_capability_name',
+    'target_skill',
+    'target_artifact_type',
+    'prompt_text',
+    'enabled',
+    'occurrence_count',
+    'deleted_at',
+    'deleted_by_user_id',
   ],
 };
 
