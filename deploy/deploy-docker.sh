@@ -296,14 +296,36 @@ fi
 "${compose[@]}" ps
 
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${API_PUBLISHED_PORT}/api/healthz}"
-printf 'Checking health: %s\n' "$HEALTH_URL"
+printf 'Checking server health: %s\n' "$HEALTH_URL"
+server_ok=0
 for _ in {1..30}; do
   if curl -fsS "$HEALTH_URL" >/dev/null; then
-    printf 'Deployment is healthy.\n'
-    printf 'Web: http://127.0.0.1:%s\n' "$WEB_PUBLISHED_PORT"
-    exit 0
+    server_ok=1
+    break
   fi
   sleep 2
 done
+[[ "$server_ok" == "1" ]] || die "Server 健康检查失败：$HEALTH_URL"
+printf 'Server is healthy.\n'
 
-die "健康检查失败：$HEALTH_URL"
+# worker 没有 HTTP 端点：用容器 healthcheck 状态做门禁，防止“server healthy 但 worker
+# 是僵尸/投影被关”的静默故障再次蒙混过关。worker healthcheck 有 90s start_period，
+# 这里给足等待窗口；判据见 worker/dist/health-check.js（“队列在排空”而非“进程存活”）。
+WORKER_CONTAINER="${WORKER_CONTAINER:-sdd-telemetry-worker}"
+printf 'Checking worker health: %s\n' "$WORKER_CONTAINER"
+worker_ok=0
+worker_health=""
+for _ in {1..60}; do
+  worker_health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$WORKER_CONTAINER" 2>/dev/null || true)"
+  if [[ "$worker_health" == "healthy" ]]; then
+    worker_ok=1
+    break
+  fi
+  sleep 3
+done
+[[ "$worker_ok" == "1" ]] || die "Worker 健康检查失败：状态=${worker_health:-unknown}（projection 可能被禁用，或 worker 未排空队列）"
+printf 'Worker is healthy.\n'
+
+printf 'Deployment is healthy.\n'
+printf 'Web: http://127.0.0.1:%s\n' "$WEB_PUBLISHED_PORT"
+exit 0

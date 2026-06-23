@@ -27,6 +27,7 @@ x-app-env: &app-env
   PROFILE_PROJECTION_LOCK_SECONDS: ${PROFILE_PROJECTION_LOCK_SECONDS:-300}
   PROFILE_PROJECTION_MAX_JOBS_PER_TICK: ${PROFILE_PROJECTION_MAX_JOBS_PER_TICK:-3}
   PROFILE_PROJECTION_MAX_ATTEMPTS: ${PROFILE_PROJECTION_MAX_ATTEMPTS:-20}
+  WORKER_HEALTH_STALL_SECONDS: ${WORKER_HEALTH_STALL_SECONDS:-600}
   E2E_MONOREPO_ROOT: ${E2E_MONOREPO_ROOT:-}
   E2E_PLAN_ROOT: ${E2E_PLAN_ROOT:-}
   E2E_KNOWLEDGE_ROOT: ${E2E_KNOWLEDGE_ROOT:-}
@@ -116,7 +117,12 @@ services:
     environment: *app-env
     command: ["node", "dist/main.js"]
     healthcheck:
-      disable: true
+      # 判据是“队列在排空”而非“进程存活”——后者察觉不到“进程活着但投影被关/挂死”。
+      test: ["CMD", "node", "dist/health-check.js"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     depends_on:
       mysql:
         condition: service_healthy

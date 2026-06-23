@@ -293,11 +293,16 @@ Claude Code 插件
 Profile 投影维护默认开启：
 
 ```bash
-PROFILE_PROJECTION_ENABLED=true          # 默认 true
+PROFILE_PROJECTION_ENABLED=true          # 默认 true；设 false 会让投影静默停摆（部署健康门禁会因此失败）
 PROFILE_PROJECTION_INTERVAL_MS=30000     # 后台投影轮询间隔
 PROFILE_PROJECTION_LOCK_SECONDS=300      # 同一 profile 投影 job 锁
 PROFILE_PROJECTION_MAX_JOBS_PER_TICK=3   # 每轮最多投影几个 profile
+WORKER_HEALTH_STALL_SECONDS=600          # worker 健康门禁阈值：队列滞留超过该秒数判 unhealthy
 ```
+
+**worker 健康门禁**：worker 容器 healthcheck 的判据是「队列在不在排空」，而非「进程是否存活」——因为进程活着、但投影被 `PROFILE_PROJECTION_ENABLED=false` 关掉或某次 tick 挂死时，看板会静默冻结，而进程级探针完全察觉不到。判据为「落后 **且** 最近无进展」，所以把镜像部署到有积压的机器上、worker 正在排空积压时不会误判。`deploy-docker.sh` 在 server `/api/healthz` 之外，还要求 worker 容器 `healthy` 才算部署成功；若投影被关或队列长时间不排空，部署会直接失败（注意：healthcheck 只把容器标记为 `unhealthy` 供 `docker ps` 与门禁观察，配合 `restart: unless-stopped` 不会自动重启，自动拉起需 orchestrator/autoheal）。阈值由 `WORKER_HEALTH_STALL_SECONDS`（默认 600s）控制。
+
+排障：worker 静默冻结时，`ingest_outbox.pending` 会持续堆积、`otel_ingest_batches` 出现长时间 `received` 未清洗、`profile_projection_jobs` 出现 `dirty_since` 很旧的 dirty/running job。先 `docker inspect sdd-telemetry-worker` 看容器健康状态，再查这三张表定位卡在清洗还是投影；卡投影时优先确认 `PROFILE_PROJECTION_ENABLED` 是否被误设为 `false`。
 
 `profile:rebuild-source-references`、`profile:rebuild`、`profile:maintain-once` 保留为历史回填、强制重建和排障工具；日常 prompt 后不需要手动执行。
 
