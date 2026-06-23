@@ -138,9 +138,9 @@ export class EvalItemService {
       config: versionId ? await this.loadConfigVersion(input.profileId, versionId) : servingConfig,
     });
 
-    const nowIso = new Date().toISOString();
+    const now = new Date();
     const outcome = await this.evalItemRepository.runInTransaction(async (manager) =>
-      this.evalItemRepository.upsertCleanedCandidatesInTransaction(manager, candidates, nowIso),
+      this.evalItemRepository.upsertCleanedCandidatesInTransaction(manager, candidates, now),
     );
 
     return {
@@ -313,7 +313,7 @@ function buildCandidates(
     const normalized = normalizePromptForDedup(latest.promptText ?? '');
     const targetSkill = resolveTargetSkill(ctx.config, latest.capabilityCode);
     const targetArtifactType = mapArtifactType(latest.capabilityCode);
-    const first = rows.reduce<string | null>((acc, r) => earliest(acc, r.eventTime), null);
+    const first = rows.reduce<Date | string | null>((acc, r) => earliest(acc, r.eventTime), null);
     const last = latest.eventTime;
     candidates.push({
       itemKey: computeItemKey({
@@ -339,7 +339,7 @@ function buildCandidates(
   return candidates;
 }
 
-function earliest(a: string | null, b: string | null): string | null {
+function earliest(a: Date | string | null, b: Date | string | null): Date | string | null {
   if (!b) return a;
   if (!a) return b;
   return new Date(a) <= new Date(b) ? a : b;

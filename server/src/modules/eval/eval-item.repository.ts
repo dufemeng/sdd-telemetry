@@ -48,8 +48,8 @@ export interface ImportCandidate {
   originCapabilityCode: string;
   originRawCapabilityName: string | null;
   occurrenceCount: number;
-  firstObservedAt: string | null;
-  lastObservedAt: string | null;
+  firstObservedAt: Date | string | null;
+  lastObservedAt: Date | string | null;
 }
 
 export interface CapabilityTextRow {
@@ -58,7 +58,7 @@ export interface CapabilityTextRow {
   promptId: string | null;
   capabilityCode: string;
   rawCapabilityName: string | null;
-  eventTime: string | null;
+  eventTime: Date | string | null;
   promptText: string | null;
 }
 
@@ -162,9 +162,9 @@ export class EvalItemRepository {
     const rows = (await dataSource.query(
       `SELECT
          COUNT(*) AS total,
-         SUM(enabled = 1) AS enabled,
+         SUM(enabled = 1) AS \`enabled\`,
          SUM(source = 'cleaned') AS cleaned,
-         SUM(source = 'manual') AS manual
+         SUM(source = 'manual') AS \`manual\`
        FROM eval_items
        WHERE profile_id = ? AND deleted_at IS NULL`,
       [profileId],
@@ -207,7 +207,7 @@ export class EvalItemRepository {
   async upsertCleanedCandidatesInTransaction(
     manager: EntityManager,
     candidates: ImportCandidate[],
-    nowIso: string,
+    now: Date,
   ): Promise<{ inserted: number; refreshed: number; upgraded: number; skippedDeleted: number }> {
     let inserted = 0;
     let refreshed = 0;
@@ -249,7 +249,7 @@ export class EvalItemRepository {
             c.occurrenceCount,
             c.firstObservedAt,
             c.lastObservedAt,
-            nowIso,
+            now,
             existing[0].id,
           ],
         );
@@ -278,7 +278,7 @@ export class EvalItemRepository {
           c.occurrenceCount,
           c.firstObservedAt,
           c.lastObservedAt,
-          nowIso,
+          now,
         ],
       );
       inserted += 1;

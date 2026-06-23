@@ -149,7 +149,7 @@ describe('EvalItemRepository upsertCleanedCandidatesInTransaction', () => {
       async () => ({ insertId: 9 }),
     ]);
     const outcome = await repository.runInTransaction((manager) =>
-      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('new')], '2026-06-23T00:00:00.000Z'),
+      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('new')], new Date('2026-06-23T00:00:00.000Z')),
     );
     expect(outcome).toEqual({ inserted: 1, refreshed: 0, upgraded: 0, skippedDeleted: 0 });
     expect(calls.some((c) => c.sql.startsWith('INSERT INTO eval_items'))).toBe(true);
@@ -161,7 +161,7 @@ describe('EvalItemRepository upsertCleanedCandidatesInTransaction', () => {
       async () => ({ affectedRows: 1 }), // UPDATE
     ]);
     const outcome = await repository.runInTransaction((manager) =>
-      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('dup')], '2026-06-23T00:00:00.000Z'),
+      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('dup')], new Date('2026-06-23T00:00:00.000Z')),
     );
     expect(outcome).toEqual({ inserted: 0, refreshed: 1, upgraded: 0, skippedDeleted: 0 });
     const updateCall = calls.find((c) => c.sql.startsWith('UPDATE eval_items'));
@@ -178,7 +178,7 @@ describe('EvalItemRepository upsertCleanedCandidatesInTransaction', () => {
       async () => [{ id: 5, source: 'manual', deleted_at: null }],
     ]);
     const outcome = await repository.runInTransaction((manager) =>
-      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('dup')], '2026-06-23T00:00:00.000Z'),
+      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('dup')], new Date('2026-06-23T00:00:00.000Z')),
     );
     expect(outcome).toEqual({ inserted: 0, refreshed: 0, upgraded: 1, skippedDeleted: 0 });
   });
@@ -188,7 +188,7 @@ describe('EvalItemRepository upsertCleanedCandidatesInTransaction', () => {
       async () => [{ id: 5, source: 'cleaned', deleted_at: '2026-06-20 00:00:00.000' }],
     ]);
     const outcome = await repository.runInTransaction((manager) =>
-      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('tomb')], '2026-06-23T00:00:00.000Z'),
+      repository.upsertCleanedCandidatesInTransaction(manager, [candidate('tomb')], new Date('2026-06-23T00:00:00.000Z')),
     );
     expect(outcome).toEqual({ inserted: 0, refreshed: 0, upgraded: 0, skippedDeleted: 1 });
     // 只有 SELECT existing 这一次查询, 不应有 INSERT/UPDATE
