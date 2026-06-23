@@ -94,6 +94,7 @@ describe.skipIf(!RUN)('eval items integration (real MySQL)', () => {
     });
     // 清理 marker 数据
     await conn.query(`DELETE FROM eval_items WHERE prompt_text LIKE ? OR title LIKE ?`, [`%${MARKER}%`, `%${MARKER}%`]);
+    await conn.query(`DELETE FROM eval_items WHERE deleted_at IS NOT NULL AND profile_id IN ('sdd-default', 'e2e-monorepo')`);
 
     // seed sdd-default: 两条相同合成 design prompt (不同 interaction) => 1 candidate, occ=2
     sddRunId = await seedProjectionRun('sdd-default');
@@ -137,6 +138,7 @@ describe.skipIf(!RUN)('eval items integration (real MySQL)', () => {
         await conn.query(`DELETE FROM sdd_interactions WHERE id = ?`, [id]);
       }
       await conn.query(`DELETE FROM eval_items WHERE prompt_text LIKE ? OR title LIKE ?`, [`%${MARKER}%`, `%${MARKER}%`]);
+    await conn.query(`DELETE FROM eval_items WHERE deleted_at IS NOT NULL AND profile_id IN ('sdd-default', 'e2e-monorepo')`);
       await conn.query(`DELETE FROM profile_capability_usages WHERE usage_key LIKE ?`, [`${MARKER}%`]);
       await conn.query(`DELETE FROM profile_projection_runs WHERE id IN (?, ?)`, [sddRunId, e2eRunId]);
       await conn.end();
