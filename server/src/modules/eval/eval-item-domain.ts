@@ -56,7 +56,9 @@ export function resolveTargetSkill(
     const skillRule = source as SkillSourceRule;
     if (skillRule.skillNames.length === 0) continue;
     if (skillRule.skillNames.length === 1 && skillRule.skillNames[0] === '*') continue;
-    return skillRule.skillNames[0];
+    const first = skillRule.skillNames[0];
+    if (!first) continue;
+    return first;
   }
   return null;
 }
