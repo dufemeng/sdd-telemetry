@@ -28,6 +28,7 @@ import { DropSddWikiDimensions1780000017000 } from './migrations/1780000017000-d
 import { AddProfileKnowledgeLocation1780000018000 } from './migrations/1780000018000-add-profile-knowledge-location';
 import { AddProfileArtifactWritesInteractionIndex1780000019000 } from './migrations/1780000019000-add-profile-artifact-writes-interaction-index';
 import { CreateEvalItems1780000020000 } from './migrations/1780000020000-create-eval-items';
+import { EnableEvaluationManifest1780000021000 } from './migrations/1780000021000-enable-evaluation-manifest';
 
 export function createAppDataSource(): DataSource {
   return new DataSource({
@@ -73,6 +74,7 @@ export function createAppDataSource(): DataSource {
       AddProfileKnowledgeLocation1780000018000,
       AddProfileArtifactWritesInteractionIndex1780000019000,
       CreateEvalItems1780000020000,
+      EnableEvaluationManifest1780000021000,
     ],
   });
 }
