@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   Activity, BookOpen,
-  CheckSquare, Database, Gauge,
+  CheckSquare, ClipboardList, Database, Gauge,
   GitBranch, Layers3, ListFilter, MessageSquareWarning, Newspaper, Search, Settings2, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth/useAuth';
@@ -48,6 +48,7 @@ const ADMIN_NAV_GROUP = {
     { to: '/ops/resources', label: '服务质量', icon: Activity },
     { to: '/ops/database', label: '数据检索', icon: Database },
     { to: '/admin/profile-configs', label: '工作流管理', icon: Settings2 },
+    { to: '/admin/eval-items', label: '评测集', icon: ClipboardList },
     { to: '/admin/users', label: '成员管理', icon: ShieldCheck },
   ],
 } as const;
