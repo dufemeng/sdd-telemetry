@@ -276,6 +276,7 @@ POST /api/eval/bridge/run-items/:id/result  # {machine, claimVersion, scores[], 
   2. 就地改了"published 不可变"的版本（违反系统声明的不可变约束）。干净写法是"建新版本 + 切 serving"（seed 的模式），但 demo 窗口务实优先。
 - **导入能力 allowlist**：`import-from-logs` 只收 `design`/`proposal`/`tasks` 三类（`mapArtifactType` 能映射的），其余能力（codereview/code/help 等）计入 `skippedNoArtifactTypeCount` 不进评测集——避免无 rubric 的样本污染评测集。这也消除了"两能力撞同 key 导致 occurrence 少计"的边角（三类映射到互不相同的 artifact_type）。
 - **幂等 key 含 target_skill（KTD3，不改）**：`item_key` 内嵌 `target_skill`，配置漂移会让同一真实 prompt 得不同 key。但 import 的 target_skill 从 projection run 钉住的 config version 解析（KTD8），只要不重投影，key 不漂。配置变更（重新发布 + 重投影）会产生新样本，这是有意语义，不视为 bug。
+- **tombstone 无恢复路径（Slice 0 已知边界，后续补）**：删除即清空正文 + 永久 tombstone，之后 import 计 `skippedDeleted` 不复活、manual 重建抛 409。管理员误删后该样本正文不可找回。恢复方案留作后续 slice：加 admin 端点"清除 tombstone"（清 `deleted_at` 让该 key 后续 import 可重新写入），或让 manual 重建可复活——但正文已删，恢复依赖重新从日志 import。Slice 0 不实现，避免演示前引入新端点/UI 的回归风险。
 
 ## 测试策略
 
