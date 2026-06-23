@@ -103,6 +103,32 @@ export class ProfileConfigRepository implements ProfileConfigStore {
     return getVersionPointerProfileConfig(this, profileId, 'published_version_id');
   }
 
+  /**
+   * 按 profileId + 显式 versionId 读不可变配置快照。
+   * eval import 用它加载 projection run 引用的 config version (KTD8)。
+   * 不限定 version_status: projection run 引用的就是产生该投影的版本。
+   */
+  async getProfileConfigVersionById(profileId: string, versionId: string): Promise<ProfileConfigSnapshot | null> {
+    try {
+      const dataSource = await this.mysqlDataSourceManager.getDataSource();
+      const rows = (await dataSource.query(
+        `SELECT c.profile_id, c.origin,
+                v.id AS config_version_id, v.version_no, v.definition_hash, v.published_at, v.config_json
+         FROM profile_configs c
+         JOIN profile_config_versions v
+           ON v.profile_id = c.profile_id
+          AND v.id = ?
+         WHERE c.profile_id = ?
+         LIMIT 1`,
+        [versionId, profileId],
+      )) as PublishedProfileConfigRow[];
+      return rows[0] ? toSnapshot(rows[0]) : null;
+    } catch (error) {
+      if (isMissingProfileConfigTable(error)) return null;
+      throw error;
+    }
+  }
+
   async listAdminSummaries(): Promise<ProfileConfigAdminSummary[]> {
     try {
       const dataSource = await this.mysqlDataSourceManager.getDataSource();
