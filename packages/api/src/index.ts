@@ -10,3 +10,4 @@ export * from './profile-presentation';
 export * from './contracts/ops.contract';
 export * from './contracts/reports.contract';
 export * from './client/http-client';
+export * from './contracts/eval.contract';
