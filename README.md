@@ -221,6 +221,13 @@ WEB_PUBLISHED_PORT=18081 API_PUBLISHED_PORT=4319 REPO=<owner>/<repo> VERSION=<VE
 
 私有 Release 下载需要在服务器设置 `GITHUB_TOKEN`。首次初始化需要写种子数据时加 `RUN_SEED=1`；平时默认只跑 migration。
 
+> ⚠️ 评测集 CMS（`sdd-default`/`e2e-monorepo` 开启 evaluation 后）：演示部署用默认 `RUN_SEED=0` + migration 激活 evaluation flag。**不要在该机跑 `RUN_SEED=1`**——会因 config definition_hash 不一致重快照切 serving，覆盖人工定制和 evaluation flag。部署后用冒烟脚本验证 import 链路：
+> ```bash
+> SUPERADMIN_USERNAME=<admin> SUPERADMIN_PASSWORD='<pwd>' API_BASE=http://127.0.0.1:4318 \
+>   bash scripts/eval-import-smoke.sh
+> ```
+> 确认 `cleaned>0` 才算评测集就绪。前置：该 profile 必须已发布过 serving config（migration 才有行可改），且当前投影有真实 capability usage。
+
 ### scp 兜底流程
 
 如果 Release asset 访问不通，仍可传单文件 bundle：
