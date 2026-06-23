@@ -43,7 +43,7 @@ Dashboard 使用独立的 `auth_users` 登录成员表，不复用遥测侧的 `
 
 | 角色 | 权限 |
 | --- | --- |
-| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面、重新生成日报 |
+| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面、重新生成日报、管理评测集 |
 | `viewer` | 登录后查看 dashboard 只读数据、查看/复制/打印日报 |
 
 首次 migration 后初始化唯一的首位超级管理员：
@@ -76,6 +76,16 @@ DAILY_REPORT_BASE_URL=             # 日报内链接的 baseUrl，默认 /
 服务启动时会自动检查昨天日报是否存在，缺失则补生成。`super_admin` 可在页面手动重新生成指定日期的日报。
 
 网页登录只保护 dashboard 与其 API；Claude Code 的 `POST /api/ingest/otlp-logs` 自动上报入口不依赖浏览器 session。
+
+### 评测集 CMS
+
+`super_admin` 在「管理 / 评测集」（`/admin/eval-items`）把真实 prompt 固化为评测集：
+
+- **从日志导入**：从当前 profile 的投影读取已清洗的真实 prompt，长期快照到 `eval_items`（幂等，按归一化 prompt + 目标技能 + 产物类型去重）。默认导入全部仍可用的正文，可选能力代码和时间范围（成对、跨度 ≤31 天）。
+- **手工新增 / 复制为手工样本**：补充或改写样本。
+- **来源可核验**：每条 cleaned 样本保留来源 interaction、projection run、能力代码和规范目标技能（从 profile config 解析，不把语义代码当 skill）。
+
+评测集是固定资产 + run 可复现的依据，**独立于观测层的 30 天保留策略长期保留**；删除走 tombstone（清正文留 key），不让下次导入复活。导入的 prompt 只在 CMS 中按不可信纯文本展示，服务端日志不记录正文，所有响应设置 `Cache-Control: no-store`。仅 `sdd-default` 与 `e2e-monorepo` 默认开启评测（profile manifest `evaluation=true`）。
 
 ## 离线 Docker 部署
 

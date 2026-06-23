@@ -662,7 +662,36 @@ Profile 异常看板的 current-run 明细表。来源来自清洗后的 `sdd_in
 - 路径维度在查询时从相对路径的全部目录段即时计算；同一访问可命中多个维度，但访问总量只计一次。目录结构变化不触发 schema、配置或重投影变更。
 - 一个访问事实只计入一次总访问量；同一事实可以命中多个路径段维度，维度计数不可相加为总量。
 
-## 8. Retention
+## 8. Evaluation Dataset
+
+### 8.1 eval_items
+
+评测集 CMS 的核心表。把"真实日志洗出来的 prompt + 手补 prompt"长期固化为可 curate 的固定资产，挂 `profile_id`，命名与既有 `sdd_*`/`profile_*` 分层并行、不耦合。
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | BIGINT 主键 |
+| `item_key` | CHAR(64) UNIQUE，逻辑样本幂等 key：`sha256(JSON.stringify([profile_id, target_skill ?? "", target_artifact_type ?? "", normalized_prompt]))`，结构化序列化消除分隔符/NULL 歧义 |
+| `profile_id` | profile 隔离 |
+| `source` | `cleaned`（日志洗）/ `manual`（手补） |
+| `origin_interaction_id` / `origin_prompt_id` / `origin_projection_run_id` | cleaned 的可核验来源链（仅 cleaned 有值） |
+| `origin_capability_code` / `origin_raw_capability_name` | profile 归一后的能力代码 + 观测到的原始 skill/locator 名（按原值保存，不互译） |
+| `target_skill` | 从当前 projection run 引用的 config version 解析出的规范可执行 skill；legacy run 缺 version 才回退 serving；无法解析为 NULL（fallback capability / catch-all `['*']` 不算 skill） |
+| `target_artifact_type` | `design`/`proposal`/`tasks`/NULL，仅显式映射 |
+| `prompt_text` | 原始未归一化 prompt 长期快照；仅 tombstone 可为 NULL |
+| `title` / `notes` | 人工元数据 |
+| `enabled` | 是否纳入后续 run |
+| `occurrence_count` | 最近一次导入范围内归一化 prompt 的观测次数；manual 为 0 |
+| `first_observed_at` / `last_observed_at` / `last_imported_at` | 来源时间范围与刷新时间 |
+| `deleted_at` / `deleted_by_user_id` | 删除 tombstone；删除时正文/标题/备注/origin 字段已清空，但保留 item_key/profile_id/target_* |
+
+索引：`UNIQUE(item_key)`、`(profile_id, deleted_at, gmt_modified, id)`、`(profile_id, deleted_at, origin_capability_code, enabled)`、`(profile_id, deleted_at, target_skill)`。
+
+**导入来源链**：`profile_current_projection_runs.current_projection_run_id` → 同 `profile_id + projection_run_id` 的 `profile_capability_usages` → 按 `interaction_id` LEFT JOIN `sdd_interaction_texts`（LEFT JOIN 保留无正文记录，计入 skipped）。`eval_items` 是只读导入的长期快照，不反向修改观测事实。
+
+**保留语义**：`eval_items` 是管理员主动纳入评测集的固定资产 + run 可复现的依据，**独立于观测层的 30 天保留策略长期保留**。删除走 tombstone（清正文留 key），不让下次 import 复活。当前仓库的 30 天 TTL 清理任务尚未上线，但快照设计的正当性来自"固定资产 + 可复现"，不依赖 TTL 是否存在。
+
+## 9. Retention
 
 P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。
 
@@ -678,7 +707,7 @@ P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。
 
 Retention 定时任务建议每天执行一次，每批删除 500-2000 行，避免长事务。
 
-## 9. MySQL 配置建议
+## 10. MySQL 配置建议
 
 ```text
 character_set_server = utf8mb4

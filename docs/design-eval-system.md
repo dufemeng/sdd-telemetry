@@ -93,7 +93,7 @@
 | `origin_raw_capability_name` | VARCHAR(191) | NULL | 观测到的原始 skill/locator 名称 |
 | `target_skill` | VARCHAR(191) | NULL | 从 serving profile 的 skill source rule 解析出的规范可执行 skill |
 | `target_artifact_type` | VARCHAR(64) | NULL | `design` / `proposal` / `tasks`，决定用哪份 rubric |
-| `prompt_text` | LONGTEXT | NULL | **prompt 快照**（脱离 30 天清理）；仅删除 tombstone 可为 NULL |
+| `prompt_text` | LONGTEXT | NULL | **prompt 快照**（评测集是固定资产 + run 可复现的依据，独立于观测层保留策略长期保留；当前 30 天 TTL 清理任务尚未上线，但快照设计的正当性来自"固定资产 + 可复现"，不依赖 TTL 是否存在）；仅删除 tombstone 可为 NULL |
 | `title` | VARCHAR(500) | NULL | 列表可读标题 |
 | `notes` | TEXT | NULL | 人工备注 |
 | `enabled` | TINYINT(1) | NOT NULL DEFAULT 1 | 是否纳入 run |

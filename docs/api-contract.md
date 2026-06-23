@@ -1103,7 +1103,41 @@ GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","o
 
 查看 outbox 积压和清洗调度健康度。
 
-## 9. 前端适配策略
+## 9. eval API（评测集 CMS）
+
+评测集 CMS 端点，全部仅 `super_admin`（viewer 403，匿名 401）。鉴权由全局 `AuthMiddleware` 对 `/api/eval/` 前缀强制。所有端点要求显式 `profileId`（query 或 body），服务端与 item 的 profile 对照，不靠前端切换器隔离。
+
+所有响应设置 `Cache-Control: no-store`（完整 prompt 与摘要都不被缓存）。BIGINT ID 一律十进制字符串。
+
+列表只返回 ≤240 字符的 `promptPreview`，完整 `promptText` 仅由单条详情接口返回；关键字只搜索 title/notes/target_skill，不进 prompt 片段。
+
+### 9.1 GET /api/eval/items
+
+按 profile 分页列出评测项摘要。Query: `profileId`(必填)、`source`、`capabilityCode`、`targetSkill`、`enabled`、`keyword`(≤100)、`page`(默认1)、`pageSize`(默认20，上限100)。响应含 `items`（含 promptPreview、targetSkill、targetArtifactType、originCapabilityCode、originRawCapabilityName、occurrenceCount、observed 时间、enabled）、`total`（当前筛选命中）、`page`、`pageSize`、`summary`（该 profile 全量 total/enabled/cleaned/manual）。
+
+### 9.2 GET /api/eval/items/:id
+
+按 profile 读取单条详情和完整 prompt。Query: `profileId`。返回完整 `promptText`、来源 interaction/projection run、notes。
+
+### 9.3 POST /api/eval/items/import-from-logs
+
+从当前 profile 投影导入真实 prompt。Body: `{ profileId, capabilityCode?, from?, to? }`（from/to 成对出现、`from < to`、跨度 ≤31 天）。只读 `profile_current_projection_runs` 当前 run → 同 run 的 `profile_capability_usages` LEFT JOIN `sdd_interaction_texts`；空正文计 `skippedNoPromptCount`，>256000 字符计 `skippedOversizeCount`，归一化后按 `sha256([profileId,targetSkill,targetArtifactType,normalizedPrompt])` 幂等 upsert。响应: `{ projectionRunId, scannedCount, candidateCount, insertedCount, refreshedCount, upgradedCount, skippedNoPromptCount, skippedOversizeCount, skippedDeletedCount }`。
+
+恒等式：`scannedCount = (inserted+refreshed+upgraded) + skippedNoPrompt + skippedOversize`；`candidateCount = inserted+refreshed+upgraded+skippedDeleted`。
+
+### 9.4 POST /api/eval/items
+
+手工新增 manual 样本。Body: `{ profileId, source:'manual', promptText, targetSkill, targetArtifactType:'design'|'proposal'|'tasks', title?, notes? }`。命中 tombstone 返回 409"已被删除"，命中已有 key 返回 409"已存在"。
+
+### 9.5 PUT /api/eval/items/:id
+
+更新允许字段。Body: `{ profileId, promptText?, targetSkill?, targetArtifactType?, title?, notes?, enabled? }`（`.strict()`，未知字段拒绝）。cleaned 样本只允许改 title/notes/enabled，改 prompt/target 返回 400 `EVAL_CLEANED_IMMUTABLE`；manual 允许改全部 key 字段，key 字段变化重算 `item_key`，冲突返回 409。
+
+### 9.6 DELETE /api/eval/items/:id
+
+无正文 tombstone 删除：清空 prompt/title/notes/origin 字段，置 `enabled=0`、`deleted_at`、`deleted_by_user_id`，保留 item_key/profile_id/target_*。同 key 后续 import 计 `skippedDeleted` 不复活。
+
+## 10. 前端适配策略
 
 旧 `web/src/api.ts` 不再是事实标准。
 
