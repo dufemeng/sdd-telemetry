@@ -1,7 +1,6 @@
 import { Inject, Provide } from '@midwayjs/core';
 import type { EntityManager } from 'typeorm';
 import { MysqlDataSourceManager } from '../../infrastructure/mysql/data-source-manager';
-import { previewPrompt } from './eval-item-domain';
 
 export interface EvalItemRow {
   id: string;
@@ -366,11 +365,7 @@ export class EvalItemRepository {
         params,
       )) as { affectedRows?: number };
       if ((result.affectedRows ?? 0) === 0) {
-        const exists = (await manager.query(
-          `SELECT 1 FROM eval_items WHERE id = ? AND profile_id = ? LIMIT 1`,
-          [input.id, input.profileId],
-        )) as unknown[];
-        return exists.length ? { status: 'conflict' } : { status: 'missing' };
+        return { status: 'missing' };
       }
       return { status: 'updated' };
     } catch (error) {
@@ -470,5 +465,3 @@ export function isDuplicateKey(error: unknown): boolean {
   const code = (error as { code?: string }).code;
   return code === 'ER_DUP_ENTRY';
 }
-
-export { previewPrompt };
