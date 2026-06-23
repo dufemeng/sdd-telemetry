@@ -268,6 +268,15 @@ POST /api/eval/bridge/run-items/:id/result  # {machine, claimVersion, scores[], 
 - 执行脊柱新增 env：`EVAL_BRIDGE_TOKEN`（server）；本地 runner 配置（server URL、token、machine），均不入仓。Demo CMS 不新增 env。
 - `eval_*` 自有保留策略：评测集/run **长期保留**（curate 内容 + 可复现），不随 30 天明文清理。
 
+### Slice 0 部署注意事项（Demo CMS）
+
+- **evaluation flag 激活**：migration `1780000021000` 用 `JSON_SET` 把 `sdd-default`/`e2e-monorepo` 现有 serving/published version 的 `config_json.manifest.evaluation` 置 true。前提是目标机这两个 profile **已发布过 serving config**（serving_version_id 非空）；从未发布则 migration 空转、import 仍 409。
+- **迁移的两笔已知债（演示窗口可接受，后续清理）**：
+  1. `definition_hash` 与 `config_json` 不一致：migration 只改了 config 没重算 hash。后果：演示后**不要在该机跑 `RUN_SEED=1`**，否则 seed 会因 hash 不匹配重快照切 serving，覆盖人工定制 + 这次 flip 的 flag。deploy-docker.sh 默认 `RUN_SEED=0`，演示路径安全。
+  2. 就地改了"published 不可变"的版本（违反系统声明的不可变约束）。干净写法是"建新版本 + 切 serving"（seed 的模式），但 demo 窗口务实优先。
+- **导入能力 allowlist**：`import-from-logs` 只收 `design`/`proposal`/`tasks` 三类（`mapArtifactType` 能映射的），其余能力（codereview/code/help 等）计入 `skippedNoArtifactTypeCount` 不进评测集——避免无 rubric 的样本污染评测集。这也消除了"两能力撞同 key 导致 occurrence 少计"的边角（三类映射到互不相同的 artifact_type）。
+- **幂等 key 含 target_skill（KTD3，不改）**：`item_key` 内嵌 `target_skill`，配置漂移会让同一真实 prompt 得不同 key。但 import 的 target_skill 从 projection run 钉住的 config version 解析（KTD8），只要不重投影，key 不漂。配置变更（重新发布 + 重投影）会产生新样本，这是有意语义，不视为 bug。
+
 ## 测试策略
 
 - **可证伪单测**（对齐项目"空集要能区分修好/错配"）：
