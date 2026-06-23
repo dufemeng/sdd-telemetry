@@ -5,6 +5,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Panel } from '@/components/ui/Panel';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { AdvancedConfigSection } from './AdvancedConfigSection';
 import { ContentMapSection } from './ContentMapSection';
 import { SkillMappingSection } from './SkillMappingSection';
 import { BUTTON_CLASS, ConfigGroup, Field, INPUT_CLASS, PRIMARY_BUTTON_CLASS } from './config-ui';
@@ -211,6 +212,7 @@ function ProfileEditor({
         />
         <ContentMapSection config={activeConfig} onChange={replace} readOnly={!editing} />
         <SkillMappingSection config={activeConfig} onChange={replace} readOnly={!editing} />
+        {editing ? <AdvancedConfigSection config={activeConfig} onApply={replace} /> : null}
         <ValidationIssues detail={detailQuery.data} />
         {error ? <p className="text-[12px] text-[var(--color-bad-text)]">{error.message}</p> : null}
       </div>
