@@ -93,7 +93,7 @@ export class EvalItemService {
     if (!projectionRunId) {
       throw new ApiHttpError(409, 'EVAL_NO_PROJECTION_RUN', `no current projection run for ${input.profileId}`);
     }
-    const versionId = await this.resolveConfigVersionId(input.profileId, projectionRunId);
+    const versionId = await this.evalItemRepository.getConfigVersionIdForRun(input.profileId, projectionRunId);
 
     const scannedCount = { value: 0 };
     const skippedNoPrompt = { value: 0 };
@@ -276,18 +276,6 @@ export class EvalItemService {
       throw new ApiHttpError(409, 'EVAL_PROFILE_NOT_ENABLED', `evaluation not enabled for ${profileId}`);
     }
     return snapshot.config;
-  }
-
-  private async resolveConfigVersionId(profileId: string, projectionRunId: string): Promise<string | null> {
-    // 读 projection run 引用的 config version id; legacy run 可能为 null => 回退 serving。
-    const dataSource = await this.evalItemRepository.mysqlDataSourceManager.getDataSource();
-    const rows = (await dataSource.query(
-      `SELECT profile_config_version_id AS versionId
-       FROM profile_projection_runs
-       WHERE profile_id = ? AND id = ? LIMIT 1`,
-      [profileId, projectionRunId],
-    )) as Array<{ versionId: string | null }>;
-    return rows[0]?.versionId ?? null;
   }
 
   private async loadConfigVersion(profileId: string, versionId: string): Promise<WorkflowProfileConfig> {

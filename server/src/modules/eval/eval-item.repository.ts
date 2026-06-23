@@ -83,6 +83,18 @@ export class EvalItemRepository {
     return rows[0]?.runId ?? null;
   }
 
+  /** 读 projection run 引用的 config version id; legacy run 返回 null(调用方回退 serving)。 */
+  async getConfigVersionIdForRun(profileId: string, projectionRunId: string): Promise<string | null> {
+    const dataSource = await this.mysqlDataSourceManager.getDataSource();
+    const rows = (await dataSource.query(
+      `SELECT profile_config_version_id AS versionId
+       FROM profile_projection_runs
+       WHERE profile_id = ? AND id = ? LIMIT 1`,
+      [profileId, projectionRunId],
+    )) as Array<{ versionId: string | null }>;
+    return rows[0]?.versionId ?? null;
+  }
+
   /** 按 capability usage id 单调游标分批读取候选 (LEFT JOIN 保留无正文记录)。 */
   async readCapabilityTextRows(input: {
     profileId: string;

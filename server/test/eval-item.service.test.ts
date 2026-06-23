@@ -31,6 +31,7 @@ function createService(opts: {
   const service = new EvalItemService();
   service.evalItemRepository = {
     getCurrentProjectionRunId: async () => opts.projectionRunId === undefined ? '77' : opts.projectionRunId,
+    getConfigVersionIdForRun: async () => opts.configVersionId === undefined ? null : opts.configVersionId,
     readCapabilityTextRows: async (input: { afterCuId?: string }) => {
       if (input.afterCuId) return [];
       return opts.capabilityRows ?? [];
@@ -39,11 +40,6 @@ function createService(opts: {
     upsertCleanedCandidatesInTransaction: async (_m: unknown, cands: ImportCandidate[]) => {
       capturedCandidates.push(...cands);
       return (opts.upsert ?? ((c) => ({ inserted: c.length, refreshed: 0, upgraded: 0, skippedDeleted: 0 })))(cands);
-    },
-    mysqlDataSourceManager: {
-      getDataSource: async () => ({
-        query: async () => [{ versionId: opts.configVersionId === undefined ? null : opts.configVersionId }],
-      }),
     },
   } as unknown as EvalItemRepository;
   const evalEnabled = opts.evaluationEnabled !== undefined ? opts.evaluationEnabled : true;
