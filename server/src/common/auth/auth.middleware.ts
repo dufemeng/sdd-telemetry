@@ -53,6 +53,9 @@ export function requiresSuperAdmin(method: string, path: string): boolean {
   if (path.startsWith('/api/admin/')) {
     return true;
   }
+  if (path.startsWith('/api/eval/')) {
+    return true;
+  }
   if (path.startsWith('/api/auth/users')) {
     return true;
   }

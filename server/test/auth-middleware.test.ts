@@ -16,5 +16,7 @@ describe('auth route policy', () => {
     expect(requiresSuperAdmin('GET', '/api/ops/tables')).toBe(true);
     expect(requiresSuperAdmin('POST', '/api/sdd/semantics')).toBe(true);
     expect(requiresSuperAdmin('GET', '/api/sdd/semantics')).toBe(false);
+    expect(requiresSuperAdmin('GET', '/api/eval/items')).toBe(true);
+    expect(requiresSuperAdmin('POST', '/api/eval/items/import-from-logs')).toBe(true);
   });
 });

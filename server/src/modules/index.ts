@@ -28,3 +28,6 @@ import './reports/daily-report.repository';
 import './reports/daily-report.service';
 import './reports/daily-report.controller';
 import './reports/daily-report-scheduler';
+import './eval/eval-item.repository';
+import './eval/eval-item.service';
+import './eval/eval-item.controller';
