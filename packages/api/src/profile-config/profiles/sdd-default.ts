@@ -165,7 +165,7 @@ export const sddDefaultProfile: WorkflowProfileConfig = {
     knowledgeRecalls: true,
     codeChanges: false,
     errors: true,
-    evaluation: false,
+    evaluation: true,
     alerts: false,
   },
   sourceRules: [

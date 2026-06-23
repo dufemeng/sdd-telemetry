@@ -42,7 +42,7 @@ export const e2eMonorepoProfile: WorkflowProfileConfig = {
     knowledgeRecalls: true,
     codeChanges: true,
     errors: true,
-    evaluation: false,
+    evaluation: true,
     alerts: false,
   },
   // sourceRules 只识别“这个 source 是什么”，不直接决定需求、产物或能力统计。
