@@ -24,6 +24,8 @@ import { DailyReportService } from './modules/reports/daily-report.service';
 import { DailyReportScheduler } from './modules/reports/daily-report-scheduler';
 import { AuthRepository } from './modules/auth/auth.repository';
 import { AuthService } from './modules/auth/auth.service';
+import { EvalItemRepository } from './modules/eval/eval-item.repository';
+import { EvalItemService } from './modules/eval/eval-item.service';
 
 void Bootstrap.configure({
   preloadModules: [
@@ -50,5 +52,7 @@ void Bootstrap.configure({
     DailyReportRepository,
     DailyReportService,
     DailyReportScheduler,
+    EvalItemRepository,
+    EvalItemService,
   ],
 }).run();
