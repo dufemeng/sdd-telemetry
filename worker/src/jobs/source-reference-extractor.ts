@@ -174,7 +174,7 @@ function extractOnlineDoc(
 ): SourceReferenceInput[] {
   const url = firstString(input, ['url', 'uri', 'link', 'href']);
   const docId = firstString(input, ['docId', 'doc_id', 'documentId', 'document_id', 'id']);
-  const collectionId = firstString(input, ['collectionId', 'collection_id']);
+  const collectionId = firstString(input, ['collectionId', 'collection_id', 'bookId', 'book_id']);
   const spaceId = firstString(input, ['spaceId', 'space_id']);
   const docType = firstString(input, ['docType', 'doc_type', 'type']);
   const title = firstString(input, ['title', 'name']);
@@ -394,6 +394,9 @@ function firstString(input: Record<string, unknown>, keys: string[]): string | n
   for (const key of keys) {
     const value = input[key];
     if (typeof value === 'string' && value.trim() !== '') return value;
+    // MCP 工具（如语雀）常把 doc_id / book_id 等以 JSON number 下发，强转成字符串 locator，
+    // 否则会被判 null → 落到 no_online_locator → 误写成 unknown。
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   }
   return null;
 }

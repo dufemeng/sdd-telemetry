@@ -165,6 +165,39 @@ describe('extractSourceReferences', () => {
     });
   });
 
+  it('extracts a numeric MCP doc_id as locator_type=mcp_doc (not unknown)', () => {
+    // 语雀 MCP 的 doc_id 是 JSON number（如 549492727），不是字符串。
+    const refs = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp__user__get_doc',
+        mcpServer: 'user',
+        toolInput: { doc_id: 549492727 },
+      }),
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      actionType: 'read',
+      locatorType: 'mcp_doc',
+      docId: '549492727',
+      normalizedLocator: '549492727',
+    });
+  });
+
+  it('maps a numeric Yuque book_id to the collection locator', () => {
+    const refs = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp__user__list_docs',
+        mcpServer: 'user',
+        toolInput: { book_id: 12345 },
+      }),
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      locatorType: 'mcp_doc',
+      collectionId: '12345',
+    });
+  });
+
   it('records parse_failed as an unknown locator without throwing', () => {
     const refs = extractSourceReferences(
       baseFact({ toolName: 'Read', toolInput: '{broken json' }),
