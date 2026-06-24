@@ -58,6 +58,10 @@ export default function EvalRubricsPage() {
   const pending = saveDraft.isPending || publish.isPending;
   const queryError = overviewQuery.error;
   const profileNotEnabled = queryError instanceof ApiRequestError && queryError.code === 'EVAL_PROFILE_NOT_ENABLED';
+  const overview = overviewQuery.data;
+  const hasPersistedVersion = Boolean(overview?.active || overview?.draft);
+  const canSave = Boolean(working && (isDirty || !hasPersistedVersion));
+  const canPublish = Boolean(working && (isDirty || overview?.draft || !overview?.active));
 
   function changeArtifactType(next: EvalArtifactType) {
     setArtifactType(next);
@@ -115,18 +119,28 @@ export default function EvalRubricsPage() {
     setFeedback({ kind: 'success', message: '已恢复为内置默认，保存后生效。' });
   }
 
+  function markSaved(sourceSnapshot: string, payload: Rubric) {
+    const savedSnapshot = rubricSnapshot(payload);
+    setWorkingCopy((current) => {
+      if (current?.key !== currentKey) return current;
+      return rubricSnapshot(current.rubric) === sourceSnapshot
+        ? { ...current, rubric: payload, savedSnapshot }
+        : { ...current, savedSnapshot };
+    });
+  }
+
   async function save() {
-    if (!working) return;
+    if (!working || !canSave) return;
     const validationError = validateRubric(working);
     if (validationError) {
       setFeedback({ kind: 'error', message: validationError });
       return;
     }
-    const payload = cloneRubric(working);
-    const savedSnapshot = rubricSnapshot(payload);
+    const sourceSnapshot = rubricSnapshot(working);
+    const payload = normalizeRubric(working);
     try {
       const result = await saveDraft.mutateAsync(payload);
-      setWorkingCopy((current) => current?.key === currentKey ? { ...current, savedSnapshot } : current);
+      markSaved(sourceSnapshot, payload);
       setFeedback({ kind: 'success', message: `草稿 v${result.versionNo} 已保存。` });
     } catch (error) {
       setFeedback({ kind: 'error', message: errorMessage(error) });
@@ -134,25 +148,29 @@ export default function EvalRubricsPage() {
   }
 
   async function saveAndPublish() {
-    if (!working) return;
+    if (!working || !canPublish) return;
     const validationError = validateRubric(working);
     if (validationError) {
       setFeedback({ kind: 'error', message: validationError });
       return;
     }
-    const payload = cloneRubric(working);
-    const savedSnapshot = rubricSnapshot(payload);
     try {
+      const existingDraftId = !isDirty ? overview?.draft?.id : undefined;
+      if (existingDraftId) {
+        const result = await publish.mutateAsync(existingDraftId);
+        setFeedback({ kind: 'success', message: `评分标准 v${result.versionNo} 已发布。` });
+        return;
+      }
+      const sourceSnapshot = rubricSnapshot(working);
+      const payload = normalizeRubric(working);
       const draft = await saveDraft.mutateAsync(payload);
       const result = await publish.mutateAsync(draft.id);
-      setWorkingCopy((current) => current?.key === currentKey ? { ...current, savedSnapshot } : current);
+      markSaved(sourceSnapshot, payload);
       setFeedback({ kind: 'success', message: `评分标准 v${result.versionNo} 已发布。` });
     } catch (error) {
       setFeedback({ kind: 'error', message: errorMessage(error) });
     }
   }
-
-  const overview = overviewQuery.data;
 
   return (
     <div className="flex flex-col gap-3">
@@ -164,10 +182,10 @@ export default function EvalRubricsPage() {
             <button className={BUTTON_CLASS} type="button" disabled={!working || pending} onClick={restoreBuiltin}>
               <RotateCcw size={14} /> 恢复内置默认
             </button>
-            <button className={BUTTON_CLASS} type="button" disabled={!working || pending} onClick={() => void save()}>
+            <button className={BUTTON_CLASS} type="button" disabled={!canSave || pending} onClick={() => void save()}>
               <Save size={14} /> 保存草稿
             </button>
-            <button className={PRIMARY_BUTTON_CLASS} type="button" disabled={!working || pending} onClick={() => void saveAndPublish()}>
+            <button className={PRIMARY_BUTTON_CLASS} type="button" disabled={!canPublish || pending} onClick={() => void saveAndPublish()}>
               <Rocket size={14} /> 发布
             </button>
           </div>
@@ -325,6 +343,17 @@ function cloneRubric(rubric: Rubric): Rubric {
     dimensions: rubric.dimensions.map((dimension) => ({
       ...dimension,
       anchors: { ...dimension.anchors },
+    })),
+  };
+}
+
+function normalizeRubric(rubric: Rubric): Rubric {
+  const normalized = cloneRubric(rubric);
+  return {
+    ...normalized,
+    dimensions: normalized.dimensions.map((dimension) => ({
+      ...dimension,
+      code: dimension.code.trim(),
     })),
   };
 }

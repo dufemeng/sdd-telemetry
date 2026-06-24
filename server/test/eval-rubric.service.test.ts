@@ -106,6 +106,12 @@ describe('EvalRubricService', () => {
     expect(result.builtinDefault.dimensions.map((dimension) => dimension.code)).toEqual(['D1', 'D2', 'D3', 'D4', 'D5']);
   });
 
+  it('rejects overview when evaluation is not enabled for the profile', async () => {
+    const { service } = createService({ evaluationEnabled: false });
+    await expect(service.getOverview('sdd-default', 'design'))
+      .rejects.toMatchObject({ status: 409, code: 'EVAL_PROFILE_NOT_ENABLED' });
+  });
+
   it('saves a draft with a stable hash and actor id', async () => {
     const definition = rubric();
     const { service, getSavedInput } = createService();
