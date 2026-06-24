@@ -94,10 +94,14 @@ export class ProfileConfigAdminService {
     config?: WorkflowProfileConfig;
     notes?: string;
     force?: boolean;
+    expectNew?: boolean;
     actor: AuthSessionUser;
   }): Promise<ProfileConfigAdminDetail> {
     const config = input.config ?? await this.loadDraftOrPublishedConfig(profileId);
     assertProfileIdImmutable(profileId, config.profileId);
+    if (input.expectNew) {
+      await this.assertProfileDoesNotExist(profileId);
+    }
     this.assertPublishable(config, Boolean(input.force));
     await this.profileConfigRepository.publishProfileConfig({
       config,
@@ -115,6 +119,15 @@ export class ProfileConfigAdminService {
       notes: 'disabled by admin',
     });
     return this.getDetail(profileId);
+  }
+
+  private async assertProfileDoesNotExist(profileId: string): Promise<void> {
+    const existing = await this.profileConfigRepository.getDraftProfileConfig(profileId)
+      ?? await this.profileConfigRepository.getPublishedProfileConfig(profileId)
+      ?? await this.catalog().getServing(profileId);
+    if (existing) {
+      throw new ApiHttpError(409, 'PROFILE_ALREADY_EXISTS', `profile already exists: ${profileId}`);
+    }
   }
 
   private async loadDraftOrPublishedConfig(profileId: string): Promise<WorkflowProfileConfig> {

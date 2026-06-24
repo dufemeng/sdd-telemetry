@@ -75,6 +75,8 @@ export const PublishProfileConfigRequestSchema = z.object({
   config: WorkflowProfileConfigSchema.optional(),
   notes: z.string().optional(),
   force: z.boolean().optional(),
+  // 新建工作流时由前端置 true：服务端据此拒绝覆盖已存在的 profileId（防止"新增"被静默当成更新）。
+  expectNew: z.boolean().optional(),
 });
 export type PublishProfileConfigRequest = z.infer<typeof PublishProfileConfigRequestSchema>;
 

@@ -74,6 +74,7 @@ export class ProfileConfigAdminController {
       ...(input.config ? { config: parseWorkflowProfileConfig(input.config) } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...(input.force !== undefined ? { force: input.force } : {}),
+      ...(input.expectNew !== undefined ? { expectNew: input.expectNew } : {}),
     });
     return ok(parseWithSchema(ProfileConfigAdminDetailSchema, data));
   }

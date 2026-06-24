@@ -87,6 +87,7 @@ function ProfileEditor({
   const [config, setConfig] = useState<WorkflowProfileConfig | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [handledCreateNonce, setHandledCreateNonce] = useState(0);
 
   useEffect(() => {
@@ -94,6 +95,7 @@ function ProfileEditor({
       setConfig(detailQuery.data.config);
       setSavedSnapshot(JSON.stringify(detailQuery.data.config));
       setEditing(false);
+      setCreating(false);
     }
   }, [detailQuery.data?.summary.profileId]);
 
@@ -105,7 +107,7 @@ function ProfileEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createNonce, config, handledCreateNonce]);
 
-  const isNew = Boolean(config && !summaries.some((item) => item.profileId === config.profileId));
+  const isNew = creating;
   const pending = publish.isPending || disable.isPending;
   const error = publish.error ?? disable.error;
   const configSnapshot = useMemo(() => (config ? JSON.stringify(config) : null), [config]);
@@ -124,7 +126,11 @@ function ProfileEditor({
   }
 
   const activeConfig = config;
-  const summary = summaries.find((item) => item.profileId === activeConfig.profileId) ?? detailQuery.data?.summary ?? null;
+  const summary = isNew
+    ? null
+    : summaries.find((item) => item.profileId === activeConfig.profileId) ?? detailQuery.data?.summary ?? null;
+  // 新建工作流时，若 ID 撞上已存在的 profile，必须阻止发布——否则会静默覆盖那个 profile 而不是新增。
+  const idTaken = isNew && summaries.some((item) => item.profileId === activeConfig.profileId);
 
   function patch(next: Partial<WorkflowProfileConfig>) {
     setConfig((current) => (current ? ({ ...current, ...next } as WorkflowProfileConfig) : current));
@@ -138,6 +144,7 @@ function ProfileEditor({
     setConfig(detail.config);
     setSavedSnapshot(JSON.stringify(detail.config));
     setEditing(false);
+    setCreating(false);
     onSelect(detail.summary.profileId);
   }
 
@@ -150,6 +157,7 @@ function ProfileEditor({
     setConfig(next);
     setSavedSnapshot(null);
     setEditing(true);
+    setCreating(true);
   }
 
   function cancelEdit() {
@@ -158,13 +166,14 @@ function ProfileEditor({
       setSavedSnapshot(JSON.stringify(detailQuery.data.config));
     }
     setEditing(false);
+    setCreating(false);
   }
 
   function submitPublish() {
     publish.mutate(
       {
         profileId: activeConfig.profileId,
-        body: { config: activeConfig },
+        body: { config: activeConfig, expectNew: creating },
       },
       { onSuccess: applyServerDetail },
     );
@@ -177,7 +186,7 @@ function ProfileEditor({
       headerRight={
         editing ? (
           <div className="flex flex-wrap items-center gap-2">
-            <button className={PRIMARY_BUTTON_CLASS} disabled={pending} type="button" onClick={submitPublish}>
+            <button className={PRIMARY_BUTTON_CLASS} disabled={pending || idTaken} type="button" onClick={submitPublish}>
               <Rocket size={14} /> 发布
             </button>
             <button className={BUTTON_CLASS} disabled={pending} type="button" onClick={cancelEdit}>
@@ -204,6 +213,7 @@ function ProfileEditor({
       <div className="grid gap-3">
         <WorkflowIdentitySection
           config={activeConfig}
+          idTaken={idTaken}
           isDirty={isDirty}
           isNew={isNew}
           readOnly={!editing}
@@ -222,6 +232,7 @@ function ProfileEditor({
 
 function WorkflowIdentitySection({
   config,
+  idTaken,
   isDirty,
   isNew,
   readOnly,
@@ -229,6 +240,7 @@ function WorkflowIdentitySection({
   onPatch,
 }: {
   config: WorkflowProfileConfig;
+  idTaken: boolean;
   isDirty: boolean;
   isNew: boolean;
   readOnly: boolean;
@@ -295,6 +307,11 @@ function WorkflowIdentitySection({
               value={config.profileId}
               onChange={(event) => onPatch({ profileId: normalizeProfileId(event.target.value) })}
             />
+            {idTaken ? (
+              <p className="mt-1 text-[12px] text-[var(--color-bad-text)]">
+                该工作流 ID 已存在，请改用其他 ID（否则会覆盖已有工作流，而不是新增）。
+              </p>
+            ) : null}
           </Field>
         </div>
       </div>

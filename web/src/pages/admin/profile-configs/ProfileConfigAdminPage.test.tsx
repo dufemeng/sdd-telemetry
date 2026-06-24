@@ -91,4 +91,33 @@ describe('ProfileConfigAdminPage redesign behavior', () => {
     expect(screen.queryByText('预览')).toBeNull();
     expect(screen.queryByText('保存草稿')).toBeNull();
   });
+
+  it('blocks publishing a new workflow whose id collides with an existing one', async () => {
+    const { default: ProfileConfigAdminPage } = await import('./ProfileConfigAdminPage');
+
+    render(<ProfileConfigAdminPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '新增工作流' }));
+    // 新建副本默认 id 为 <源 id>-copy，把它改成已存在的 id 触发冲突
+    const idInput = screen.getByDisplayValue(`${E2E_MONOREPO_PROFILE_ID}-copy`);
+    fireEvent.change(idInput, { target: { value: E2E_MONOREPO_PROFILE_ID } });
+
+    expect(screen.getByText(/已存在/)).toBeTruthy();
+    const publishButton = screen.getByRole('button', { name: '发布' }) as HTMLButtonElement;
+    expect(publishButton.disabled).toBe(true);
+  });
+
+  it('publishes a new workflow with expectNew so the server cannot silently overwrite', async () => {
+    const { default: ProfileConfigAdminPage } = await import('./ProfileConfigAdminPage');
+
+    render(<ProfileConfigAdminPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '新增工作流' }));
+    fireEvent.click(screen.getByRole('button', { name: '发布' }));
+
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    const input = mocks.publish.mock.calls[0]?.[0] as { profileId: string; body: { expectNew?: boolean } };
+    expect(input.profileId).toBe(`${E2E_MONOREPO_PROFILE_ID}-copy`);
+    expect(input.body.expectNew).toBe(true);
+  });
 });
