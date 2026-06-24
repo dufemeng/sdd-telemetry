@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeMaybeDoubleEncoded,
+  deriveOnlineDocAction,
   extractSkillSourceReference,
   extractSourceReferences,
   SKILL_SOURCE_ACTION,
@@ -13,6 +14,7 @@ function baseFact(overrides: Partial<ToolCallFact>): ToolCallFact {
     eventId: 'evt_1',
     toolName: 'Read',
     mcpServer: null,
+    mcpToolName: null,
     toolInput: {},
     interactionId: 1,
     toolCallId: 10,
@@ -196,6 +198,71 @@ describe('extractSourceReferences', () => {
       locatorType: 'mcp_doc',
       collectionId: '12345',
     });
+  });
+
+  // 生产真实形态：Claude Code 把 tool_name 匿名成 "mcp_tool"，真名/真服务器名经 writer 解出后填 mcpToolName/mcpServer。
+  it('derives an UPDATE action from the real mcp tool name (anonymized tool_name=mcp_tool)', () => {
+    const refs = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp_tool',
+        mcpServer: 'skylarkmcpserver',
+        mcpToolName: 'skylark_doc_update',
+        toolInput: { doc_id: 509472326 },
+      }),
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      actionType: 'update',
+      locatorType: 'mcp_doc',
+      docId: '509472326',
+      mcpServer: 'skylarkmcpserver',
+      mcpToolName: 'skylark_doc_update', // 存真名，不是 "mcp_tool"
+    });
+  });
+
+  it('derives a WRITE action for a create-type mcp tool', () => {
+    const refs = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp_tool',
+        mcpServer: 'skylarkmcpserver',
+        mcpToolName: 'skylark_doc_create',
+        toolInput: { book_id: 12345, title: 'm-loan 需求' },
+      }),
+    );
+    expect(refs[0]).toMatchObject({ actionType: 'write', mcpToolName: 'skylark_doc_create' });
+  });
+
+  it('keeps READ for detail/resolve mcp tools', () => {
+    const detail = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp_tool',
+        mcpServer: 'skylarkmcpserver',
+        mcpToolName: 'skylark_doc_detail',
+        toolInput: { doc_id: 509472326 },
+      }),
+    );
+    expect(detail[0]).toMatchObject({ actionType: 'read', mcpToolName: 'skylark_doc_detail' });
+
+    const resolve = extractSourceReferences(
+      baseFact({
+        toolName: 'mcp_tool',
+        mcpServer: 'skylarkmcpserver',
+        mcpToolName: 'skylark_resolve_url',
+        toolInput: { url: 'https://yuque.antfin.com/x/y/z' },
+      }),
+    );
+    expect(resolve[0]).toMatchObject({ actionType: 'read', locatorType: 'url' });
+  });
+
+  it('deriveOnlineDocAction maps tool-name semantics to read/write/update/delete', () => {
+    expect(deriveOnlineDocAction('skylark_doc_update')).toBe('update');
+    expect(deriveOnlineDocAction('skylark_doc_create')).toBe('write');
+    expect(deriveOnlineDocAction('doc_save')).toBe('write');
+    expect(deriveOnlineDocAction('skylark_doc_delete')).toBe('delete');
+    expect(deriveOnlineDocAction('skylark_doc_detail')).toBe('read');
+    expect(deriveOnlineDocAction('skylark_resolve_url')).toBe('read');
+    expect(deriveOnlineDocAction('mcp_tool')).toBe('read'); // 匿名名无语义 → read
+    expect(deriveOnlineDocAction(null)).toBe('read');
   });
 
   it('records parse_failed as an unknown locator without throwing', () => {

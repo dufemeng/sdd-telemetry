@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SourceReferenceWriter, type SourceReferenceWriteStats } from '../src/jobs/source-reference/writer';
+import {
+  extractMcpToolMeta,
+  SourceReferenceWriter,
+  type SourceReferenceWriteStats,
+} from '../src/jobs/source-reference/writer';
+
+// source_references INSERT 参数顺序（见 writer.ts sourceReferenceParams）。
+const ACTION_TYPE_IDX = 8;
+const MCP_SERVER_IDX = 14;
+const MCP_TOOL_NAME_IDX = 15;
 
 // source_references INSERT 的列数（见 writer.ts upsert 列表）。每行批量写入会带这么多占位符。
 const SOURCE_REFERENCE_COLUMNS = 25;
@@ -162,6 +171,41 @@ describe('SourceReferenceWriter 增量 skill 引用（增量键 + 批量写）',
     expect(placeholders).toBe(25 * 2);
   });
 
+  it('从 tool_result.tool_parameters 解出真名,在线文档写操作落成 update + 真服务器名/真工具名', async () => {
+    // 生产形态:tool_name 被匿名成 "mcp_tool",mcp_server_scope 是作用域 "user",
+    // 真名在 tool_parameters(双重编码),tool_input 携带 doc_id locator。
+    const mcpRow = toolCallRow({
+      tool_name: 'mcp_tool',
+      mcp_server_scope: 'user',
+      attributes_json: {
+        tool_input: { doc_id: 509472326 },
+        tool_parameters: JSON.stringify({
+          mcp_server_name: 'skylarkmcpserver',
+          mcp_tool_name: 'skylark_doc_update',
+        }),
+      },
+    });
+    let toolSelectCalls = 0;
+    const query = vi.fn().mockImplementation((sql: string) => {
+      if (/FROM sdd_interaction_tool_calls/.test(sql)) {
+        toolSelectCalls += 1;
+        return Promise.resolve([toolSelectCalls === 1 ? [mcpRow] : []]);
+      }
+      if (/INSERT INTO source_references/.test(sql)) return Promise.resolve([{ affectedRows: 1 }]);
+      return Promise.resolve([[]]);
+    });
+    const writer = new SourceReferenceWriter();
+
+    await writer.updateForBatch({ query } as never, 'batch-X', [], ['tu1']);
+
+    const insert = query.mock.calls.find((c) => /INSERT INTO source_references/.test(c[0] as string));
+    expect(insert).toBeTruthy();
+    const params = insert![1] as unknown[];
+    expect(params[ACTION_TYPE_IDX]).toBe('update'); // 不再是硬编码 read
+    expect(params[MCP_SERVER_IDX]).toBe('skylarkmcpserver'); // 不再是 scope "user"
+    expect(params[MCP_TOOL_NAME_IDX]).toBe('skylark_doc_update'); // 不再是 "mcp_tool"
+  });
+
   it('updateForBatch 传入 toolUseIds 时按 tc.tool_use_id IN 取数,不扫全表/不按 e.batch_id 过滤', async () => {
     let toolSelectCalls = 0;
     const query = vi.fn().mockImplementation((sql: string) => {
@@ -184,5 +228,38 @@ describe('SourceReferenceWriter 增量 skill 引用（增量键 + 批量写）',
     expect(sql).not.toMatch(/tc\.id > \?/); // 不再全表分页扫
     expect(sql).not.toMatch(/e\.batch_id = \?/); // 不再按 join 后的 batch_id 过滤
     expect(toolSelects[0]![1]).toEqual(['tu1']);
+  });
+});
+
+describe('extractMcpToolMeta', () => {
+  it('解析 double-encoded tool_parameters 字符串', () => {
+    expect(
+      extractMcpToolMeta({
+        tool_parameters: JSON.stringify({
+          mcp_server_name: 'skylarkmcpserver',
+          mcp_tool_name: 'skylark_doc_update',
+        }),
+      }),
+    ).toEqual({ mcpServerName: 'skylarkmcpserver', mcpToolName: 'skylark_doc_update' });
+  });
+
+  it('解析已是对象的 tool_parameters', () => {
+    expect(
+      extractMcpToolMeta({
+        tool_parameters: { mcp_server_name: 'track', mcp_tool_name: 'query_spm_list' },
+      }),
+    ).toEqual({ mcpServerName: 'track', mcpToolName: 'query_spm_list' });
+  });
+
+  it('非 MCP / 缺字段 / 非对象 一律回退 null', () => {
+    expect(extractMcpToolMeta({ tool_input: { file_path: '/a' } })).toEqual({
+      mcpServerName: null,
+      mcpToolName: null,
+    });
+    expect(extractMcpToolMeta(null)).toEqual({ mcpServerName: null, mcpToolName: null });
+    expect(extractMcpToolMeta({ tool_parameters: '{broken' })).toEqual({
+      mcpServerName: null,
+      mcpToolName: null,
+    });
   });
 });

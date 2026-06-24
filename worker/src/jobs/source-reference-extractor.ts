@@ -24,6 +24,11 @@ export interface ToolCallFact {
   eventId: string | null;
   toolName: string;
   mcpServer: string | null;
+  /**
+   * MCP 真实工具名（如 skylark_doc_update）。Claude Code 把 tool_name 匿名成 "mcp_tool"，
+   * 真名经 writer 从 tool_result.tool_parameters 解出后填这里；旧式 mcp__server__tool 命名为 null。
+   */
+  mcpToolName: string | null;
   /** attributes.tool_input 原值：可能是 double-encoded JSON 字符串，也可能已是对象 */
   toolInput: unknown;
   interactionId: number | null;
@@ -69,6 +74,27 @@ const PATH_TOOL_ACTIONS: Record<string, string> = {
   Edit: 'edit',
   MultiEdit: 'edit',
 };
+
+/**
+ * 在线文档读写动作映射。Claude Code 把 MCP tool_name 匿名成 "mcp_tool"，真名（skylark_doc_update 等）
+ * 经 writer 从 tool_result.tool_parameters 解出。这里按真名语义词派生动作；否则在线文档调用恒记为 read，
+ * 下游 process_doc 写入计数（isWriteAction = {write,edit,update}）永远过滤掉 read → 看板恒 0。
+ * 词表是默认启发式，命中按顺序取第一档；后续应迁到 source rule 在线配置，不要在算子里继续堆词。
+ */
+const ONLINE_DOC_ACTION_RULES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(update|modify|append|rename|move|patch)/i, 'update'],
+  [/(delete|remove)/i, 'delete'],
+  [/(create|write|save|submit|publish|upload|edit)/i, 'write'],
+];
+
+/** 按 MCP 真实工具名派生在线文档动作；无真名或无写语义词时回退 read。 */
+export function deriveOnlineDocAction(mcpToolName: string | null): string {
+  if (!mcpToolName) return 'read';
+  for (const [pattern, action] of ONLINE_DOC_ACTION_RULES) {
+    if (pattern.test(mcpToolName)) return action;
+  }
+  return 'read';
+}
 
 export function extractSourceReferences(fact: ToolCallFact): SourceReferenceInput[] {
   const stableEvidenceId = fact.toolUseId ?? fact.eventId;
@@ -179,12 +205,15 @@ function extractOnlineDoc(
   const docType = firstString(input, ['docType', 'doc_type', 'type']);
   const title = firstString(input, ['title', 'name']);
 
+  // 真名优先取 fact.mcpToolName（writer 解出）；回退 fact.toolName（旧式 mcp__server__tool）。
+  const actionType = deriveOnlineDocAction(fact.mcpToolName ?? fact.toolName);
+
   const locator = url ?? docId ?? collectionId;
   if (!locator) {
     // MCP 调用但拿不到任何在线文档 locator：记 unknown，便于排查、不进 KPI。
     return [
       buildReference(fact, stableEvidenceId, {
-        actionType: 'read',
+        actionType,
         locatorType: 'unknown',
         rawLocator: null,
         normalizedLocator: null,
@@ -197,7 +226,7 @@ function extractOnlineDoc(
   const normalized = url ? normalizeUrl(url) : locator;
   return [
     buildReference(fact, stableEvidenceId, {
-      actionType: 'read',
+      actionType,
       locatorType,
       rawLocator: locator,
       normalizedLocator: normalized,
@@ -260,7 +289,7 @@ function buildReference(
     normalizedLocator: parts.normalizedLocator,
     normalizedLocatorHash,
     mcpServer: fact.mcpServer,
-    mcpToolName: isMcpTool(fact) ? fact.toolName : null,
+    mcpToolName: isMcpTool(fact) ? (fact.mcpToolName ?? fact.toolName) : null,
     docId: parts.docId ?? null,
     url: parts.url ?? null,
     title: parts.title ?? null,

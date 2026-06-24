@@ -1,5 +1,6 @@
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import {
+  decodeMaybeDoubleEncoded,
   extractSkillSourceReference,
   extractSourceReferences,
   type SourceReferenceInput,
@@ -243,11 +244,15 @@ export class SourceReferenceWriter {
   ): SourceReferenceUpsertItem[] {
     stats.toolCalls += 1;
 
+    // Claude Code 把 MCP tool_name 匿名成 "mcp_tool"，真服务器名/工具名在 tool_result.tool_parameters；
+    // mcp_server_scope 是作用域(user/project/local)不是服务器名，不能直接喂给 rule.mcpServers 匹配。
+    const mcpMeta = extractMcpToolMeta(row.attributes_json);
     const fact: ToolCallFact = {
       toolUseId: row.tool_use_id,
       eventId: row.source_event_id,
       toolName: row.tool_name,
-      mcpServer: row.mcp_server_scope,
+      mcpServer: mcpMeta.mcpServerName ?? row.mcp_server_scope,
+      mcpToolName: mcpMeta.mcpToolName,
       toolInput: extractToolInputFromAttributes(row.attributes_json),
       interactionId: row.interaction_id,
       toolCallId: row.tool_call_id,
@@ -365,4 +370,28 @@ function extractToolInputFromAttributes(attributes: unknown): unknown {
   if (!attributes || typeof attributes !== 'object') return null;
   const a = attributes as Record<string, unknown>;
   return a.tool_input ?? a.tool_parameters ?? a['tool.parameters'] ?? a.input ?? null;
+}
+
+export interface McpToolMeta {
+  mcpServerName: string | null;
+  mcpToolName: string | null;
+}
+
+/**
+ * 从 tool_result 事件的 tool_parameters 解出 MCP 真服务器名 / 真工具名。
+ * tool_parameters 形如 {"mcp_server_name":"skylarkmcpserver","mcp_tool_name":"skylark_doc_update"}，
+ * 且常是 double-encoded JSON 字符串，复用 extractor 的受控解码。非 MCP 调用返回全 null。
+ */
+export function extractMcpToolMeta(attributes: unknown): McpToolMeta {
+  const empty: McpToolMeta = { mcpServerName: null, mcpToolName: null };
+  if (!attributes || typeof attributes !== 'object') return empty;
+  const a = attributes as Record<string, unknown>;
+  const raw = a.tool_parameters ?? a['tool.parameters'];
+  if (raw == null) return empty;
+  const decoded = decodeMaybeDoubleEncoded(raw);
+  if (decoded.parseFailed || !decoded.value || typeof decoded.value !== 'object') return empty;
+  const obj = decoded.value as Record<string, unknown>;
+  const str = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() !== '' ? v : null;
+  return { mcpServerName: str(obj.mcp_server_name), mcpToolName: str(obj.mcp_tool_name) };
 }
