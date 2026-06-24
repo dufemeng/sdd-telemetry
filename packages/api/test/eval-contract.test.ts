@@ -6,6 +6,7 @@ import {
   EvalImportFromLogsRequestSchema,
   EvalImportFromLogsResponseSchema,
   CreateEvalItemRequestSchema,
+  RubricSchema,
   UpdateEvalItemRequestSchema,
 } from '../src/contracts/eval.contract';
 
@@ -89,4 +90,42 @@ describe('eval contract', () => {
   it('update schema rejects unknown fields', () => {
     expect(() => UpdateEvalItemRequestSchema.parse({ bogus: 1 })).toThrow();
   });
+
+  it('rubric rejects duplicate dimension codes', () => {
+    const rubric = rubricFixture();
+    expect(() => RubricSchema.parse({
+      ...rubric,
+      dimensions: [rubric.dimensions[0], { ...rubric.dimensions[0], name: '重复维度' }],
+    })).toThrow(/duplicate dimension code/);
+  });
+
+  it('rubric requires all three anchors', () => {
+    const rubric = rubricFixture();
+    const dimension = rubric.dimensions[0];
+    expect(() => RubricSchema.parse({
+      ...rubric,
+      dimensions: [{ ...dimension, anchors: { '0': '未满足', '2': '完全满足' } }],
+    })).toThrow();
+  });
+
+  it('rubric validates judge context enum', () => {
+    const rubric = rubricFixture();
+    expect(RubricSchema.parse(rubric).judge.context).toBe('intrinsic');
+    expect(() => RubricSchema.parse({
+      ...rubric,
+      judge: { ...rubric.judge, context: 'repository' },
+    })).toThrow();
+  });
 });
+
+function rubricFixture() {
+  return {
+    judge: { temperature: 0, evidenceRequired: true, context: 'intrinsic' },
+    dimensions: [{
+      code: 'D1',
+      name: '覆盖',
+      weight: 1,
+      anchors: { '0': '未满足', '1': '部分满足', '2': '完全满足' },
+    }],
+  } as const;
+}

@@ -125,3 +125,85 @@ export const EvalImportFromLogsResponseSchema = z.object({
   skippedDeletedCount: z.number().int().nonnegative(),
 });
 export type EvalImportFromLogsResponse = z.infer<typeof EvalImportFromLogsResponseSchema>;
+
+// ============ 评分标准 (rubric) ============
+
+export const RubricDimensionSchema = z.object({
+  code: z.string().min(1).max(32),
+  name: z.string().min(1).max(64),
+  weight: z.number().positive().max(100),
+  anchors: z.object({
+    '0': z.string().min(1).max(500),
+    '1': z.string().min(1).max(500),
+    '2': z.string().min(1).max(500),
+  }).strict(),
+}).strict();
+export type RubricDimension = z.infer<typeof RubricDimensionSchema>;
+
+export const RubricJudgeSchema = z.object({
+  temperature: z.number().min(0).max(1),
+  evidenceRequired: z.boolean(),
+  context: z.enum(['intrinsic', 'with_code']),
+}).strict();
+export type RubricJudge = z.infer<typeof RubricJudgeSchema>;
+
+export const RubricSchema = z.object({
+  judge: RubricJudgeSchema,
+  dimensions: z.array(RubricDimensionSchema).min(1).max(20),
+}).strict().superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  for (const d of value.dimensions) {
+    if (seen.has(d.code)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate dimension code: ${d.code}`, path: ['dimensions'] });
+    }
+    seen.add(d.code);
+  }
+});
+export type Rubric = z.infer<typeof RubricSchema>;
+
+export const RubricVersionStatusSchema = z.enum(['draft', 'published']);
+export type RubricVersionStatus = z.infer<typeof RubricVersionStatusSchema>;
+
+export const RubricVersionSummarySchema = z.object({
+  id: IdSchema,
+  versionNo: z.number().int().positive(),
+  versionStatus: RubricVersionStatusSchema,
+  definitionHash: z.string().length(64),
+  publishedAt: ISODateTimeSchema.nullable(),
+  gmtModified: ISODateTimeSchema,
+}).strict();
+export type RubricVersionSummary = z.infer<typeof RubricVersionSummarySchema>;
+
+export const RubricVersionSchema = RubricVersionSummarySchema.extend({
+  profileId: z.string(),
+  artifactType: EvalArtifactTypeSchema,
+  rubric: RubricSchema,
+}).strict();
+export type RubricVersion = z.infer<typeof RubricVersionSchema>;
+
+/** GET /api/eval/rubrics?profileId=&artifactType= */
+export const RubricOverviewResponseSchema = z.object({
+  profileId: z.string(),
+  artifactType: EvalArtifactTypeSchema,
+  active: RubricVersionSchema.nullable(),
+  draft: RubricVersionSchema.nullable(),
+  versions: z.array(RubricVersionSummarySchema),
+  builtinDefault: RubricSchema,
+}).strict();
+export type RubricOverviewResponse = z.infer<typeof RubricOverviewResponseSchema>;
+
+/** POST /api/eval/rubrics —— 保存/覆盖当前 draft */
+export const SaveRubricDraftRequestSchema = z.object({
+  profileId: z.string().min(1).max(191),
+  artifactType: EvalArtifactTypeSchema,
+  rubric: RubricSchema,
+}).strict();
+export type SaveRubricDraftRequest = z.infer<typeof SaveRubricDraftRequestSchema>;
+
+/** POST /api/eval/rubrics/:id/publish 返回 */
+export const RubricMutationResponseSchema = z.object({
+  id: IdSchema,
+  versionNo: z.number().int().positive(),
+  versionStatus: RubricVersionStatusSchema,
+}).strict();
+export type RubricMutationResponse = z.infer<typeof RubricMutationResponseSchema>;

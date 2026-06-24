@@ -691,6 +691,25 @@ Profile 异常看板的 current-run 明细表。来源来自清洗后的 `sdd_in
 
 **保留语义**：`eval_items` 是管理员主动纳入评测集的固定资产 + run 可复现的依据，**独立于观测层的 30 天保留策略长期保留**。删除走 tombstone（清正文留 key），不让下次 import 复活。当前仓库的 30 天 TTL 清理任务尚未上线，但快照设计的正当性来自"固定资产 + 可复现"，不依赖 TTL 是否存在。
 
+### 8.2 eval_rubric_versions
+
+按 profile 和产物类型保存评分标准版本。每组 `(profile_id, artifact_type)` 最多有一个可覆盖的 draft，并保留所有已发布版本；活动版本取 published 中 `version_no` 最大的一条，published 一经发布不可再修改。
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | BIGINT UNSIGNED 主键 |
+| `profile_id` | profile 隔离 |
+| `artifact_type` | `design` / `proposal` / `tasks` |
+| `version_no` | 当前 profile + artifact type 下单调递增的版本号 |
+| `version_status` | `draft` / `published`；published 不可变 |
+| `rubric_json` | JSON；包含 judge 设置、维度、权重和 0/1/2 三档锚点 |
+| `definition_hash` | CHAR(64)；rubric JSON 的 SHA-256 内容指纹 |
+| `created_by` | 保存 draft 的管理员用户 ID，可为 NULL |
+| `published_at` | 发布时间；draft 为 NULL |
+| `gmt_create` / `gmt_modified` | 创建与最后修改时间 |
+
+索引：`UNIQUE(profile_id, artifact_type, version_no)`、`(profile_id, artifact_type, version_status, version_no)`。保存草稿时覆盖当前唯一 draft；没有 draft 时使用 `MAX(version_no) + 1` 新建。发布仅把指定 draft 转为 published，不覆盖历史版本。
+
 ## 9. Retention
 
 P0 清理不追求秒级准确，允许 7 天变 8 天、30 天变 35 天。

@@ -35,6 +35,7 @@ const expectedTables = [
   'profile_knowledge_recalls',
   'profile_code_activities',
   'eval_items',
+  'eval_rubric_versions',
 ];
 
 const expectedUniqueIndexes = [
@@ -66,6 +67,7 @@ const expectedUniqueIndexes = [
   'uk_profile_knowledge_recalls_run_key',
   'uk_profile_code_activities_run_key',
   'uk_eval_items_item_key',
+  'uk_eval_rubric_versions_no',
 ];
 
 const expectedColumns: Record<string, string[]> = {
@@ -184,6 +186,14 @@ const expectedColumns: Record<string, string[]> = {
     'occurrence_count',
     'deleted_at',
     'deleted_by_user_id',
+  ],
+  eval_rubric_versions: [
+    'profile_id',
+    'artifact_type',
+    'version_no',
+    'version_status',
+    'rubric_json',
+    'definition_hash',
   ],
 };
 

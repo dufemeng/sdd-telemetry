@@ -31,3 +31,6 @@ import './reports/daily-report-scheduler';
 import './eval/eval-item.repository';
 import './eval/eval-item.service';
 import './eval/eval-item.controller';
+import './eval/eval-rubric.repository';
+import './eval/eval-rubric.service';
+import './eval/eval-rubric.controller';

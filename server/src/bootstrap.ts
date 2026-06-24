@@ -26,6 +26,8 @@ import { AuthRepository } from './modules/auth/auth.repository';
 import { AuthService } from './modules/auth/auth.service';
 import { EvalItemRepository } from './modules/eval/eval-item.repository';
 import { EvalItemService } from './modules/eval/eval-item.service';
+import { EvalRubricRepository } from './modules/eval/eval-rubric.repository';
+import { EvalRubricService } from './modules/eval/eval-rubric.service';
 
 void Bootstrap.configure({
   preloadModules: [
@@ -54,5 +56,7 @@ void Bootstrap.configure({
     DailyReportScheduler,
     EvalItemRepository,
     EvalItemService,
+    EvalRubricRepository,
+    EvalRubricService,
   ],
 }).run();

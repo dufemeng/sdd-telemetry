@@ -47,6 +47,7 @@ const ProfileConfigAdminPage = lazy(
 );
 const DailyReportsPage = lazy(() => import('./pages/reports/daily/DailyReportsPage'));
 const EvalItemsPage = lazy(() => import('./pages/admin/eval-items/EvalItemsPage'));
+const EvalRubricsPage = lazy(() => import('./pages/admin/eval-items/EvalRubricsPage'));
 
 export const router = createBrowserRouter([
   {
@@ -197,6 +198,11 @@ export const router = createBrowserRouter([
               {
                 path: 'admin/eval-items',
                 element: wrap(EvalItemsPage),
+                errorElement: <RouteError />,
+              },
+              {
+                path: 'admin/eval-rubrics',
+                element: wrap(EvalRubricsPage),
                 errorElement: <RouteError />,
               },
             ],

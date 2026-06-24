@@ -1137,6 +1137,18 @@ GET /api/ops/tables/sdd_skill_usages/rows?filters=[{"column":"raw_skill_name","o
 
 无正文 tombstone 删除：清空 prompt/title/notes/origin 字段，置 `enabled=0`、`deleted_at`、`deleted_by_user_id`，保留 item_key/profile_id/target_*。同 key 后续 import 计 `skippedDeleted` 不复活。
 
+### 9.7 GET /api/eval/rubrics
+
+读取一个 profile + 产物类型的评分标准概览。仅 `super_admin`，响应设置 `Cache-Control: no-store`。Query: `profileId`（必填）和 `artifactType`（由 `EvalArtifactTypeSchema` 校验为 `design` / `proposal` / `tasks`）。响应使用 `RubricOverviewResponseSchema`：`{ profileId, artifactType, active, draft, versions, builtinDefault }`；活动版本是 published 中 `versionNo` 最大的一条。profile 未开启 evaluation 时返回 409 `EVAL_PROFILE_NOT_ENABLED`。
+
+### 9.8 POST /api/eval/rubrics
+
+保存或覆盖当前唯一 draft。仅 `super_admin`，响应设置 `Cache-Control: no-store`。请求使用 `SaveRubricDraftRequestSchema`：`{ profileId, artifactType, rubric }`，其中 rubric 使用 `RubricSchema` 校验 judge 设置、1–20 个不重复 code 的维度、正权重和完整 0/1/2 锚点。响应使用 `RubricMutationResponseSchema`：`{ id, versionNo, versionStatus:'draft' }`。
+
+### 9.9 POST /api/eval/rubrics/:id/publish
+
+把指定 draft 发布为不可变 published。仅 `super_admin`，响应设置 `Cache-Control: no-store`。Path `id` 为版本 ID；请求 body `{ profileId }`（controller 的 `requireProfileId` 校验，当前无独立导出 request schema）。响应使用 `RubricMutationResponseSchema`：`{ id, versionNo, versionStatus:'published' }`。版本不存在返回 404 `EVAL_RUBRIC_NOT_FOUND`，目标不是 draft 返回 409 `EVAL_RUBRIC_NOT_DRAFT`。
+
 ## 10. 前端适配策略
 
 旧 `web/src/api.ts` 不再是事实标准。

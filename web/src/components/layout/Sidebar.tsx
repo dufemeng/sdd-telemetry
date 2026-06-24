@@ -3,7 +3,7 @@ import { LayoutGroup, motion, type Transition } from 'motion/react';
 import {
   Activity, BookOpen,
   CheckSquare, ClipboardList, Database, Gauge,
-  GitBranch, Layers3, ListFilter, MessageSquareWarning, Newspaper, Search, Settings2, ShieldCheck, Table2, UserRound, Workflow,
+  GitBranch, Layers3, ListFilter, ListChecks, MessageSquareWarning, Newspaper, Search, Settings2, ShieldCheck, Table2, UserRound, Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/components/auth/useAuth';
 import { useProfilePresentationModel } from '@/pages/profiles/useProfiles';
@@ -49,6 +49,7 @@ const ADMIN_NAV_GROUP = {
     { to: '/ops/database', label: '数据检索', icon: Database },
     { to: '/admin/profile-configs', label: '工作流管理', icon: Settings2 },
     { to: '/admin/eval-items', label: '评测集', icon: ClipboardList },
+    { to: '/admin/eval-rubrics', label: '评分标准', icon: ListChecks },
     { to: '/admin/users', label: '成员管理', icon: ShieldCheck },
   ],
 } as const;

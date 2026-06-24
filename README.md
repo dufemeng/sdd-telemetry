@@ -43,7 +43,7 @@ Dashboard 使用独立的 `auth_users` 登录成员表，不复用遥测侧的 `
 
 | 角色 | 权限 |
 | --- | --- |
-| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面、重新生成日报、管理评测集 |
+| `super_admin` | 查看数据、维护登录成员、编辑语义映射、查看运维/数据库页面、重新生成日报、管理评测集和评分标准 |
 | `viewer` | 登录后查看 dashboard 只读数据、查看/复制/打印日报 |
 
 首次 migration 后初始化唯一的首位超级管理员：
@@ -77,7 +77,7 @@ DAILY_REPORT_BASE_URL=             # 日报内链接的 baseUrl，默认 /
 
 网页登录只保护 dashboard 与其 API；Claude Code 的 `POST /api/ingest/otlp-logs` 自动上报入口不依赖浏览器 session。
 
-### 评测集 CMS
+### 评测集与评分标准
 
 `super_admin` 在「管理 / 评测集」（`/admin/eval-items`）把真实 prompt 固化为评测集：
 
@@ -86,6 +86,8 @@ DAILY_REPORT_BASE_URL=             # 日报内链接的 baseUrl，默认 /
 - **来源可核验**：每条 cleaned 样本保留来源 interaction、projection run、能力代码和规范目标技能（从 profile config 解析，不把语义代码当 skill）。
 
 评测集是固定资产 + run 可复现的依据，**独立于观测层的 30 天保留策略长期保留**；删除走 tombstone（清正文留 key），不让下次导入复活。导入的 prompt 只在 CMS 中按不可信纯文本展示，服务端日志不记录正文，所有响应设置 `Cache-Control: no-store`。仅 `sdd-default` 与 `e2e-monorepo` 默认开启评测（profile manifest `evaluation=true`）。
+
+`super_admin` 在「管理 / 评分标准」（`/admin/eval-rubrics`）按 profile 和 `design` / `proposal` / `tasks` 维护结构化 rubric：可编辑 judge 设置、维度权重和 0/1/2 三档锚点，先保存唯一草稿再发布为不可变版本。活动版本始终是已发布版本中版本号最大的一条；没有已保存版本时页面从内置默认评分标准初始化。
 
 ## 离线 Docker 部署
 
