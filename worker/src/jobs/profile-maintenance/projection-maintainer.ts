@@ -106,10 +106,17 @@ export async function runProfileMaintenanceOnce(
 
   result.configDirty = await markConfigChangedProfilesDirty(options.pool);
   result.staleDirty = await markStaleFactProfilesDirty(options.pool);
+  const servicedProfileIds = new Set<string>();
 
   for (let i = 0; i < maxJobs; i += 1) {
-    const job = await jobStore.claimNext(options.pool, options.workerId, lockSeconds);
+    const job = await jobStore.claimNext(
+      options.pool,
+      options.workerId,
+      lockSeconds,
+      [...servicedProfileIds],
+    );
     if (!job) break;
+    servicedProfileIds.add(job.profileId);
     result.claimed += 1;
     try {
       await projectClaimedJob(options.pool, options.logger, job);

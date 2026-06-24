@@ -77,7 +77,15 @@ export class ProjectionJobStore {
     );
   }
 
-  async claimNext(pool: Pool, workerId: string, lockSeconds: number): Promise<ProjectionJob | null> {
+  async claimNext(
+    pool: Pool,
+    workerId: string,
+    lockSeconds: number,
+    excludedProfileIds: readonly string[] = [],
+  ): Promise<ProjectionJob | null> {
+    const exclusionClause = excludedProfileIds.length > 0
+      ? `AND profile_id NOT IN (${excludedProfileIds.map(() => '?').join(', ')})`
+      : '';
     return withTransaction(pool, async (connection) => {
       const [rows] = await connection.query<ProjectionJobRow[]>(
         `SELECT profile_id, target_config_version_id, status, dirty_seq, running_dirty_seq, attempts, max_attempts,
@@ -85,19 +93,24 @@ export class ProjectionJobStore {
                 last_profile_config_version_id, last_resolved_config_hash
          FROM profile_projection_jobs
          WHERE (
-             status IN ('dirty', 'failed')
-             AND attempts < max_attempts
-             AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP(3))
-             AND (locked_until IS NULL OR locked_until < CURRENT_TIMESTAMP(3))
+             (
+               status IN ('dirty', 'failed')
+               AND attempts < max_attempts
+               AND (next_retry_at IS NULL OR next_retry_at <= CURRENT_TIMESTAMP(3))
+               AND (locked_until IS NULL OR locked_until < CURRENT_TIMESTAMP(3))
+             )
+             OR (
+               status = 'running'
+               AND locked_until IS NOT NULL
+               AND locked_until < CURRENT_TIMESTAMP(3)
+             )
            )
-           OR (
-             status = 'running'
-             AND locked_until IS NOT NULL
-             AND locked_until < CURRENT_TIMESTAMP(3)
-           )
-         ORDER BY FIELD(status, 'dirty', 'running', 'failed'), dirty_since ASC, profile_id ASC
+           ${exclusionClause}
+         ORDER BY FIELD(status, 'dirty', 'running', 'failed'),
+                  last_completed_at ASC, dirty_since ASC, profile_id ASC
          LIMIT 1
          FOR UPDATE`,
+        [...excludedProfileIds],
       );
       const row = rows[0];
       if (!row) return null;

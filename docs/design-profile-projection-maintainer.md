@@ -243,7 +243,11 @@ CREATE TABLE profile_projection_jobs (
 ```ts
 export interface ProjectionJobStore {
   markDirty(input: ProfileDirtyInput): Promise<void>;
-  claimNext(workerId: string, lockSeconds: number): Promise<ProjectionJob | null>;
+  claimNext(
+    workerId: string,
+    lockSeconds: number,
+    excludedProfileIds?: readonly string[],
+  ): Promise<ProjectionJob | null>;
   markSucceeded(input: ProjectionJobSuccess): Promise<void>;
   markFailed(input: ProjectionJobFailure): Promise<void>;
 }
@@ -259,6 +263,8 @@ dirty 合并规则：
 - `running` 期间如果再次 markDirty，不抢锁、不重启当前投影，只更新 `dirty_since` / `dirty_until` / `dirty_reason`。
 - claim job 时记录 `running_dirty_seq = dirty_seq`。
 - markSucceeded 时只有当当前行的 `dirty_seq <= running_dirty_seq`，才把 job 置为 `idle` 并清空 dirty 字段；如果 running 期间又来了新 dirty，成功 run 仍可发布，但 job 保持 `dirty`，等待下一轮 snapshot。
+- 同一状态下，claimNext 按 `last_completed_at ASC`、`dirty_since ASC` 排序；从未完成或最久未完成投影的 profile 优先，保证跨 tick 公平轮转。
+- 同一个 maintenance tick 内，每个 profile 最多被 claim 一次；持续变脏的 profile 留到下一 tick，不能重复消耗本 tick 的 `maxJobsPerTick` 配额。
 
 ### 6. Projection Adapter
 
@@ -674,6 +680,8 @@ GET /api/profiles/:profileId/inspector
    - running 期间再次 markDirty 后，markSucceeded 通过 dirty_seq 不会误清新 dirty。
    - CLI claimProfile 与 ProjectionLoop claimNext 对同一 profile 互斥。
    - failed job 按 retry 时间恢复。
+   - claimNext 能排除当前 maintenance tick 已服务过的 profile。
+   - 多个持续 dirty profile 按最久未完成投影优先，`maxJobsPerTick=1` 时也不会饥饿。
 
 4. `ProjectionAdapterRegistry`
    - `sdd_bridge`、`source_backed` 正确分发。
@@ -685,6 +693,7 @@ GET /api/profiles/:profileId/inspector
    - resolved config hash 变化时触发 full rematch + snapshot。
    - projection success 切 current pointer。
    - projection failure 不切 current pointer。
+   - 同一 tick 不重复领取同一 profile，其他 dirty profile 不会被持续变脏的 profile 饿死。
 
 ### 集成测试
 
